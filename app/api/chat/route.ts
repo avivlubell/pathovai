@@ -44,10 +44,8 @@ export async function POST(req: Request) {
       ],
     });
 
-    const text =
-      typeof response.content?.[0]?.text === 'string'
-        ? response.content[0].text
-        : '';
+    const block = response.content?.[0];
+    const text = block && 'text' in block ? (block as any).text : '';
 
     return NextResponse.json({ reply: text });
   } catch (err: any) {
