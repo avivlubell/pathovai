@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { SYSTEM_PROMPT } from './system-prompt';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -9,7 +10,6 @@ const SUPABASE_FUNCTIONS_BASE = 'https://urmgbmfvjuozvhigflqt.supabase.co/functi
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 
-// ── Tool-to-edge-function mapping ──
 const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_icp_scorer: 'icp-scorer',
   invoke_prospect_researcher: 'research-prospect',
@@ -26,45 +26,31 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   log_agent_run: 'log-agent-run',
 };
 
-// ── Anthropic tool definitions ──
 const tools: Anthropic.Tool[] = [
   {
     name: 'search_references',
-    description:
-      'Query Pathova Reference Library. Use for ICP framework, Problems We Solve, CEO Quotes, Proof Assets, Delivery Framework, Legal KB, Voice & Tone Guide, Outreach Templates, Prospect Patterns & Playbooks. Filter by type: methodology, proof_asset, legal_kb, agent_prompt, company_context, outreach_template, solution_framework, problem_framework, competitor_intel.',
+    description: 'Query Pathova Reference Library. Filter by type: methodology, proof_asset, legal_kb, agent_prompt, company_context, outreach_template, solution_framework, problem_framework, competitor_intel.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        type: {
-          type: 'string',
-          description:
-            'Reference type filter: methodology | outreach_template | solution_framework | problem_framework | proof_asset | legal_kb | company_context | competitor_intel | agent_prompt',
-        },
-        query: {
-          type: 'string',
-          description: 'Optional search query to filter results',
-        },
+        type: { type: 'string', description: 'Reference type filter' },
+        query: { type: 'string', description: 'Optional search query' },
       },
     },
   },
   {
     name: 'search_prospects',
-    description:
-      'Query the Prospects database. Use for looking up prospect data, ICP scores, engagement status, prior research, similar company precedent.',
+    description: 'Query the Prospects database for prospect data, ICP scores, engagement status, prior research.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        query: {
-          type: 'string',
-          description: 'Search query — company name, industry, or keyword',
-        },
+        query: { type: 'string', description: 'Search query — company name, industry, or keyword' },
       },
     },
   },
   {
     name: 'get_prospect_detail',
-    description:
-      'Get full details for a specific prospect by name or ID. Pulls complete prospect record including research, scores, and outreach drafts.',
+    description: 'Get full details for a specific prospect by name or ID.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -75,8 +61,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'score_icp',
-    description:
-      'Local ICP evaluation (lightweight, does NOT write to database). Use ONLY as a fallback if invoke_icp_scorer is unavailable.',
+    description: 'Local ICP evaluation (fallback only — prefer invoke_icp_scorer).',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -87,8 +72,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'query_deals',
-    description:
-      'Query the Deals & Motions pipeline. Use for pipeline status, deal stages, motion types, open deals, forecasting, revenue, close dates, contacts. Supports filters: stage, motion_type, company name.',
+    description: 'Query the Deals & Motions pipeline. Supports filters: stage, motion_type, company.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -96,9 +80,9 @@ const tools: Anthropic.Tool[] = [
           type: 'object',
           description: 'Optional filters',
           properties: {
-            stage: { type: 'string', description: 'Deal stage filter' },
-            motion_type: { type: 'string', description: 'Motion type filter' },
-            company: { type: 'string', description: 'Company name filter' },
+            stage: { type: 'string' },
+            motion_type: { type: 'string' },
+            company: { type: 'string' },
           },
         },
       },
@@ -106,29 +90,21 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'log_agent_run',
-    description:
-      'Log an agent action for audit trail. Call when Aviv confirms "log it" or "yes" to database actions.',
+    description: 'Log an agent action for audit trail.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        prospect_id: { type: 'string', description: 'Prospect UUID' },
-        action_type: { type: 'string', description: 'Type of action performed' },
-        decision_mode: {
-          type: 'string',
-          description: 'Quick Lookup | Targeted Analysis | Full Pipeline',
-        },
-        context_score: {
-          type: 'number',
-          description: '1 (Quick), 2 (Targeted), or 3 (Full Pipeline)',
-        },
-        summary: { type: 'string', description: 'Summary of what was done' },
+        prospect_id: { type: 'string' },
+        action_type: { type: 'string' },
+        decision_mode: { type: 'string' },
+        context_score: { type: 'number' },
+        summary: { type: 'string' },
       },
     },
   },
   {
     name: 'invoke_prospect_researcher',
-    description:
-      'Prospect Researcher specialist agent. Uses Perplexity API for live web research — FDA status, funding, team, customers, product details. Returns structured research and saves to database.',
+    description: 'Prospect Researcher specialist agent. Uses Perplexity API for live web research.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -139,8 +115,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'invoke_icp_scorer',
-    description:
-      'ICP Scorer specialist agent. Scores a prospect against Pathova ICP framework. Returns structured scoring JSON and writes score to database. PREFERRED over score_icp.',
+    description: 'ICP Scorer specialist agent. Scores prospect against Pathova ICP framework. Writes to database.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -151,23 +126,18 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'invoke_outreach_drafter',
-    description:
-      'Outreach Drafter specialist agent. Drafts multi-step outreach sequence (email + LinkedIn) based on prospect data, research, and ICP score. Saves to database.',
+    description: 'Outreach Drafter specialist agent. Drafts multi-step outreach sequence.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        prospect_id: {
-          type: 'string',
-          description: 'Required — UUID from prospects table',
-        },
+        prospect_id: { type: 'string', description: 'Required — UUID from prospects table' },
       },
       required: ['prospect_id'],
     },
   },
   {
     name: 'invoke_risk_assessor',
-    description:
-      'Risk Assessor specialist agent. Evaluates regulatory, financial, ICP fit, market timing, and competition risks. Returns structured risk assessment and saves to database.',
+    description: 'Risk Assessor specialist agent. Evaluates regulatory, financial, ICP fit, market timing risks.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -178,8 +148,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'sync_prospect_content',
-    description:
-      "Sync a prospect's full Notion page content into Supabase. Use when prospect data needs refreshing from Notion source.",
+    description: 'Sync a prospect full Notion page content into Supabase.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -188,8 +157,6 @@ const tools: Anthropic.Tool[] = [
     },
   },
 ];
-
-// ── Call a Supabase edge function ──
 async function callEdgeFunction(
   functionName: string,
   body: Record<string, unknown>
@@ -216,7 +183,6 @@ async function callEdgeFunction(
   }
 }
 
-// ── Execute a tool call ──
 async function executeTool(
   toolName: string,
   toolInput: Record<string, unknown>
@@ -229,49 +195,6 @@ async function executeTool(
   return typeof result === 'string' ? result : JSON.stringify(result);
 }
 
-// ── System prompt (your Quarterback Agent instructions) ──
-const SYSTEM_PROMPT = `You are the Quarterback Agent, the main orchestrator for Pathova GTM's prospect intelligence system. You coordinate a council of 3 specialist perspectives to provide comprehensive prospect analysis and sales recommendations for post-FDA MedTech companies stuck in pilot purgatory.
-
-You have access to tools that connect to Pathova's Supabase database and specialist edge function agents. USE THESE TOOLS — do not guess or hallucinate data.
-
-Your prospects are companies — post-FDA medtech/digital health startups tracked in the Outreach Intelligence database.
-
-Your knowledge base is Pathova's operating system — ICP frameworks, Problems We Solve, CEO Quotes & Validation Statements, Prospect Patterns & Playbooks, Proof Assets, Outreach Templates & Cadence, and Voice & Tone Guide.
-
-CORE PRINCIPLES:
-1. Self-Regulating Council — Call only the perspectives needed for each query
-2. Revenue-Forward Filter — Only surface insights that move deals forward
-3. Confidence Metadata — Always provide confidence levels and uncertainty flags
-4. Pattern Validation — Ground recommendations in Prospect Patterns & Playbooks
-5. Evidence First — Never speculate. Distinguish facts vs. inferences vs. unknowns.
-6. Voice DNA Compliance — All outputs must match Aviv's Voice & Tone Guide
-7. Structural Discipline — Every response follows mandatory structure
-8. Signal Density — Every paragraph earns its place by informing a decision
-
-INTERACTION BEHAVIOR RULES:
-1. Ask open-ended, not multiple-choice.
-2. Show progress, not placeholders. Narrate each tool call.
-3. State what you know before asking what you don't.
-4. Never repeat Aviv's question back to him.
-5. When clarification is needed, make it one question, not a battery.
-
-TOOL ROUTING:
-- Quick Lookup: search_prospects / search_references only. No specialist agents.
-- Targeted Analysis: 1-2 relevant specialist agents only.
-- Full Pipeline: invoke_prospect_researcher → invoke_icp_scorer → invoke_risk_assessor → invoke_outreach_drafter
-
-MANDATORY RESPONSE STRUCTURE:
-[BETA DISCLAIMER]
----
-[MODE DECLARATION]
-[MAIN CONTENT]
-[UNCERTAINTY SEPARATION — for Targeted/Full Pipeline only]
----
-[DATABASE ACTIONS — always last]
-
-REFERENCE LIBRARY valid type values: methodology | outreach_template | solution_framework | problem_framework | proof_asset | legal_kb | company_context | competitor_intel | agent_prompt`;
-
-// ── Main POST handler with tool-use loop ──
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -283,13 +206,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // Build messages array for Claude
     const messages: Anthropic.MessageParam[] = chatMessages.map((m: any) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
 
-    // Tool-use loop: keep calling Claude until we get a final text response
     const MAX_TOOL_ROUNDS = 10;
     let round = 0;
 
@@ -304,14 +225,12 @@ export async function POST(req: Request) {
         messages,
       });
 
-      // Check if Claude wants to use tools
       const toolUseBlocks = response.content.filter(
         (b): b is Anthropic.ContentBlock & { type: 'tool_use' } =>
           b.type === 'tool_use'
       );
 
       if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
-        // No more tool calls — extract final text
         const textBlocks = response.content.filter(
           (b): b is Anthropic.ContentBlock & { type: 'text' } =>
             b.type === 'text'
@@ -320,13 +239,11 @@ export async function POST(req: Request) {
         return NextResponse.json({ reply: finalText });
       }
 
-      // Claude wants to use tools — add assistant message with tool_use blocks
       messages.push({
         role: 'assistant',
         content: response.content as any,
       });
 
-      // Execute each tool call and build tool_result messages
       const toolResults: any[] = [];
       for (const toolBlock of toolUseBlocks) {
         const result = await executeTool(
@@ -340,14 +257,12 @@ export async function POST(req: Request) {
         });
       }
 
-      // Add tool results as a user message (Anthropic API convention)
       messages.push({
         role: 'user',
         content: toolResults,
       });
     }
 
-    // If we hit max rounds, return whatever we have
     return NextResponse.json({
       reply: '[Agent reached maximum tool-use rounds. Please try a simpler query.]',
     });
