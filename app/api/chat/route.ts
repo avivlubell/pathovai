@@ -230,13 +230,55 @@ export async function POST(req: Request) {
           b.type === 'tool_use'
       );
 
-      if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
+if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
         const textBlocks = response.content.filter(
           (b): b is Anthropic.ContentBlock & { type: 'text' } =>
             b.type === 'text'
         );
         const finalText = textBlocks.map((b: any) => b.text).join('\n');
-        return NextResponse.json({ reply: finalText });
+
+        let parsed: any;
+        try {
+          parsed = JSON.parse(finalText);
+        } catch {
+          return NextResponse.json(
+            { error: 'Invalid QB response: not valid JSON envelope', raw: finalText },
+            { status: 500 }
+          );
+        }
+
+        const meta = parsed?.meta;
+        const planned = Array.isArray(meta?.planned_tools) ? meta.planned_tools : [];
+        const log = Array.isArray(meta?.tool_call_log) ? meta.tool_call_log : [];
+
+        const actuallyCalled = new Set(
+          log
+            .filter((t: any) => t && t.status === 'called' && typeof t.name === 'string')
+            .map((t: any) => t.name)
+        );
+
+        const missingRequired = planned.filter(
+          (t: any) =>
+            t &&
+            t.will_call === true &&
+            typeof t.name === 'string' &&
+            !actuallyCalled.has(t.name)
+        );
+
+        const sequenceOkFlag = meta?.sequence_ok === true;
+        const sequenceOk = sequenceOkFlag && missingRequired.length === 0;
+
+        if (!sequenceOk) {
+          return NextResponse.json(
+            {
+              error: 'QB violated tool sequence or skipped required tools',
+              meta,
+            },
+            { status: 500 }
+          );
+        }
+
+        return NextResponse.json({ reply: parsed });
       }
 
       messages.push({
