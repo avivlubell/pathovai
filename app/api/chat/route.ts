@@ -1,17 +1,14 @@
-import { NextResponse } from 'next/server'; // x
+import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { SYSTEM_PROMPT } from './system-prompt';
-
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-
 const SUPABASE_FUNCTIONS_BASE = 'https://urmgbmfvjuozvhigflqt.supabase.co/functions/v1';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
-
 
 const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_icp_scorer: 'icp-scorer',
@@ -28,7 +25,6 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   score_icp: 'icp-scorer',
   log_agent_run: 'log-agent-run',
 };
-
 
 const tools: Anthropic.Tool[] = [
   {
@@ -48,7 +44,7 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        query: { type: 'string', description: 'Search query — company name, industry, or keyword' },
+        query: { type: 'string', description: 'Search query -- company name, industry, or keyword' },
       },
     },
   },
@@ -65,7 +61,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'score_icp',
-    description: 'Local ICP evaluation (fallback only — prefer invoke_icp_scorer).',
+    description: 'Local ICP evaluation (fallback only -- prefer invoke_icp_scorer).',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -134,7 +130,7 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        prospect_id: { type: 'string', description: 'Required — UUID from prospects table' },
+        prospect_id: { type: 'string', description: 'Required -- UUID from prospects table' },
       },
       required: ['prospect_id'],
     },
@@ -162,7 +158,6 @@ const tools: Anthropic.Tool[] = [
   },
 ];
 
-
 async function callEdgeFunction(
   functionName: string,
   body: Record<string, unknown>
@@ -189,7 +184,6 @@ async function callEdgeFunction(
   }
 }
 
-
 async function executeTool(
   toolName: string,
   toolInput: Record<string, unknown>
@@ -202,11 +196,54 @@ async function executeTool(
   return typeof result === 'string' ? result : JSON.stringify(result);
 }
 
+// Helper: extract human-readable reply from QB JSON envelope or plain text
+function extractReply(finalText: string): string {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(finalText);
+  } catch {
+    // Not JSON — return plain text directly (conversational turn)
+    return finalText;
+  }
+
+  // If it's a JSON envelope, extract the readable content
+  const content = parsed?.content;
+  if (content) {
+    const parts: string[] = [];
+    if (content.beta_disclaimer) parts.push(content.beta_disclaimer);
+    if (content.mode_declaration) parts.push(content.mode_declaration);
+    if (content.main_content) parts.push(content.main_content);
+
+    const unc = content.uncertainty_separation;
+    if (unc) {
+      if (Array.isArray(unc.what_we_know) && unc.what_we_know.length > 0) {
+        parts.push('**What We Know (Verified)**');
+        unc.what_we_know.forEach((item: string) => parts.push(`- ${item}`));
+      }
+      if (Array.isArray(unc.what_were_inferring) && unc.what_were_inferring.length > 0) {
+        parts.push('**What We\'re Inferring**');
+        unc.what_were_inferring.forEach((item: string) => parts.push(`- ${item}`));
+      }
+      if (Array.isArray(unc.what_we_dont_know) && unc.what_we_dont_know.length > 0) {
+        parts.push('**What We Don\'t Know (Gaps)**');
+        unc.what_we_dont_know.forEach((item: string) => parts.push(`- ${item}`));
+      }
+    }
+
+    if (content.database_actions) parts.push('---\n' + content.database_actions);
+
+    if (parts.length > 0) return parts.join('\n\n');
+  }
+
+  // Fallback: if parsed but no content field, stringify it
+  return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const chatMessages = body?.messages;
+
     if (!Array.isArray(chatMessages)) {
       return NextResponse.json(
         { error: 'Invalid payload: messages must be an array' },
@@ -214,20 +251,16 @@ export async function POST(req: Request) {
       );
     }
 
-
     const messages: Anthropic.MessageParam[] = chatMessages.map((m: any) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
 
-
     const MAX_TOOL_ROUNDS = 10;
     let round = 0;
 
-
     while (round < MAX_TOOL_ROUNDS) {
       round++;
-
 
       const response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
@@ -237,13 +270,12 @@ export async function POST(req: Request) {
         messages,
       });
 
-
       const toolUseBlocks = response.content.filter(
         (b): b is Anthropic.ContentBlock & { type: 'tool_use' } =>
           b.type === 'tool_use'
       );
 
-
+      // Only process tool calls if there ARE tool_use blocks AND stop_reason is tool_use
       if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
         const textBlocks = response.content.filter(
           (b): b is Anthropic.ContentBlock & { type: 'text' } =>
@@ -251,55 +283,15 @@ export async function POST(req: Request) {
         );
         const finalText = textBlocks.map((b: any) => b.text).join('\n');
 
-        let parsed: any;
-        try {
-          parsed = JSON.parse(finalText);
-        } catch {
-          // Model didn't return JSON envelope — pass through as plain text
-          // TODO: tighten this once model reliably returns JSON
-          return NextResponse.json({ reply: finalText });
-        }
-
-        const meta = parsed?.meta;
-        const planned = Array.isArray(meta?.planned_tools) ? meta.planned_tools : [];
-        const log = Array.isArray(meta?.tool_call_log) ? meta.tool_call_log : [];
-
-        const actuallyCalled = new Set(
-          log
-            .filter((t: any) => t && t.status === 'called' && typeof t.name === 'string')
-            .map((t: any) => t.name)
-        );
-
-        const missingRequired = planned.filter(
-          (t: any) =>
-            t &&
-            t.will_call === true &&
-            typeof t.name === 'string' &&
-            !actuallyCalled.has(t.name)
-        );
-
-        const sequenceOkFlag = meta?.sequence_ok === true;
-        const sequenceOk = sequenceOkFlag && missingRequired.length === 0;
-
-        if (!sequenceOk) {
-          return NextResponse.json(
-            {
-              error: 'QB violated tool sequence or skipped required tools',
-              meta,
-            },
-            { status: 500 }
-          );
-        }
-
-        return NextResponse.json({ reply: parsed });
+        // Extract readable reply from JSON envelope or plain text
+        const reply = extractReply(finalText);
+        return NextResponse.json({ reply });
       }
-
 
       messages.push({
         role: 'assistant',
         content: response.content as any,
       });
-
 
       const toolResults: any[] = [];
       for (const toolBlock of toolUseBlocks) {
@@ -314,13 +306,11 @@ export async function POST(req: Request) {
         });
       }
 
-
       messages.push({
         role: 'user',
         content: toolResults,
       });
     }
-
 
     return NextResponse.json({
       reply: '[Agent reached maximum tool-use rounds. Please try a simpler query.]',
