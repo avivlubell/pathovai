@@ -2,13 +2,16 @@ import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { SYSTEM_PROMPT } from './system-prompt';
 
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+
 const SUPABASE_FUNCTIONS_BASE = 'https://urmgbmfvjuozvhigflqt.supabase.co/functions/v1';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+
 
 const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_icp_scorer: 'icp-scorer',
@@ -25,6 +28,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   score_icp: 'icp-scorer',
   log_agent_run: 'log-agent-run',
 };
+
 
 const tools: Anthropic.Tool[] = [
   {
@@ -157,6 +161,8 @@ const tools: Anthropic.Tool[] = [
     },
   },
 ];
+
+
 async function callEdgeFunction(
   functionName: string,
   body: Record<string, unknown>
@@ -183,6 +189,7 @@ async function callEdgeFunction(
   }
 }
 
+
 async function executeTool(
   toolName: string,
   toolInput: Record<string, unknown>
@@ -195,6 +202,7 @@ async function executeTool(
   return typeof result === 'string' ? result : JSON.stringify(result);
 }
 
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -206,16 +214,20 @@ export async function POST(req: Request) {
       );
     }
 
+
     const messages: Anthropic.MessageParam[] = chatMessages.map((m: any) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
 
+
     const MAX_TOOL_ROUNDS = 10;
     let round = 0;
 
+
     while (round < MAX_TOOL_ROUNDS) {
       round++;
+
 
       const response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
@@ -225,12 +237,14 @@ export async function POST(req: Request) {
         messages,
       });
 
+
       const toolUseBlocks = response.content.filter(
         (b): b is Anthropic.ContentBlock & { type: 'tool_use' } =>
           b.type === 'tool_use'
       );
 
-if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
+
+      if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
         const textBlocks = response.content.filter(
           (b): b is Anthropic.ContentBlock & { type: 'text' } =>
             b.type === 'text'
@@ -241,10 +255,9 @@ if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
         try {
           parsed = JSON.parse(finalText);
         } catch {
-          return NextResponse.json(
-            { error: 'Invalid QB response: not valid JSON envelope', raw: finalText },
-            { status: 500 }
-          );
+          // Model didn't return JSON envelope — pass through as plain text
+          // TODO: tighten this once model reliably returns JSON
+          return NextResponse.json({ reply: finalText });
         }
 
         const meta = parsed?.meta;
@@ -281,10 +294,12 @@ if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
         return NextResponse.json({ reply: parsed });
       }
 
+
       messages.push({
         role: 'assistant',
         content: response.content as any,
       });
+
 
       const toolResults: any[] = [];
       for (const toolBlock of toolUseBlocks) {
@@ -299,11 +314,13 @@ if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
         });
       }
 
+
       messages.push({
         role: 'user',
         content: toolResults,
       });
     }
+
 
     return NextResponse.json({
       reply: '[Agent reached maximum tool-use rounds. Please try a simpler query.]',
