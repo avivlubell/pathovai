@@ -161,27 +161,39 @@ const tools: Anthropic.Tool[] = [
 
 async function callEdgeFunction(
   functionName: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  retries = 2
 ): Promise<unknown> {
   const url = `${SUPABASE_FUNCTIONS_BASE}/${functionName}`;
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        apikey: SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify(body),
-    });
-    const text = await res.text();
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      return JSON.parse(text);
-    } catch {
-      return { raw_response: text, status: res.status };
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(body),
+      });
+      const text = await res.text();
+      // Retry on rate limit
+      if (res.status === 429 && attempt < retries) {
+        await new Promise(r => setTimeout(r, (attempt + 1) * 5000));
+        continue;
+      }
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { raw_response: text, status: res.status };
+      }
+    } catch (err: any) {
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, (attempt + 1) * 5000));
+        continue;
+      }
+      return { error: `Failed to call ${functionName}: ${err.message}` };
     }
-  } catch (err: any) {
-    return { error: `Failed to call ${functionName}: ${err.message}` };
   }
 }
 
@@ -222,11 +234,11 @@ function extractReply(finalText: string): string {
         unc.what_we_know.forEach((item: string) => parts.push(`- ${item}`));
       }
       if (Array.isArray(unc.what_were_inferring) && unc.what_were_inferring.length > 0) {
-        parts.push('**What We\'re Inferring**');
+        parts.push("**What We're Inferring**");
         unc.what_were_inferring.forEach((item: string) => parts.push(`- ${item}`));
       }
       if (Array.isArray(unc.what_we_dont_know) && unc.what_we_dont_know.length > 0) {
-        parts.push('**What We Don\'t Know (Gaps)**');
+        parts.push("**What We Don't Know (Gaps)**");
         unc.what_we_dont_know.forEach((item: string) => parts.push(`- ${item}`));
       }
     }
