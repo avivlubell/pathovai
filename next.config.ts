@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  outputFileTracingIncludes: {
+    '/api/chat': ['./app/api/chat/prompt.txt'],
+  },
 };
 
 export default nextConfig;
