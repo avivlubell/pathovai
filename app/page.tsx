@@ -42,12 +42,19 @@ export default function HomePage() {
         }),
       });
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        console.error('Chat error', errorData);
-        setIsLoading(false);
-        return;
-      }
+  if (!res.ok) {
+  const errorData = await res.json().catch(() => ({}));
+  console.error('Chat error', errorData);
+  const errorMessage: ChatMessage = {
+    id: crypto.randomUUID(),
+    role: 'assistant',
+    content: `⚠️ Error: ${errorData?.error || errorData?.details || 'Server error. Check Vercel logs.'}`,
+  };
+  setMessages((prev) => [...prev, errorMessage]);
+  setIsLoading(false);
+  return;
+}
+
 
       const data = await res.json();
       const replyText = data.reply ?? '';
