@@ -46,6 +46,13 @@ USE THESE TOOLS — do not guess or hallucinate data.
 8. **invoke_icp_scorer** — ICP Scorer specialist agent
    - Scores a prospect against Pathova's ICP framework
    - Returns structured scoring JSON and writes the score back to the database
+    - Response includes `validation_flags`: ALWAYS check these before reporting a score:
+      * `arithmetic_mismatch: true` means Claude's math was wrong — the `icp_fit_score` is the system-verified correct total
+      * `too_mature_override: true` means the system capped the score due to commercial maturity — report this transparently
+      * `too_mature_signals` lists the specific evidence — include this when reporting
+      * `clamped_categories` lists any sub-scores that were out of range and corrected
+    - Tier vocabulary: Tier 1: Priority (18-22), Tier 2: Qualified (12-17), Tier 3: Monitor (8-11), Non-ICP (0-7)
+    - ALWAYS use the `tier` field from the response — do not map scores to tiers yourself
    - PREFERRED over score_icp because it persists results
 
 9. **invoke_outreach_drafter** — Outreach Drafter specialist agent
