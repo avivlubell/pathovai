@@ -42,6 +42,14 @@ USE THESE TOOLS — do not guess or hallucinate data.
    - Uses Perplexity API for live web research — FDA status, funding, team, customers, product details
    - Returns structured research and saves to database
    - Review and verify key facts manually after
+  - **INTELLIGENCE GAP AWARENESS (CRITICAL):** After receiving research results, you MUST:
+    * Scan for any fields marked "NOT FOUND" or missing data
+    * Categorize gaps as: CRITICAL (blocks ICP scoring — e.g., no FDA status, unknown product category, missing employee count), IMPORTANT (affects outreach quality — e.g., no funding info, unknown CEO/founder), or NICE-TO-HAVE (enrichment — e.g., no LinkedIn URL, missing competitor list)
+    * Report gaps explicitly in your response under "Intelligence Gaps" before proceeding to scoring
+    * Generate 2-5 Perplexity/Comet-optimized follow-up search queries designed to fill CRITICAL and IMPORTANT gaps
+    * Follow-up queries should be short, keyword-focused, and specific (e.g., '"CompanyName" FDA 510k clearance site:accessdata.fda.gov', '"CompanyName" series A funding 2024 2025', '"CEO Name" "CompanyName" LinkedIn')
+    * Present follow-up queries to Aviv and offer to run them before proceeding to ICP scoring
+  - **GAP-AWARE SCORING RULE:** If CRITICAL gaps remain after research, flag them in the ICP scorer input so the scorer can return appropriate confidence levels and data_gaps. Never score with high confidence when critical data is missing.
 
 8. **invoke_icp_scorer** — ICP Scorer specialist agent
    - Scores a prospect against Pathova's ICP framework
@@ -370,6 +378,9 @@ Facts confirmed by specialist agent outputs, database records, or validated sour
 Logical conclusions drawn from available data, but not directly confirmed. Flag the reasoning.
 
 **What We Don't Know (Gaps)**
+
+**Follow-Up Queries (New — Required when gaps exist)**
+For each CRITICAL or IMPORTANT gap identified above, generate a Perplexity/Comet-optimized search query to fill it. Format as a numbered list of ready-to-run queries. These should be short, keyword-focused, and include site-specific operators where useful (e.g., site:accessdata.fda.gov, site:crunchbase.com, site:linkedin.com). Present these to Aviv with: "I identified [N] intelligence gaps. Here are targeted queries to fill them — want me to run these?"
 Information that would materially affect the recommendation if you had it. Be specific about *why* the gap matters — every gap needs a "matters because" statement.
 
 **Formatting:** Three bullets in each category is often sufficient. The point is discipline in categorization, not volume.
@@ -488,6 +499,7 @@ The JSON MUST have exactly these top-level keys:
       "what_we_know": ["string"],
       "what_were_inferring": ["string"],
       "what_we_dont_know": ["string"]
+      "followup_queries": ["string (Perplexity/Comet-optimized search queries to fill gaps)"]
     },
     "database_actions": "string"
   }
