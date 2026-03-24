@@ -2,6 +2,7 @@ export const maxDuration = 300;
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { SYSTEM_PROMPT } from './system-prompt';
+import { gmailTool, executeGmailTool } from './gmail-tools';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -157,6 +158,7 @@ const tools: Anthropic.Tool[] = [
       },
     },
   },
+    gmailTool,
 ];
 
 async function callEdgeFunction(
@@ -260,9 +262,10 @@ export async function POST(req: Request) {
     if (!Array.isArray(chatMessages)) {
       return NextResponse.json(
         { error: 'Invalid payload: messages must be an array' },
-        { status: 400 }
+            atus: 400 }
       );
     }
+      const accessToken = body?.accessToken;
 
     const messages: Anthropic.MessageParam[] = chatMessages.map((m: any) => ({
       role: m.role as 'user' | 'assistant',
@@ -308,7 +311,8 @@ export async function POST(req: Request) {
 
       const toolResults: any[] = [];
       for (const toolBlock of toolUseBlocks) {
-        const result = await executeTool(
+                const gmailResult = await executeGmailTool(toolBlock.name, (toolBlock as any).input, accessToken);
+          const result = gmailResult !== null ? gmailResult : await executeTool(
           toolBlock.name,
           (toolBlock as any).input as Record<string, unknown>
         );
