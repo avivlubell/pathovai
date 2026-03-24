@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 
+import Image from 'next/image';
+
 type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
@@ -82,10 +84,14 @@ export default function HomePage() {
   return (
     <main className="flex min-h-screen flex-col bg-slate-950 text-slate-50">
       <div className="flex-1 max-w-2xl w-full mx-auto flex flex-col py-6 px-4 gap-4">
-               <div className="flex items-center justify-between mb-2">
-          <h1 className="text-lg font-semibold">
-            PathovAI – Main Agent Chat
-          </h1>
+                          <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <Image src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" width={32} height={32} />
+                <h1 className="text-lg font-semibold">
+                  PathovAI – Main Agent Chat
+                </h1>
+              </div>
+
           <button
             onClick={handleNewChat}
             className="px-3 py-1.5 rounded-md bg-slate-800 border border-slate-700 text-sm font-medium hover:bg-slate-700 transition-colors"
