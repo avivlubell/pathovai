@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-
-
+import { useSession, signIn } from 'next-auth/react';
 
 type ChatMessage = {
   id: string;
@@ -18,6 +17,7 @@ type ChatSession = {
 };
 
 export default function HomePage() {
+  const { data: session } = useSession();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -25,6 +25,7 @@ export default function HomePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [showConnectMenu, setShowConnectMenu] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('pathovai-history');
@@ -132,13 +133,11 @@ export default function HomePage() {
 
       const data = await res.json();
       const replyText = data.reply ?? '';
-
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: replyText,
       };
-
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
       console.error('Network error', err);
@@ -181,11 +180,12 @@ export default function HomePage() {
           )}
         </div>
       </aside>
+
       {/* Main Chat */}
       <div className="flex-1 max-w-2xl mx-auto flex flex-col py-6 px-4 gap-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-                        <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovaAI logo" width={32} height={32} />
+            <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovaAI logo" width={32} height={32} />
             <h1 className="text-lg font-semibold">
               PathovaAI
             </h1>
@@ -204,7 +204,6 @@ export default function HomePage() {
               Start chatting with your Claude main agent...
             </div>
           )}
-
           {messages.map((m) => (
             <div
               key={m.id}
@@ -226,7 +225,6 @@ export default function HomePage() {
               )}
             </div>
           ))}
-
           {isLoading && (
             <div className="text-sm text-slate-400">Thinking...</div>
           )}
@@ -262,6 +260,35 @@ export default function HomePage() {
             >
               📎
             </button>
+            {/* Connect integrations + button */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowConnectMenu(!showConnectMenu)}
+                className="px-3 py-2 rounded-md border border-slate-700 bg-slate-900 text-sm hover:bg-slate-800 font-bold"
+                title="Connect integrations"
+              >
+                +
+              </button>
+              {showConnectMenu && (
+                <div className="absolute bottom-full mb-2 left-0 bg-slate-800 border border-slate-700 rounded-lg shadow-xl py-1 min-w-[200px] z-50">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      signIn('google');
+                      setShowConnectMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-700 flex items-center gap-3"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
+                      <path d="M22 12c0-5.52-4.48-10-10-10S2 6.48 2 12c0 4.84 3.44 8.87 8 9.8V15H8v-3h2V9.5C10 7.57 11.57 6 13.5 6H16v3h-2c-.55 0-1 .45-1 1v2h3l-.5 3H13v6.95c5.05-.5 9-4.76 9-9.95z" fill="currentColor"/>
+                    </svg>
+                    <span>Connect Gmail</span>
+                    {session && <span className="ml-auto text-xs text-green-400">✓</span>}
+                  </button>
+                </div>
+              )}
+            </div>
             <input
               className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-sky-500"
               value={input}
