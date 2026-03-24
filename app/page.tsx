@@ -115,6 +115,7 @@ export default function HomePage() {
             role: m.role,
             content: m.content,
           })),
+                      accessToken: (session as any)?.accessToken,
         }),
       });
 
