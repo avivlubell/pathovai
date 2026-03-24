@@ -90,7 +90,7 @@ export default function HomePage() {
               <div className="flex items-center gap-3">
                 <Image src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" width={32} height={32} />
                 <h1 className="text-lg font-semibold">
-                  PathovAI – Main Agent Chat
+                  PathovAI
                 </h1>
               </div>
 
@@ -118,7 +118,7 @@ export default function HomePage() {
               }`}
             >
               <div className="font-medium">
-                {m.role === 'user' ? 'You' : 'PathovAI'}
+                {m.role === 'user' ? 'Aviv' : 'PathovAI'}
               </div>
               <div className="whitespace-pre-wrap">{m.content}</div>
             </div>
