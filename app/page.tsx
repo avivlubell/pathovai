@@ -216,7 +216,7 @@ export default function HomePage() {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <img src="/PATHOVA_LOGO1.png" alt="PathovaAI logo" className="h-8 w-8 rounded" />
+            <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovaAI logo" className="h-8 w-8 rounded" />
             <h1 className="text-lg font-bold">PathovaAI</h1>
           </div>
           <button
