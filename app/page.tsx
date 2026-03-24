@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession, signIn } from 'next-auth/react';
 
 type ChatMessage = {
@@ -26,6 +26,7 @@ export default function HomePage() {
   const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [showConnectMenu, setShowConnectMenu] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('pathovai-history');
@@ -36,40 +37,41 @@ export default function HomePage() {
     localStorage.setItem('pathovai-history', JSON.stringify(chatHistory));
   }, [chatHistory]);
 
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Auto-save current chat to history whenever messages change (after assistant replies)
+  const saveCurrentChat = useCallback((msgs: ChatMessage[]) => {
+    if (msgs.length < 2) return; // Need at least one exchange
+    const id = activeChatId || crypto.randomUUID();
+    const chatSession: ChatSession = {
+      id,
+      title: msgs[0].content.slice(0, 40),
+      messages: msgs,
+      createdAt: Date.now(),
+    };
+    setChatHistory((prev) => {
+      const filtered = prev.filter((s) => s.id !== id);
+      return [chatSession, ...filtered];
+    });
+    if (!activeChatId) setActiveChatId(id);
+  }, [activeChatId]);
+
   function handleNewChat() {
-    if (messages.length > 0) {
-      const session: ChatSession = {
-        id: activeChatId || crypto.randomUUID(),
-        title: messages[0].content.slice(0, 40),
-        messages,
-        createdAt: Date.now(),
-      };
-      setChatHistory((prev) => {
-        const filtered = prev.filter((s) => s.id !== session.id);
-        return [session, ...filtered];
-      });
-    }
+    // Current chat is already auto-saved, just clear
     setMessages([]);
     setInput('');
+    setFiles([]);
     setIsLoading(false);
     setActiveChatId(null);
   }
 
-  function loadChat(session: ChatSession) {
-    if (messages.length > 0) {
-      const current: ChatSession = {
-        id: activeChatId || crypto.randomUUID(),
-        title: messages[0].content.slice(0, 40),
-        messages,
-        createdAt: Date.now(),
-      };
-      setChatHistory((prev) => {
-        const filtered = prev.filter((s) => s.id !== current.id);
-        return [current, ...filtered];
-      });
-    }
-    setMessages(session.messages);
-    setActiveChatId(session.id);
+  function loadChat(chatSession: ChatSession) {
+    setMessages(chatSession.messages);
+    setActiveChatId(chatSession.id);
+    setFiles([]);
   }
 
   function clearHistory() {
@@ -89,14 +91,40 @@ export default function HomePage() {
     URL.revokeObjectURL(url);
   }
 
+  async function readFileAsText(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() && files.length === 0) return;
+
+    // Build message content including file contents
+    let messageContent = input.trim();
+
+    if (files.length > 0) {
+      const fileContents: string[] = [];
+      for (const file of files) {
+        try {
+          const text = await readFileAsText(file);
+          fileContents.push(`\n\n---\n📎 File: ${file.name}\n---\n${text}`);
+        } catch {
+          fileContents.push(`\n\n---\n📎 File: ${file.name} (could not read file)\n---`);
+        }
+      }
+      messageContent = messageContent + fileContents.join('');
+      setFiles([]);
+    }
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: input.trim(),
+      content: messageContent,
     };
 
     const nextMessages = [...messages, userMessage];
@@ -107,15 +135,13 @@ export default function HomePage() {
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: nextMessages.map((m) => ({
             role: m.role,
             content: m.content,
           })),
-                      accessToken: (session as any)?.accessToken,
+          accessToken: (session as any)?.accessToken,
         }),
       });
 
@@ -127,19 +153,25 @@ export default function HomePage() {
           role: 'assistant',
           content: `⚠️ Error: ${errorData?.error || errorData?.details || 'Server error. Check Vercel logs.'}`,
         };
-        setMessages((prev) => [...prev, errorMessage]);
+        const withError = [...nextMessages, errorMessage];
+        setMessages(withError);
         setIsLoading(false);
         return;
       }
 
       const data = await res.json();
       const replyText = data.reply ?? '';
+
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: replyText,
       };
-      setMessages((prev) => [...prev, assistantMessage]);
+
+      const updatedMessages = [...nextMessages, assistantMessage];
+      setMessages(updatedMessages);
+      // Auto-save to chat history
+      saveCurrentChat(updatedMessages);
     } catch (err) {
       console.error('Network error', err);
     } finally {
@@ -147,75 +179,70 @@ export default function HomePage() {
     }
   }
 
+  const isGmailConnected = !!(session as any)?.accessToken;
+
   return (
-    <main className="flex min-h-screen bg-slate-950 text-slate-50">
+    <div className="flex h-screen bg-slate-950 text-slate-100">
       {/* Sidebar */}
-      <aside className="w-64 border-r border-slate-800 flex flex-col p-4 bg-slate-900/40">
-        <div className="flex items-center justify-between mb-4">
+      <div className="w-56 border-r border-slate-800 p-4 flex flex-col gap-2 overflow-y-auto">
+        <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-slate-300">Chat History</h2>
           {chatHistory.length > 0 && (
-            <button
-              onClick={clearHistory}
-              className="text-xs text-slate-500 hover:text-red-400"
-            >
+            <button onClick={clearHistory} className="text-xs text-slate-500 hover:text-red-400">
               Clear All
             </button>
           )}
         </div>
-        <div className="flex-1 overflow-y-auto space-y-1">
-          {chatHistory.map((session) => (
-            <button
-              key={session.id}
-              onClick={() => loadChat(session)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm truncate ${
-                activeChatId === session.id
-                  ? 'bg-slate-700 text-slate-100'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-              }`}
-            >
-              {session.title}
-            </button>
-          ))}
-          {chatHistory.length === 0 && (
-            <div className="text-xs text-slate-500">No previous chats</div>
-          )}
-        </div>
-      </aside>
+        {chatHistory.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => loadChat(s)}
+            className={`w-full text-left px-3 py-2 rounded-md text-sm truncate ${
+              activeChatId === s.id
+                ? 'bg-slate-700 text-slate-100'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+            }`}
+          >
+            {s.title}
+          </button>
+        ))}
+        {chatHistory.length === 0 && (
+          <p className="text-xs text-slate-600 mt-2">No previous chats</p>
+        )}
+      </div>
 
       {/* Main Chat */}
-      <div className="flex-1 max-w-2xl mx-auto flex flex-col py-6 px-4 gap-4">
-        <div className="flex items-center justify-between mb-2">
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovaAI logo" width={32} height={32} />
-            <h1 className="text-lg font-semibold">
-              PathovaAI
-            </h1>
+            <img src="/PATHOVA_LOGO1.png" alt="PathovaAI logo" className="h-8 w-8 rounded" />
+            <h1 className="text-lg font-bold">PathovaAI</h1>
           </div>
           <button
             onClick={handleNewChat}
-            className="px-3 py-1.5 rounded-md bg-slate-800 border border-slate-700 text-sm font-medium hover:bg-slate-700 transition-colors"
+            className="px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800"
           >
             + New Chat
           </button>
         </div>
 
-        <div className="flex-1 border border-slate-800 rounded-lg p-3 overflow-y-auto bg-slate-900/60">
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {messages.length === 0 && (
-            <div className="text-sm text-slate-400">
+            <p className="text-slate-500 text-center mt-20">
               Start chatting with your Claude main agent...
-            </div>
+            </p>
           )}
           {messages.map((m) => (
             <div
               key={m.id}
-              className={`mb-3 text-sm ${
-                m.role === 'user' ? 'text-sky-300' : 'text-slate-100'
-              }`}
+              className={`max-w-3xl mx-auto ${m.role === 'user' ? 'text-sky-300' : 'text-slate-200'}`}
             >
-              <div className="font-medium">
+              <p className="text-xs font-semibold mb-1 text-slate-400">
                 {m.role === 'user' ? 'You' : 'PathovaAI'}
-              </div>
-              <div className="whitespace-pre-wrap">{m.content}</div>
+              </p>
+              <p className="whitespace-pre-wrap">{m.content}</p>
               {m.role === 'assistant' && (
                 <button
                   onClick={() => downloadAsMarkdown(m.content)}
@@ -227,22 +254,39 @@ export default function HomePage() {
             </div>
           ))}
           {isLoading && (
-            <div className="text-sm text-slate-400">Thinking...</div>
+            <div className="max-w-3xl mx-auto">
+              <p className="text-slate-500 animate-pulse">Thinking...</p>
+            </div>
           )}
+          <div ref={messagesEndRef} />
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-2 flex flex-col gap-2">
+        {/* Input Area */}
+        <form onSubmit={handleSubmit} className="px-6 py-3 border-t border-slate-800">
+          {/* File chips */}
           {files.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 mb-2">
               {files.map((file, i) => (
-                <div key={i} className="flex items-center gap-1 bg-slate-800 rounded px-2 py-1 text-xs text-slate-300">
-                  <span>{file.name}</span>
-                  <button type="button" onClick={() => setFiles(files.filter((_, j) => j !== i))} className="text-slate-500 hover:text-slate-200">✕</button>
-                </div>
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-800 text-xs text-slate-300"
+                >
+                  📎 {file.name}
+                  &nbsp;
+                  <button
+                    type="button"
+                    onClick={() => setFiles(files.filter((_, j) => j !== i))}
+                    className="text-slate-500 hover:text-slate-200"
+                  >
+                    ✕
+                  </button>
+                </span>
               ))}
             </div>
           )}
-          <div className="flex gap-2">
+
+          <div className="flex items-center gap-2">
+            {/* Hidden file input */}
             <input
               ref={fileInputRef}
               type="file"
@@ -253,6 +297,8 @@ export default function HomePage() {
                 e.target.value = '';
               }}
             />
+
+            {/* Attach button */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -261,18 +307,23 @@ export default function HomePage() {
             >
               📎
             </button>
+
             {/* Connect integrations + button */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowConnectMenu(!showConnectMenu)}
-                className="px-3 py-2 rounded-md border border-slate-700 bg-slate-900 text-sm hover:bg-slate-800 font-bold"
+                className={`px-3 py-2 rounded-md border text-sm font-bold ${
+                  isGmailConnected
+                    ? 'border-green-600 bg-green-900/30 text-green-400 hover:bg-green-900/50'
+                    : 'border-slate-700 bg-slate-900 hover:bg-slate-800'
+                }`}
                 title="Connect integrations"
               >
-                +
+                {isGmailConnected ? '✉️ ✓' : '+'}
               </button>
               {showConnectMenu && (
-                <div className="absolute bottom-full mb-2 left-0 bg-slate-800 border border-slate-700 rounded-lg shadow-xl py-1 min-w-[200px] z-50">
+                <div className="absolute bottom-full left-0 mb-1 w-56 rounded-md border border-slate-700 bg-slate-900 shadow-lg z-10">
                   <button
                     type="button"
                     onClick={() => {
@@ -281,15 +332,24 @@ export default function HomePage() {
                     }}
                     className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-700 flex items-center gap-3"
                   >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
-                      <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" fill="currentColor"/>
-                    </svg>
-                    <span>Connect Gmail</span>
-                    {session && <span className="ml-auto text-xs text-green-400">✓</span>}
+                    ✉️ Connect Gmail
+                    {isGmailConnected && (
+                      <span className="ml-auto text-green-400 text-xs font-semibold">Connected</span>
+                    )}
                   </button>
                 </div>
               )}
             </div>
+
+            {/* Gmail connected badge */}
+            {isGmailConnected && (
+              <span className="text-xs text-green-400 flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-400"></span>
+                Gmail
+              </span>
+            )}
+
+            {/* Text input */}
             <input
               className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-sky-500"
               value={input}
@@ -298,14 +358,14 @@ export default function HomePage() {
             />
             <button
               type="submit"
-              className="px-4 py-2 rounded-md bg-sky-600 text-sm font-medium hover:bg-sky-500 disabled:opacity-50"
               disabled={isLoading}
+              className="px-4 py-2 rounded-md bg-sky-600 text-sm font-medium hover:bg-sky-500 disabled:opacity-50"
             >
               Send
             </button>
           </div>
         </form>
       </div>
-    </main>
+    </div>
   );
 }
