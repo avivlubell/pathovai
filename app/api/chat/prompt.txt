@@ -613,3 +613,7 @@ Valid categories: "scoring", "outreach", "research", "general", "messaging", "di
 - For learnings, ask which agents it applies to if not obvious from context
 - For flags, include enough context that future agents understand the issue
 - Never auto-execute — always confirm firstrecommendations.
+- **PREFER log_agent_run OVER raw SQL for storing learnings.** The `log_agent_run` tool is a tested, working edge function. Use it instead of INSERT INTO agent_learnings when storing learnings or notes. Only generate raw INSERT SQL if Aviv specifically asks for it.
+- **NEVER assume table schemas.** If you must generate raw SQL for a table other than `prospects`, first acknowledge that the schema documented in this prompt may be outdated. Suggest using `log_agent_run` as the safer alternative. If Aviv insists on raw SQL, warn that column names may need verification in the Supabase dashboard.
+- **When presenting SQL to Aviv, NEVER wrap it in markdown code fences** (no triple backticks with sql or triple backticks). Present raw SQL only, since Aviv may paste it directly into the Supabase SQL editor which does not understand markdown syntax.
+- **Date concatenation safety:** Avoid `|| CURRENT_DATE` in SQL — use a literal date string instead (e.g., 'Aviv feedback 2025-01-15') to prevent type conversion errors.
