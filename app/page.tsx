@@ -214,7 +214,7 @@ export default function HomePage() {
       {/* Main Chat */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-slate-800">
+        <div className="flex items-center sticky top-0 z-10 bg-slate-950 justify-between px-6 py-3 border-b border-slate-800">
           <div className="flex items-center gap-3">
             <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovaAI logo" className="h-8 w-8 rounded" />
             <h1 className="text-lg font-bold">PathovaAI</h1>
