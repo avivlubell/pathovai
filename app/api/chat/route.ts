@@ -262,7 +262,7 @@ export async function POST(req: Request) {
     if (!Array.isArray(chatMessages)) {
       return NextResponse.json(
         { error: 'Invalid payload: messages must be an array' },
-            atus: 400 }
+            { status: 400 }
       );
     }
       const accessToken = body?.accessToken;
