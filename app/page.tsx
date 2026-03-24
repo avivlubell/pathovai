@@ -13,6 +13,12 @@ export default function HomePage() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+    function handleNewChat() {
+    setMessages([]);
+    setInput('');
+    setIsLoading(false);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim()) return;
@@ -76,9 +82,18 @@ export default function HomePage() {
   return (
     <main className="flex min-h-screen flex-col bg-slate-950 text-slate-50">
       <div className="flex-1 max-w-2xl w-full mx-auto flex flex-col py-6 px-4 gap-4">
-        <h1 className="text-lg font-semibold mb-2">
-          PathovAI – Main Agent Chat
-        </h1>
+               <div className="flex items-center justify-between mb-2">
+          <h1 className="text-lg font-semibold">
+            PathovAI – Main Agent Chat
+          </h1>
+          <button
+            onClick={handleNewChat}
+            className="px-3 py-1.5 rounded-md bg-slate-800 border border-slate-700 text-sm font-medium hover:bg-slate-700 transition-colors"
+          >
+            + New Chat
+          </button>
+        </div>
+
 
         <div className="flex-1 border border-slate-800 rounded-lg p-3 overflow-y-auto bg-slate-900/60">
           {messages.length === 0 && (
