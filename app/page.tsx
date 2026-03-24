@@ -185,7 +185,7 @@ export default function HomePage() {
       <div className="flex-1 max-w-2xl mx-auto flex flex-col py-6 px-4 gap-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-                        <img src="/PATHOVA_LOGO1_edited_edited.png" alt="PathovaAI logo" width={32} height={32} />
+                        <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovaAI logo" width={32} height={32} />
             <h1 className="text-lg font-semibold">
               PathovaAI
             </h1>
