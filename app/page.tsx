@@ -76,6 +76,18 @@ export default function HomePage() {
     localStorage.removeItem('pathovai-history');
   }
 
+  function downloadAsMarkdown(content: string) {
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pathovai-document-${Date.now()}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim()) return;
@@ -204,6 +216,14 @@ export default function HomePage() {
                 {m.role === 'user' ? 'You' : 'PathovaAI'}
               </div>
               <div className="whitespace-pre-wrap">{m.content}</div>
+              {m.role === 'assistant' && (
+                <button
+                  onClick={() => downloadAsMarkdown(m.content)}
+                  className="mt-2 text-xs text-slate-500 hover:text-slate-300 underline"
+                >
+                  Download as .md
+                </button>
+              )}
             </div>
           ))}
 
