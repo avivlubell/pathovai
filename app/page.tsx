@@ -307,7 +307,7 @@ export default function HomePage() {
               ref={fileInputRef}
               type="file"
               multiple
-              className="hidden"
+              className="absolute w-0 h-0 opacity-0 overflow-hidden"
               onChange={(e) => {
                 if (e.target.files) setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
                 e.target.value = '';
