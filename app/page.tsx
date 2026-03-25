@@ -27,6 +27,7 @@ export default function HomePage() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [showConnectMenu, setShowConnectMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+    const connectMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('pathovai-history');
@@ -41,6 +42,21 @@ export default function HomePage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+    // Close connect menu on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (connectMenuRef.current && !connectMenuRef.current.contains(event.target as Node)) {
+        setShowConnectMenu(false);
+      }
+    }
+    if (showConnectMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showConnectMenu]);
 
   // Auto-save current chat to history whenever messages change (after assistant replies)
   const saveCurrentChat = useCallback((msgs: ChatMessage[]) => {
@@ -309,7 +325,7 @@ export default function HomePage() {
             </button>
 
             {/* Connect integrations + button */}
-            <div className="relative">
+            <div ref={connectMenuRef} className="relative">
               <button
                 type="button"
                 onClick={() => setShowConnectMenu(!showConnectMenu)}
