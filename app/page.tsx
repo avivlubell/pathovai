@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useSession, signIn } from 'next-auth/react';
+import { useSession, signIn, signOut } from 'next-auth/react';
 
 type ChatMessage = {
   id: string;
@@ -327,12 +327,12 @@ export default function HomePage() {
                   <button
                     type="button"
                     onClick={() => {
-                      signIn('google');
+                      if (isGmailConnected) { signOut(); } else { signIn('google'); }
                       setShowConnectMenu(false);
                     }}
                     className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-700 flex items-center gap-3"
                   >
-                    ✉️ Connect Gmail
+                    ✉️ {isGmailConnected ? 'Disconnect Gmail' : 'Connect Gmail'}
                     {isGmailConnected && (
                       <span className="ml-auto text-green-400 text-xs font-semibold">Connected</span>
                     )}
