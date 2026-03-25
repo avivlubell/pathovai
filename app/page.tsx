@@ -304,7 +304,7 @@ export default function HomePage() {
           <div className="flex items-center gap-2">
             {/* Hidden file input */}
             <input
-              ref={fileInputRef}
+              id="file-upload" ref={fileInputRef}
               type="file"
               multiple
               style={{ position: 'absolute', left: '-9999px', opacity: 0 }}
@@ -315,14 +315,13 @@ export default function HomePage() {
             />
 
             {/* Attach button */}
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="px-3 py-2 rounded-md border border-slate-700 bg-slate-900 text-sm hover:bg-slate-800"
+            <label
+              htmlFor="file-upload"
+              className="px-3 py-2 rounded-md border border-slate-700 bg-slate-900 text-sm hover:bg-slate-800 cursor-pointer"
               title="Attach files"
             >
               📎
-            </button>
+            </label>
 
             {/* Connect integrations + button */}
             <div ref={connectMenuRef} className="relative">
