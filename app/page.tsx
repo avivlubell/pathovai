@@ -307,7 +307,7 @@ export default function HomePage() {
               id="file-upload" ref={fileInputRef}
               type="file"
               multiple
-              style={{ position: 'absolute', left: '-9999px', opacity: 0 }}
+                            className="hidden"
               onChange={(e) => {
                 if (e.target.files) setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
                 e.target.value = '';
@@ -315,13 +315,14 @@ export default function HomePage() {
             />
 
             {/* Attach button */}
-            <label
-              htmlFor="file-upload"
+                        <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
               className="px-3 py-2 rounded-md border border-slate-700 bg-slate-900 text-sm hover:bg-slate-800 cursor-pointer"
               title="Attach files"
             >
               📎
-            </label>
+                        </button>
 
             {/* Connect integrations + button */}
             <div ref={connectMenuRef} className="relative">
