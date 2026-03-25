@@ -307,7 +307,7 @@ export default function HomePage() {
               id="file-upload" ref={fileInputRef}
               type="file"
               multiple
-                            className="hidden"
+                            style={{ position: 'absolute', opacity: 0, width: 0, height: 0, overflow: 'hidden' }}
               onChange={(e) => {
                 if (e.target.files) setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
                 e.target.value = '';
