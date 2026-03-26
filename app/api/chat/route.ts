@@ -14,7 +14,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 
 const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_icp_scorer: 'icp-scorer',
-  invoke_prospect_researcher: 'research-prospect',
+    invoke_prospect_researcher: 'prospect-researcher',
   invoke_outreach_drafter: 'outreach-drafter',
   invoke_risk_assessor: 'risk-assessor',
   query_deals: 'query-deals',
