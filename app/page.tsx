@@ -301,7 +301,7 @@ export default function HomePage() {
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-end gap-2">
             {/* Hidden file input */}
             <input
               id="file-upload" ref={fileInputRef}
@@ -366,12 +366,24 @@ export default function HomePage() {
             )}
 
             {/* Text input */}
-            <input
-              className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-sky-500"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask your PathovaAI agent anything about a prospect..."
-            />
+<textarea
+  className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-sky-500 resize-none overflow-auto"
+  style={{ minHeight: '4lh', maxHeight: '200px' }}
+  rows={4}
+  value={input}
+  onChange={(e) => {
+    setInput(e.target.value);
+    e.target.style.height = 'auto';
+    e.target.style.height = e.target.scrollHeight + 'px';
+  }}
+  onKeyDown={(e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  }}
+  placeholder="Let's make some money. What's on tap..."
+/>
             <button
               type="submit"
               disabled={isLoading}
