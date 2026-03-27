@@ -309,8 +309,8 @@ export default function HomePage() {
               multiple
                             style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', overflow: 'hidden' }}
               onChange={(e) => {
-                const selectedFiles = e.target.files; if (selectedFiles && selectedFiles.length > 0) { setFiles((prev) => [...prev, ...Array.from(selectedFiles)]); };
-                e.target.value = '';
+                const newFiles = Array.from(e.target.files || []); if (newFiles.length > 0) { setFiles((prev) => [...prev, ...newFiles]); } setTimeout(() => { e.target.value = ''; }, 0);
+                
               }}
             />
 
