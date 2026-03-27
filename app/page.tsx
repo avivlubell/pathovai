@@ -307,9 +307,9 @@ export default function HomePage() {
               id="file-upload" ref={fileInputRef}
               type="file"
               multiple
-                            style={{ position: 'absolute', opacity: 0, width: 0, height: 0, overflow: 'hidden' }}
+                            style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', overflow: 'hidden' }}
               onChange={(e) => {
-                if (e.target.files) setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+                const selectedFiles = e.target.files; if (selectedFiles && selectedFiles.length > 0) { setFiles((prev) => [...prev, ...Array.from(selectedFiles)]); };
                 e.target.value = '';
               }}
             />
