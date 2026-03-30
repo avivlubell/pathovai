@@ -186,8 +186,13 @@ export default function HomePage() {
           const formData = new FormData();
           formData.append('file', file);
           const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
-          const { documentId, fileName } = await uploadRes.json();
-          fileContents.push(`[doc:processing:${fileName}]`);
+          const { documentId, fileName, text } = await uploadRes.json();
+          fileContents.push(`[doc:processing:${fileName}]
+
+---
+📎 ${fileName}:
+${text || '(processing...)'}
+---`);
         } catch {
           fileContents.push(`\n\n---\n📎 File: ${file.name} (could not read file)\n---`);
         }
