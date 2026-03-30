@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import pdf from 'pdf-parse';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,7 +36,9 @@ export async function POST(req: NextRequest) {
     let text = '';
     if (file.type === 'application/pdf' || fileName.endsWith('.pdf')) {
       try {
-        const pdfData = await pdf(buffer);
+        // Dynamic import to avoid Next.js serverless bundling issues
+        const pdfParse = (await import('pdf-parse')).default;
+        const pdfData = await pdfParse(buffer);
         text = pdfData.text;
       } catch (pdfErr) {
         console.error('PDF parse error:', pdfErr);
