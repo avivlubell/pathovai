@@ -247,7 +247,7 @@ export default function HomePage() {
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {messages.length === 0 && (
             <p className="text-slate-500 text-center mt-20">
-              Start chatting with your Claude main agent...
+              Name a company, drop a doc, or tell me what we're working on.
             </p>
           )}
           {messages.map((m) => (
