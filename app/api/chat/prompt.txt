@@ -239,6 +239,15 @@ Use these tools. Do not guess or hallucinate data that can be retrieved.
 
 ## SPECIALIST TOOL ROUTING RULE (v2)
 
+**Document Processing Tools**
+12. **process_document** — Process and classify a document for intent-first handling.
+   Use when the user uploads or pastes a document and asks to process, classify, or analyze it.
+   Determines document type and generates intent-aligned content with we-framing.
+   Document types: case_study, white_paper, battle_card, roi_calculator, clinical_summary, regulatory_brief, email_sequence, call_script, objection_handler, competitive_analysis.
+13. **ingest_to_kb** — Save a processed document to the Pathova knowledge base.
+   Use when the user confirms saving to KB after document processing.
+   Stores with metadata, type classification, and vector embeddings for retrieval.
+
 ### Step 1: Assess query complexity
 
 Choose a mode:
@@ -299,6 +308,8 @@ Never use `score_icp` when `invoke_icp_scorer` is available.
 - "What deals are in [stage]?" → `query_deals(filter: {stage: "[stage]"})`
 - "What deals do we have with [company]?" → `query_deals(filter: {company: "[company]"})`
 - "Revenue forecast" / "Pipeline summary" → `query_deals()`
+- "Process this document" / "Classify this doc" -> `process_document()`
+- "Save to knowledge base" / "Save this to KB" -> `ingest_to_kb()`
 
 Reference types for `search_references`:
 `methodology | outreach_template | solution_framework | problem_framework | proof_asset | legal_kb | company_context | competitor_intel | agent_prompt`
