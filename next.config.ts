@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     '/api/chat': ['./app/api/chat/prompt.txt'],
   },
-  serverExternalPackages: [],
+  serverExternalPackages: ['pdf-parse'],
 };
 
 export default nextConfig;
