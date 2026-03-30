@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import pdf from 'pdf-parse';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,8 +19,9 @@ export async function POST(req: NextRequest) {
     const documentId = crypto.randomUUID();
     const storagePath = `uploads/${documentId}/${fileName}`;
 
-    // Upload file to Supabase Storage
     const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from('documents')
       .upload(storagePath, buffer, {
@@ -32,8 +34,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
     }
 
-    // Read file text for processing
-    const text = await file.text();
+    // Extract text based on file type
+    let text = '';
+    if (file.type === 'application/pdf' || fileName.endsWith('.pdf')) {
+      try {
+        const pdfData = await pdf(buffer);
+        text = pdfData.text;
+      } catch (pdfErr) {
+        console.error('PDF parse error:', pdfErr);
+        text = '[PDF could not be parsed]';
+      }
+    } else {
+      text = await file.text();
+    }
 
     // Insert document record
     const { error: dbError } = await supabase
@@ -51,7 +64,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'DB insert failed' }, { status: 500 });
     }
 
-    return NextResponse.json({ documentId, fileName });
+    return NextResponse.json({ documentId, fileName, text: text.slice(0, 50000) });
   } catch (err) {
     console.error('Upload route error:', err);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
