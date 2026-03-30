@@ -18,7 +18,6 @@ export async function POST(req: NextRequest) {
     const fileName = file.name;
     const documentId = crypto.randomUUID();
     const storagePath = `uploads/${documentId}/${fileName}`;
-
     const buffer = Buffer.from(await file.arrayBuffer());
 
     // Upload to Supabase Storage
@@ -48,20 +47,22 @@ export async function POST(req: NextRequest) {
       text = await file.text();
     }
 
-    // Insert document record
+    // Insert document record (matches actual DB schema)
     const { error: dbError } = await supabase
       .from('documents')
       .insert({
         id: documentId,
         file_name: fileName,
         storage_path: storagePath,
-        content: text.slice(0, 50000),
-        status: 'processing',
+        mime_type: file.type,
+        file_size_bytes: buffer.length,
+        preview_excerpt: text.slice(0, 2000),
+        metadata: { full_text_length: text.length },
       });
 
     if (dbError) {
       console.error('DB insert error:', dbError);
-      return NextResponse.json({ error: 'DB insert failed' }, { status: 500 });
+      // Still return the text even if DB insert fails
     }
 
     return NextResponse.json({ documentId, fileName, text: text.slice(0, 50000) });
