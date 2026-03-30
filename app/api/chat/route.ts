@@ -26,6 +26,8 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   get_prospect_detail: 'get-prospect-detail',
   score_icp: 'icp-scorer',
   log_agent_run: 'log-agent-run',
+    process_document: 'process-document',
+  ingest_to_kb: 'ingest-to-kb',
 };
 
 const tools: Anthropic.Tool[] = [
@@ -158,7 +160,37 @@ const tools: Anthropic.Tool[] = [
       },
     },
   },
-    gmailTool,
+      {
+    name: 'process_document',
+    description: 'Process and classify a document for intent-first handling. Determines document type (case_study, white_paper, battle_card, roi_calculator, clinical_summary, regulatory_brief, email_sequence, call_script, objection_handler, competitive_analysis) and generates intent-aligned content with we-framing.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        document_text: { type: 'string', description: 'Raw document text to process' },
+        document_type: { type: 'string', description: 'Optional: override auto-classification with specific doc type' },
+        prospect_id: { type: 'string', description: 'Optional: prospect UUID for context' },
+        intent: { type: 'string', description: 'User intent or goal for the document' },
+      },
+      required: ['document_text'],
+    },
+  },
+  {
+    name: 'ingest_to_kb',
+    description: 'Save a processed document to the Pathova knowledge base. Stores document with metadata, type classification, and vector embeddings for retrieval.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: { type: 'string', description: 'Document title' },
+        content: { type: 'string', description: 'Processed document content' },
+        document_type: { type: 'string', description: 'Classification: case_study, white_paper, battle_card, etc.' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags for categorization' },
+        prospect_id: { type: 'string', description: 'Optional: linked prospect UUID' },
+        source_url: { type: 'string', description: 'Optional: original source URL' },
+      },
+      required: ['title', 'content', 'document_type'],
+    },
+  },
+gmailTool,
 ];
 
 async function callEdgeFunction(
