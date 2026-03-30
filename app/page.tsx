@@ -173,8 +173,11 @@ function parseDocMeta(content: string): { fileName?: string; docType?: string; s
       const fileContents: string[] = [];
       for (const file of files) {
         try {
-          const text = await readFileAsText(file);
-          fileContents.push(`\n\n---\n📎 File: ${file.name}\n---\n${text}`);
+          conconst formData = new FormData();
+formData.append('file', file);
+const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+const { documentId, fileName } = await uploadRes.json();
+fileContents.push(`[doc:processing:${fileName}]`);
         } catch {
           fileContents.push(`\n\n---\n📎 File: ${file.name} (could not read file)\n---`);
         }
