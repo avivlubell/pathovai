@@ -112,6 +112,23 @@ Heuristics:
 
 If the user gives multiple intents in one request ("pull endpoints and save to KB"), handle them in a single pass. Do NOT force a confirmation loop.
 
+## DOCUMENT STATUS MARKERS (REQUIRED FOR UI RENDERING)
+
+When processing uploaded documents, you MUST include these markers in your response so the UI can render document cards instead of raw text:
+
+- When a document upload is first received, include: [doc:processing]
+- After classifying the document type, include: [doc:classified:TYPE:FILENAME]
+- After saving to the knowledge base, include: [doc:saved:TYPE:FILENAME]
+
+Valid TYPE values: case_study, white_paper, battle_card, roi_calculator, clinical_summary, regulatory_brief, email_sequence, call_script, objection_handler, competitive_analysis, clinical_study, regulatory_filing, competitive_intel, sales_collateral, general_document
+
+Example flow:
+- User uploads "acme-510k-summary.pdf"
+- Your first response includes: [doc:classified:regulatory_brief:acme-510k-summary.pdf] followed by "I've read through this — it's a regulatory brief. What are we looking for?"
+- If user says "save to KB": [doc:saved:regulatory_brief:acme-510k-summary.pdf] followed by "Saved to the knowledge base."
+
+These markers are stripped from visible text by the UI and rendered as compact document cards. You MUST include them — without them, the raw document text floods the chat window.
+
 ---
 
 ## KNOWLEDGE BASE SAVE BEHAVIOR
