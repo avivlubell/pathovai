@@ -173,7 +173,7 @@ function parseDocMeta(content: string): { fileName?: string; docType?: string; s
       const fileContents: string[] = [];
       for (const file of files) {
         try {
-          conconst formData = new FormData();
+          const formData = new FormData();
 formData.append('file', file);
 const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
 const { documentId, fileName } = await uploadRes.json();
@@ -392,7 +392,7 @@ fileContents.push(`[doc:processing:${fileName}]`);
                   <button
                     type="button"
                     onClick={() => {
-                      if (isGmailConnected) { signOut(); } else { signIn('google'); }
+                      if (isGmailConnected) { signOut(); } else { window.open('/api/auth/signin/google', 'gmail-connect', 'width=500,height=600,popup=true'); }
                       setShowConnectMenu(false);
                     }}
                     className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-700 flex items-center gap-3"
