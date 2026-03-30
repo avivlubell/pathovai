@@ -12,7 +12,7 @@ export function openReconnectPopup(
   const top = window.screenY + (window.outerHeight - height) / 2;
 
   const popup = window.open(
-    '/api/auth/signin/google',
+        '/api/auth/signin/google?callbackUrl=/auth/popup-close',
     'gmail-reconnect',
     `width=${width},height=${height},left=${left},top=${top},popup=true`
   );
