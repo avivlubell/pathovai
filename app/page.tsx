@@ -19,6 +19,52 @@ type ChatSession = {
 export default function HomePage() {
   const { data: session } = useSession();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  type DocStatus = 'processing' | 'classified' | 'saved';
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  case_study: 'Case Study',
+  white_paper: 'White Paper',
+  battle_card: 'Battle Card',
+  roi_calculator: 'ROI Calculator',
+  clinical_summary: 'Clinical Summary',
+  regulatory_brief: 'Regulatory Brief',
+  email_sequence: 'Email Sequence',
+  call_script: 'Call Script',
+  objection_handler: 'Objection Handler',
+  competitive_analysis: 'Competitive Analysis',
+  clinical_study: 'Clinical Study',
+  regulatory_filing: 'Regulatory Filing',
+  competitive_intel: 'Competitive Intel',
+  sales_collateral: 'Sales Collateral',
+  general_document: 'General Document',
+};
+
+function DocumentCard({ fileName, docType, status }: { fileName?: string; docType?: string; status: DocStatus }) {
+  const statusConfig = {
+    processing: { color: 'border-yellow-600 bg-yellow-900/20', icon: '⏳', label: 'Processing...' },
+    classified: { color: 'border-sky-600 bg-sky-900/20', icon: '📄', label: DOC_TYPE_LABELS[docType || ''] || docType || 'Document' },
+    saved: { color: 'border-green-600 bg-green-900/20', icon: '✅', label: 'Saved to KB' },
+  };
+  const cfg = statusConfig[status];
+  return (
+    <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm mb-2 ${cfg.color}`}>
+      <span>{cfg.icon}</span>
+      {fileName && <span className="text-slate-300 font-medium">{fileName}</span>}
+      <span className="text-slate-400">—</span>
+      <span className="text-slate-200">{cfg.label}</span>
+    </div>
+  );
+}
+
+function parseDocMeta(content: string): { fileName?: string; docType?: string; status: DocStatus } | null {
+  if (content.includes('[doc:processing]')) return { status: 'processing' };
+  const classifiedMatch = content.match(/\[doc:classified:([\w]+)(?::(.+?))?\]/);
+  if (classifiedMatch) return { docType: classifiedMatch[1], fileName: classifiedMatch[2], status: 'classified' };
+  const savedMatch = content.match(/\[doc:saved:([\w]+)(?::(.+?))?\]/);
+  if (savedMatch) return { docType: savedMatch[1], fileName: savedMatch[2], status: 'saved' };
+  return null;
+}
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -258,7 +304,7 @@ export default function HomePage() {
               <p className="text-xs font-semibold mb-1 text-slate-400">
                 {m.role === 'user' ? 'You' : 'PathovaAI'}
               </p>
-              <p className="whitespace-pre-wrap">{m.content}</p>
+              {(() => { const docMeta = parseDocMeta(m.content); return docMeta ? <DocumentCard {...docMeta} /> : null; })()}               <p className="whitespace-pre-wrap">{m.content.replace(/\[doc:(processing|classified|saved)(:[\w]+)?(:.+?)?\]/g, '').trim()}</p>
               {m.role === 'assistant' && (
                 <button
                   onClick={() => downloadAsMarkdown(m.content)}
