@@ -18,7 +18,7 @@ type ChatSession = {
 };
 
 export default function HomePage() {
-  const { data: session } = useSession();
+    const { data: session, update: updateSession } = useSession();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [gmailStatus, setGmailStatus] = useState<'connected' | 'expired' | 'disconnected'>('disconnected');
   const [reconnectError, setReconnectError] = useState('');
@@ -414,7 +414,7 @@ ${text || '(processing...)'}
                       } else {
                         setReconnectError('');
                         openReconnectPopup(
-                          () => { setGmailStatus('connected'); window.location.reload(); },
+                          () => { setGmailStatus('connected'); updateSession(); },
                           (err) => { setReconnectError(err); }
                         );
                       }
