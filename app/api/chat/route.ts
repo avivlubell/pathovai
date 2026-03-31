@@ -2,6 +2,7 @@ export const maxDuration = 300;
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { SYSTEM_PROMPT } from './system-prompt';
+import { createClient } from '@supabase/supabase-js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -10,6 +11,28 @@ const anthropic = new Anthropic({
 const SUPABASE_FUNCTIONS_BASE = 'https://urmgbmfvjuozvhigflqt.supabase.co/functions/v1';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  SUPABASE_SERVICE_ROLE_KEY
+);
+
+async function fetchLearnings(): Promise<string> {
+  try {
+    const { data } = await supabase
+      .from('agent_learnings')
+      .select('feedback, agent_source, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (!data || data.length === 0) return '';
+    const lines = data.map((l: any) =>
+      `[${l.agent_source || '*'}] ${l.feedback}`
+    );
+    return '\n\n## Active Learnings & Corrections\n' + lines.join('\n');
+  } catch {
+    return '';
+  }
+}
 
 const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_icp_scorer: 'icp-scorer',
@@ -315,7 +338,7 @@ export async function POST(req: Request) {
       const response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4096,
-        system: SYSTEM_PROMPT,
+        system: SYSTEM_PROMPT + await fetchLearnings(),
         tools,
         messages,
       });
