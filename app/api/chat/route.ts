@@ -27,6 +27,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   log_agent_run: 'log-agent-run',
   process_document: 'process-document',
   ingest_to_kb: 'ingest-to-kb',
+    store_learning: 'store-learning',
 };
 
 const tools: Anthropic.Tool[] = [
@@ -186,6 +187,18 @@ company_name: { type: 'string', description: 'Company name to look up' },
         source_url: { type: 'string', description: 'Optional: original source URL' },
       },
       required: ['title', 'content', 'document_type'],
+    },
+  },
+    {
+    name: 'store_learning',
+    description: 'Store a learning, correction, or preference for the system to remember. Use this when the user provides feedback, corrections, or teaches you something new about how they want things done. This makes the system iteratively smarter.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        feedback: { type: 'string', description: 'Natural language description of the learning, correction, or preference' },
+        agent_source: { type: 'string', description: 'Which agent this applies to: icp-scorer, outreach-drafter, prospect-researcher, risk-assessor, or * for all' },
+      },
+      required: ['feedback'],
     },
   },
 ];
