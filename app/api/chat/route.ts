@@ -2,7 +2,6 @@ export const maxDuration = 300;
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { SYSTEM_PROMPT } from './system-prompt';
-import { gmailTool, executeGmailTool } from './gmail-tools';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -14,7 +13,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 
 const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_icp_scorer: 'icp-scorer',
-    invoke_prospect_researcher: 'prospect-researcher',
+  invoke_prospect_researcher: 'prospect-researcher',
   invoke_outreach_drafter: 'outreach-drafter',
   invoke_risk_assessor: 'risk-assessor',
   query_deals: 'query-deals',
@@ -26,7 +25,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   get_prospect_detail: 'get-prospect-detail',
   score_icp: 'icp-scorer',
   log_agent_run: 'log-agent-run',
-    process_document: 'process-document',
+  process_document: 'process-document',
   ingest_to_kb: 'ingest-to-kb',
 };
 
@@ -160,7 +159,7 @@ const tools: Anthropic.Tool[] = [
       },
     },
   },
-      {
+  {
     name: 'process_document',
     description: 'Process and classify a document for intent-first handling. Determines document type (case_study, white_paper, battle_card, roi_calculator, clinical_summary, regulatory_brief, email_sequence, call_script, objection_handler, competitive_analysis) and generates intent-aligned content with we-framing.',
     input_schema: {
@@ -190,7 +189,6 @@ const tools: Anthropic.Tool[] = [
       required: ['title', 'content', 'document_type'],
     },
   },
-gmailTool,
 ];
 
 async function callEdgeFunction(
@@ -252,7 +250,6 @@ function extractReply(finalText: string): string {
     // Not JSON — return plain text directly (conversational turn)
     return finalText;
   }
-
   // If it's a JSON envelope, extract the readable content
   const content = parsed?.content;
   if (content) {
@@ -260,7 +257,6 @@ function extractReply(finalText: string): string {
     if (content.beta_disclaimer) parts.push(content.beta_disclaimer);
     if (content.mode_declaration) parts.push(content.mode_declaration);
     if (content.main_content) parts.push(content.main_content);
-
     const unc = content.uncertainty_separation;
     if (unc) {
       if (Array.isArray(unc.what_we_know) && unc.what_we_know.length > 0) {
@@ -276,12 +272,9 @@ function extractReply(finalText: string): string {
         unc.what_we_dont_know.forEach((item: string) => parts.push(`- ${item}`));
       }
     }
-
     if (content.database_actions) parts.push('---\n' + content.database_actions);
-
     if (parts.length > 0) return parts.join('\n\n');
   }
-
   // Fallback: if parsed but no content field, stringify it
   return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
 }
@@ -290,14 +283,12 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const chatMessages = body?.messages;
-
     if (!Array.isArray(chatMessages)) {
       return NextResponse.json(
         { error: 'Invalid payload: messages must be an array' },
-            { status: 400 }
+        { status: 400 }
       );
     }
-      const accessToken = body?.accessToken;
 
     const messages: Anthropic.MessageParam[] = chatMessages.map((m: any) => ({
       role: m.role as 'user' | 'assistant',
@@ -309,7 +300,6 @@ export async function POST(req: Request) {
 
     while (round < MAX_TOOL_ROUNDS) {
       round++;
-
       const response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4096,
@@ -320,17 +310,16 @@ export async function POST(req: Request) {
 
       const toolUseBlocks = response.content.filter(
         (b): b is Anthropic.ContentBlock & { type: 'tool_use' } =>
-          b.type === 'tool_use'
+        b.type === 'tool_use'
       );
 
       // Only process tool calls if there ARE tool_use blocks AND stop_reason is tool_use
       if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
         const textBlocks = response.content.filter(
           (b): b is Anthropic.ContentBlock & { type: 'text' } =>
-            b.type === 'text'
+          b.type === 'text'
         );
         const finalText = textBlocks.map((b: any) => b.text).join('\n');
-
         // Extract readable reply from JSON envelope or plain text
         const reply = extractReply(finalText);
         return NextResponse.json({ reply });
@@ -343,8 +332,7 @@ export async function POST(req: Request) {
 
       const toolResults: any[] = [];
       for (const toolBlock of toolUseBlocks) {
-                const gmailResult = await executeGmailTool(toolBlock.name, (toolBlock as any).input, accessToken);
-          const result = gmailResult !== null ? gmailResult : await executeTool(
+        const result = await executeTool(
           toolBlock.name,
           (toolBlock as any).input as Record<string, unknown>
         );
