@@ -173,7 +173,7 @@ serve(async (req) => {
     // Parse body into sections
     const sections = parseSections(bodyText);
 
-    // Build research_raw from all tiered research
+    // Build research_output from all tiered research
     const researchParts: string[] = [];
     if (sections.tier1) researchParts.push("TIER 1 FILTER:\n" + sections.tier1.trim());
     if (sections.tier2) researchParts.push("TIER 2 ANGLE:\n" + sections.tier2.trim());
@@ -213,7 +213,7 @@ serve(async (req) => {
       owner: getProp(props, "Owner", "select"),
       competitors: getProp(props, "Competitors", "multi_select"),
       // Content from page body
-      research_raw: researchRaw,
+      research_output: researchRaw,
       research_status: researchParts.length > 0 ? "complete" : "pending",
       risk_assessment: sections.risk ? sections.risk.trim() : null,
       outreach_draft: sections.outreach ? sections.outreach.trim() : null,
@@ -225,8 +225,8 @@ serve(async (req) => {
 
     // Also extract Research Summary from properties if available
     const researchSummary = getProp(props, "Research Summary", "rich_text");
-    if (researchSummary && !record.research_raw) {
-      record.research_raw = researchSummary;
+    if (researchSummary && !record.research_output) {
+      record.research_output = researchSummary;
     }
 
     // Extract key contacts from properties
