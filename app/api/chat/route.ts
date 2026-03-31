@@ -43,22 +43,21 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'search_prospects',
-    description: 'Query the Prospects database for prospect data, ICP scores, engagement status, prior research.',
+          description: 'Search accounts (companies) and contacts (people). Use this to find companies by name, industry, or keyword, AND to find people by name, title, email, or region. Returns both account and contact results.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        query: { type: 'string', description: 'Search query -- company name, industry, or keyword' },
-      },
+      },            query: { type: 'string', description: 'Search query -- company name, person name, title, industry, region, or keyword' },
     },
   },
   {
     name: 'get_prospect_detail',
-    description: 'Get full details for a specific prospect by name or ID.',
-    input_schema: {
+          description: 'Get full details for a specific account (company) by name or ID.',
+input_schema: {
       type: 'object' as const,
       properties: {
-        prospect_id: { type: 'string', description: 'UUID from prospects table' },
-        company_name: { type: 'string', description: 'Company name to look up' },
+                    account_id: { type: 'string', description: 'UUID from accounts table' },
+company_name: { type: 'string', description: 'Company name to look up' },
       },
     },
   },
@@ -68,7 +67,7 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        prospect_id: { type: 'string', description: 'UUID from prospects table' },
+        account_id: { type: 'string', description: 'UUID from accounts table' },
         company_name: { type: 'string', description: 'Company name' },
       },
     },
@@ -97,7 +96,7 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        prospect_id: { type: 'string' },
+        account_id: { type: 'string' },
         action_type: { type: 'string' },
         decision_mode: { type: 'string' },
         context_score: { type: 'number' },
@@ -111,7 +110,7 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        prospect_id: { type: 'string', description: 'UUID from prospects table' },
+        account_id: { type: 'string', description: 'UUID from accounts table' },
         company_name: { type: 'string', description: 'Company name to research' },
       },
     },
@@ -122,7 +121,7 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        prospect_id: { type: 'string', description: 'UUID from prospects table' },
+        account_id: { type: 'string', description: 'UUID from accounts table' },
         company_name: { type: 'string', description: 'Company name to score' },
       },
     },
@@ -133,9 +132,9 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        prospect_id: { type: 'string', description: 'Required -- UUID from prospects table' },
+        account_id: { type: 'string', description: 'Required -- UUID from accounts table' },
       },
-      required: ['prospect_id'],
+      required: ['account_id'],
     },
   },
   {
@@ -144,7 +143,7 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        prospect_id: { type: 'string', description: 'UUID from prospects table' },
+        account_id: { type: 'string', description: 'UUID from accounts table' },
         company_name: { type: 'string', description: 'Company name' },
       },
     },
@@ -155,7 +154,7 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        prospect_id: { type: 'string', description: 'Prospect UUID to sync' },
+        account_id: { type: 'string', description: 'Prospect UUID to sync' },
       },
     },
   },
@@ -183,7 +182,7 @@ const tools: Anthropic.Tool[] = [
         content: { type: 'string', description: 'Processed document content' },
         document_type: { type: 'string', description: 'Classification: case_study, white_paper, battle_card, etc.' },
         tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags for categorization' },
-        prospect_id: { type: 'string', description: 'Optional: linked prospect UUID' },
+        account_id: { type: 'string', description: 'Optional: linked prospect UUID' },
         source_url: { type: 'string', description: 'Optional: original source URL' },
       },
       required: ['title', 'content', 'document_type'],
