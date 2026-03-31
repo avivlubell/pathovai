@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import { openReconnectPopup } from '@/lib/openReconnectPopup';
 
 type ChatMessage = {
   id: string;
@@ -18,77 +17,13 @@ type ChatSession = {
 };
 
 export default function HomePage() {
-    const { data: session, update: updateSession } = useSession();
+  const { data: session } = useSession();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [gmailStatus, setGmailStatus] = useState<'connected' | 'expired' | 'disconnected'>('disconnected');
-  const [reconnectError, setReconnectError] = useState('');
-
-  type DocStatus = 'processing' | 'classified' | 'saved';
-
-  const DOC_TYPE_LABELS: Record<string, string> = {
-    case_study: 'Case Study',
-    white_paper: 'White Paper',
-    battle_card: 'Battle Card',
-    roi_calculator: 'ROI Calculator',
-    clinical_summary: 'Clinical Summary',
-    regulatory_brief: 'Regulatory Brief',
-    email_sequence: 'Email Sequence',
-    call_script: 'Call Script',
-    objection_handler: 'Objection Handler',
-    competitive_analysis: 'Competitive Analysis',
-    clinical_study: 'Clinical Study',
-    regulatory_filing: 'Regulatory Filing',
-    competitive_intel: 'Competitive Intel',
-    sales_collateral: 'Sales Collateral',
-    general_document: 'General Document',
-  };
-
-  function DocumentCard({ fileName, docType, status }: { fileName?: string; docType?: string; status: DocStatus }) {
-    const statusConfig = {
-      processing: { color: 'border-yellow-600 bg-yellow-900/20', icon: '⏳', label: 'Processing...' },
-      classified: { color: 'border-sky-600 bg-sky-900/20', icon: '📄', label: DOC_TYPE_LABELS[docType || ''] || docType || 'Document' },
-      saved: { color: 'border-green-600 bg-green-900/20', icon: '✅', label: 'Saved to KB' },
-    };
-    const cfg = statusConfig[status];
-    return (
-      <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm mb-2 ${cfg.color}`}>
-        <span>{cfg.icon}</span>
-        {fileName && <span className="text-slate-300 font-medium">{fileName}</span>}
-        <span className="text-slate-400">—</span>
-        <span className="text-slate-200">{cfg.label}</span>
-      </div>
-    );
-  }
-
-  function parseDocMeta(content: string): { fileName?: string; docType?: string; status: DocStatus } | null {
-    if (content.includes('[doc:processing]')) return { status: 'processing' };
-    const classifiedMatch = content.match(/\[doc:classified:([\w]+)(?::(.+?))?\]/);
-    if (classifiedMatch) return { docType: classifiedMatch[1], fileName: classifiedMatch[2], status: 'classified' };
-    const savedMatch = content.match(/\[doc:saved:([\w]+)(?::(.+?))?\]/);
-    if (savedMatch) return { docType: savedMatch[1], fileName: savedMatch[2], status: 'saved' };
-    return null;
-  }
-
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [files, setFiles] = useState<File[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [showConnectMenu, setShowConnectMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const connectMenuRef = useRef<HTMLDivElement>(null);
-
-  // Update Gmail status when session changes
-  useEffect(() => {
-    if ((session as any)?.accessToken) {
-      setGmailStatus('connected');
-    } else if (session) {
-      setGmailStatus('expired');
-    } else {
-      setGmailStatus('disconnected');
-    }
-  }, [session]);
 
   useEffect(() => {
     const saved = localStorage.getItem('pathovai-history');
@@ -102,20 +37,6 @@ export default function HomePage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (connectMenuRef.current && !connectMenuRef.current.contains(event.target as Node)) {
-        setShowConnectMenu(false);
-      }
-    }
-    if (showConnectMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showConnectMenu]);
 
   const saveCurrentChat = useCallback((msgs: ChatMessage[]) => {
     if (msgs.length < 2) return;
@@ -136,7 +57,6 @@ export default function HomePage() {
   function handleNewChat() {
     setMessages([]);
     setInput('');
-    setFiles([]);
     setIsLoading(false);
     setActiveChatId(null);
   }
@@ -144,7 +64,6 @@ export default function HomePage() {
   function loadChat(chatSession: ChatSession) {
     setMessages(chatSession.messages);
     setActiveChatId(chatSession.id);
-    setFiles([]);
   }
 
   function clearHistory() {
@@ -164,47 +83,14 @@ export default function HomePage() {
     URL.revokeObjectURL(url);
   }
 
-  async function readFileAsText(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsText(file);
-    });
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!input.trim() && files.length === 0) return;
-
-    let messageContent = input.trim();
-
-    if (files.length > 0) {
-      const fileContents: string[] = [];
-      for (const file of files) {
-        try {
-          const formData = new FormData();
-          formData.append('file', file);
-          const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
-          const { documentId, fileName, text } = await uploadRes.json();
-          fileContents.push(`[doc:processing:${fileName}]
-
----
-📎 ${fileName}:
-${text || '(processing...)'}
----`);
-        } catch {
-          fileContents.push(`\n\n---\n📎 File: ${file.name} (could not read file)\n---`);
-        }
-      }
-      messageContent = messageContent + fileContents.join('');
-      setFiles([]);
-    }
+    if (!input.trim()) return;
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: messageContent,
+      content: input.trim(),
     };
 
     const nextMessages = [...messages, userMessage];
@@ -221,7 +107,6 @@ ${text || '(processing...)'}
             role: m.role,
             content: m.content,
           })),
-          accessToken: (session as any)?.accessToken,
         }),
       });
 
@@ -231,7 +116,7 @@ ${text || '(processing...)'}
         const errorMessage: ChatMessage = {
           id: crypto.randomUUID(),
           role: 'assistant',
-          content: `⚠️ Error: ${errorData?.error || errorData?.details || 'Server error. Check Vercel logs.'}`,
+          content: `\u26a0\ufe0f Error: ${errorData?.error || errorData?.details || 'Server error. Check Vercel logs.'}`,
         };
         const withError = [...nextMessages, errorMessage];
         setMessages(withError);
@@ -241,13 +126,11 @@ ${text || '(processing...)'}
 
       const data = await res.json();
       const replyText = data.reply ?? '';
-
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: replyText,
       };
-
       const updatedMessages = [...nextMessages, assistantMessage];
       setMessages(updatedMessages);
       saveCurrentChat(updatedMessages);
@@ -257,8 +140,6 @@ ${text || '(processing...)'}
       setIsLoading(false);
     }
   }
-
-  const isGmailConnected = !!(session as any)?.accessToken;
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100">
@@ -310,7 +191,7 @@ ${text || '(processing...)'}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {messages.length === 0 && (
             <p className="text-slate-500 text-center mt-20">
-              Name a company, drop a doc, or tell me what we're working on.
+              Name a company or tell me what we're working on.
             </p>
           )}
           {messages.map((m) => (
@@ -321,8 +202,7 @@ ${text || '(processing...)'}
               <p className="text-xs font-semibold mb-1 text-slate-400">
                 {m.role === 'user' ? 'You' : 'PathovaAI'}
               </p>
-              {(() => { const docMeta = parseDocMeta(m.content); return docMeta ? <DocumentCard {...docMeta} /> : null; })()}
-              <p className="whitespace-pre-wrap">{m.content.replace(/\[doc:(processing|classified|saved)(:[\w]+)?(:.+?)?\]/g, '').trim()}</p>
+              <p className="whitespace-pre-wrap">{m.content}</p>
               {m.role === 'assistant' && (
                 <button
                   onClick={() => downloadAsMarkdown(m.content)}
@@ -343,101 +223,7 @@ ${text || '(processing...)'}
 
         {/* Input Area */}
         <form onSubmit={handleSubmit} className="px-6 py-3 border-t border-slate-800">
-          {files.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-2">
-              {files.map((file, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-800 text-xs text-slate-300"
-                >
-                  📎 {file.name}
-                  &nbsp;
-                  <button
-                    type="button"
-                    onClick={() => setFiles(files.filter((_, j) => j !== i))}
-                    className="text-slate-500 hover:text-slate-200"
-                  >
-                    ✕
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          {reconnectError && (
-            <div className="text-xs text-red-400 mb-2">{reconnectError}</div>
-          )}
-
           <div className="flex items-end gap-2">
-            <input
-              id="file-upload" ref={fileInputRef}
-              type="file"
-              multiple
-              style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', overflow: 'hidden' }}
-              onChange={(e) => {
-                const newFiles = Array.from(e.target.files || []);
-                if (newFiles.length > 0) { setFiles((prev) => [...prev, ...newFiles]); }
-                setTimeout(() => { e.target.value = ''; }, 0);
-              }}
-            />
-
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="px-3 py-2 rounded-md border border-slate-700 bg-slate-900 text-sm hover:bg-slate-800 cursor-pointer"
-              title="Attach files"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-            </button>
-
-            {/* Connect integrations */}
-            <div ref={connectMenuRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setShowConnectMenu(!showConnectMenu)}
-                className={`px-3 py-2 rounded-md border text-sm font-bold ${
-                  isGmailConnected
-                    ? 'border-green-600 bg-green-900/30 text-green-400 hover:bg-green-900/50'
-                    : 'border-slate-700 bg-slate-900 hover:bg-slate-800'
-                }`}
-                title="Connect integrations"
-              >
-                {isGmailConnected ? '✉️ ✓' : '+'}
-              </button>
-              {showConnectMenu && (
-                <div className="absolute bottom-full left-0 mb-1 w-56 rounded-md border border-slate-700 bg-slate-900 shadow-lg z-10">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isGmailConnected) {
-                        signOut();
-                      } else {
-                        setReconnectError('');
-                        openReconnectPopup(
-                          () => { setGmailStatus('connected'); updateSession(); },
-                          (err) => { setReconnectError(err); }
-                        );
-                      }
-                      setShowConnectMenu(false);
-                    }}
-                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-700 flex items-center gap-3"
-                  >
-                    ✉️ {isGmailConnected ? 'Disconnect Gmail' : 'Connect Gmail'}
-                    {isGmailConnected && (
-                      <span className="ml-auto text-green-400 text-xs font-semibold">Connected</span>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {isGmailConnected && (
-              <span className="text-xs text-green-400 flex items-center gap-1">
-                <span className="inline-block w-2 h-2 rounded-full bg-green-400"></span>
-                Gmail
-              </span>
-            )}
-
             <textarea
               className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-sky-500 resize-none overflow-auto"
               style={{ minHeight: '4lh', maxHeight: '200px' }}
