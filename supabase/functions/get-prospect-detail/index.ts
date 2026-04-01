@@ -13,13 +13,13 @@ Deno.serve(async (req: Request) => {
 
   if (prospect_id) {
     ({ data, error } = await supabase
-      .from('prospects')
+      .from('accounts')
       .select('*')
       .eq('id', prospect_id)
       .single());
   } else if (company_name) {
     ({ data, error } = await supabase
-      .from('prospects')
+      .from('accounts')
       .select('*')
       .ilike('company_name', `%${company_name}%`)
       .limit(1)
