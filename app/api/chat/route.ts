@@ -50,7 +50,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   log_agent_run: 'log-agent-run',
   process_document: 'process-document',
   ingest_to_kb: 'ingest-to-kb',
-    store_learning: 'store-learning',
+  store_learning: 'store-learning',
 };
 
 const tools: Anthropic.Tool[] = [
@@ -67,22 +67,22 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'search_prospects',
-          description: 'Search accounts (companies) and contacts (people). Use this to find companies by name, industry, or keyword, AND to find people by name, title, email, or region. Returns both account and contact results.',
+    description: 'Search accounts (companies) and contacts (people). Use this to find companies by name, industry, or keyword, AND to find people by name, title, email, or region. Returns both account and contact results.',
     input_schema: {
       type: 'object' as const,
       properties: {
-              query: { type: 'string', description: 'Search query -- company name, person name, title, industry, region, or keyword' },
+        query: { type: 'string', description: 'Search query -- company name, person name, title, industry, region, or keyword' },
+      },
     },
   },
-      },
   {
     name: 'get_prospect_detail',
-          description: 'Get full details for a specific account (company) by name or ID.',
-input_schema: {
+    description: 'Get full details for a specific account (company) by name or ID.',
+    input_schema: {
       type: 'object' as const,
       properties: {
-                    account_id: { type: 'string', description: 'UUID from accounts table' },
-company_name: { type: 'string', description: 'Company name to look up' },
+        account_id: { type: 'string', description: 'UUID from accounts table' },
+        company_name: { type: 'string', description: 'Company name to look up' },
       },
     },
   },
@@ -185,35 +185,35 @@ company_name: { type: 'string', description: 'Company name to look up' },
   },
   {
     name: 'process_document',
-    description: 'Process and classify an UPLOADED FILE for intent-first handling. Only use this for actual file uploads, NOT for text pasted in chat. Determines document type and generates intent-aligned content with we-framing.',
+    description: 'Process and classify an actual uploaded file before saving. Use only when the user has provided a real file upload that needs extraction, parsing, or classification. Never use this for text pasted directly into chat.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        document_text: { type: 'string', description: 'Raw document text to process' },
-        document_type: { type: 'string', description: 'Optional: override auto-classification with specific doc type' },
-        prospect_id: { type: 'string', description: 'Optional: prospect UUID for context' },
-        intent: { type: 'string', description: 'User intent or goal for the document' },
+        document_text: { type: 'string', description: 'Extracted raw text from the uploaded document' },
+        document_type: { type: 'string', description: 'Optional override for document classification' },
+        prospect_id: { type: 'string', description: 'Optional prospect UUID for context' },
+        intent: { type: 'string', description: 'User intent or goal for the uploaded document' },
       },
       required: ['document_text'],
     },
   },
   {
     name: 'ingest_to_kb',
-    description: 'Save content to the Pathova knowledge base. Use this for BOTH uploaded documents AND text pasted in chat that the user wants saved. Stores with metadata, tags, and vector embeddings for retrieval. Pass title, content, document_type, tags, and optionally account_id.',
+    description: 'Save text directly to the Pathova knowledge base. Use this for text pasted in chat, or for text that has already been extracted from a file. Do not use process_document for pasted chat text. Required fields: title, content, document_type.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        title: { type: 'string', description: 'Document title' },
-        content: { type: 'string', description: 'Processed document content' },
-        document_type: { type: 'string', description: 'Classification: case_study, white_paper, battle_card, etc.' },
+        title: { type: 'string', description: 'Document or note title' },
+        content: { type: 'string', description: 'Text content to save into the knowledge base' },
+        document_type: { type: 'string', description: 'Classification such as competitive_intel, research_note, battle_card, case_study, white_paper, or general_document' },
         tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags for categorization' },
-        account_id: { type: 'string', description: 'Optional: linked prospect UUID' },
-        source_url: { type: 'string', description: 'Optional: original source URL' },
+        account_id: { type: 'string', description: 'Optional linked prospect UUID' },
+        source_url: { type: 'string', description: 'Optional original source URL' },
       },
       required: ['title', 'content', 'document_type'],
     },
   },
-    {
+  {
     name: 'store_learning',
     description: 'Store a learning, correction, or preference for the system to remember. Use this when the user provides feedback, corrections, or teaches you something new about how they want things done. This makes the system iteratively smarter.',
     input_schema: {
@@ -245,7 +245,6 @@ async function callEdgeFunction(
         body: JSON.stringify(body),
       });
       const text = await res.text();
-      // Retry on rate limit
       if (res.status === 429 && attempt < retries) {
         await new Promise(r => setTimeout(r, (attempt + 1) * 5000));
         continue;
@@ -277,16 +276,13 @@ async function executeTool(
   return typeof result === 'string' ? result : JSON.stringify(result);
 }
 
-// Helper: extract human-readable reply from QB JSON envelope or plain text
 function extractReply(finalText: string): string {
   let parsed: any;
   try {
     parsed = JSON.parse(finalText);
   } catch {
-    // Not JSON — return plain text directly (conversational turn)
     return finalText;
   }
-  // If it's a JSON envelope, extract the readable content
   const content = parsed?.content;
   if (content) {
     const parts: string[] = [];
@@ -311,7 +307,6 @@ function extractReply(finalText: string): string {
     if (content.database_actions) parts.push('---\n' + content.database_actions);
     if (parts.length > 0) return parts.join('\n\n');
   }
-  // Fallback: if parsed but no content field, stringify it
   return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
 }
 
@@ -349,14 +344,12 @@ export async function POST(req: Request) {
         b.type === 'tool_use'
       );
 
-      // Only process tool calls if there ARE tool_use blocks AND stop_reason is tool_use
       if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
         const textBlocks = response.content.filter(
           (b): b is Anthropic.ContentBlock & { type: 'text' } =>
           b.type === 'text'
         );
         const finalText = textBlocks.map((b: any) => b.text).join('\n');
-        // Extract readable reply from JSON envelope or plain text
         const reply = extractReply(finalText);
         return NextResponse.json({ reply });
       }
