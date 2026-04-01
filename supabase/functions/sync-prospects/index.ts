@@ -110,7 +110,7 @@ Deno.serve(async function(req) {
     }
 
     if (records.length > 0) {
-      var result = await supabase.from("prospects").upsert(records, { onConflict: "notion_page_id" });
+      var result = await supabase.from("accounts").upsert(records, { onConflict: "notion_page_id" });
       if (result.error) {
         status = "partial";
         errorCount++;
