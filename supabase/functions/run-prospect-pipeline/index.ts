@@ -28,7 +28,7 @@ async function callEdgeFunction(name: string, body: Record<string, unknown>): Pr
 
 async function getUnprocessedProspects(limit: number) {
   const { data, error } = await supabase
-    .from("prospects")
+    .from("accounts")
     .select("id, company_name, icp_score, research_status, notion_content")
     .is("icp_score", null)
     .not("company_name", "is", null)
@@ -47,7 +47,7 @@ async function runPipelineForProspect(prospect: { id: string; company_name: stri
   // Step 0: Ensure prospect data is hydrated from Notion
   try {
     const { data: freshProspect } = await supabase
-      .from("prospects")
+      .from("accounts")
       .select("research_raw, notion_content, notion_page_id")
       .eq("id", prospect.id)
       .single();
@@ -85,7 +85,7 @@ async function runPipelineForProspect(prospect: { id: string; company_name: stri
   try {
     // Re-fetch prospect to check for research_output
     const { data: currentProspect } = await supabase
-      .from("prospects")
+      .from("accounts")
       .select("research_output")
       .eq("id", prospect.id)
       .single();
@@ -143,7 +143,7 @@ async function runPipelineForProspect(prospect: { id: string; company_name: stri
     // risk-assessor doesn't write to DB, so we save the output
     if (riskResult.ok && riskResult.data) {
       const { error: updateErr } = await supabase
-        .from("prospects")
+        .from("accounts")
         .update({
           risk_assessment: typeof riskResult.data === "string"
             ? riskResult.data
@@ -172,7 +172,7 @@ async function runPipelineForProspect(prospect: { id: string; company_name: stri
 
   // Mark research_status as complete
   await supabase
-    .from("prospects")
+    .from("accounts")
     .update({ research_status: "pipeline_complete", updated_at: new Date().toISOString() })
     .eq("id", prospect.id);
 
@@ -191,7 +191,7 @@ Deno.serve(async (req: Request) => {
     if (prospectId) {
       // Run pipeline for a specific prospect
       const { data, error } = await supabase
-        .from("prospects")
+        .from("accounts")
         .select("id, company_name")
         .eq("id", prospectId)
         .single();
