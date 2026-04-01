@@ -10,7 +10,7 @@ Deno.serve(async (req: Request) => {
   const { query } = body;
 
   let dbQuery = supabase
-    .from('prospects')
+    .from('accounts')
     .select('id, company_name, tier, icp_score, fda_status, product_category, hq_country, research_status, outreach_status, funding_stage, created_at')
     .order('created_at', { ascending: false })
     .limit(50);
