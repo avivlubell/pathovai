@@ -71,7 +71,7 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-      },            query: { type: 'string', description: 'Search query -- company name, person name, title, industry, region, or keyword' },
+              query: { type: 'string', description: 'Search query -- company name, person name, title, industry, region, or keyword' },
     },
   },
   {
