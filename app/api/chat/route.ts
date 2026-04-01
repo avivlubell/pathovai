@@ -185,7 +185,7 @@ company_name: { type: 'string', description: 'Company name to look up' },
   },
   {
     name: 'process_document',
-    description: 'Process and classify a document for intent-first handling. Determines document type (case_study, white_paper, battle_card, roi_calculator, clinical_summary, regulatory_brief, email_sequence, call_script, objection_handler, competitive_analysis) and generates intent-aligned content with we-framing.',
+    description: 'Process and classify an UPLOADED FILE for intent-first handling. Only use this for actual file uploads, NOT for text pasted in chat. Determines document type and generates intent-aligned content with we-framing.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -199,7 +199,7 @@ company_name: { type: 'string', description: 'Company name to look up' },
   },
   {
     name: 'ingest_to_kb',
-    description: 'Save a processed document to the Pathova knowledge base. Stores document with metadata, type classification, and vector embeddings for retrieval.',
+    description: 'Save content to the Pathova knowledge base. Use this for BOTH uploaded documents AND text pasted in chat that the user wants saved. Stores with metadata, tags, and vector embeddings for retrieval. Pass title, content, document_type, tags, and optionally account_id.',
     input_schema: {
       type: 'object' as const,
       properties: {
