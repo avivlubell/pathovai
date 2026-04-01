@@ -9,6 +9,7 @@ Deno.serve(async (req: Request) => {
   const body = await req.json().catch(() => ({}));
   const { query } = body;
 
+  // Search accounts
   let dbQuery = supabase
     .from('accounts')
     .select('id, company_name, tier, icp_score, fda_status, product_category, hq_country, research_status, outreach_status, funding_stage, created_at')
@@ -30,9 +31,25 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  // Also search contacts
+  let contactsQuery = supabase
+    .from('contacts')
+    .select('id, full_name, title, email, phone, linkedin_url, contact_type, relationship_status, company_name, account_id')
+    .limit(50);
+
+  if (query) {
+    contactsQuery = contactsQuery.or(
+      `full_name.ilike.%${query}%,email.ilike.%${query}%,title.ilike.%${query}%,company_name.ilike.%${query}%`
+    );
+  }
+
+  const { data: contacts } = await contactsQuery;
+
   return new Response(JSON.stringify({
     total: data.length,
     prospects: data,
+    contacts: contacts || [],
+    contacts_total: (contacts || []).length,
     summary: {
       by_tier: data.reduce((acc: Record<string, number>, p: any) => {
         acc[p.tier || 'Unscored'] = (acc[p.tier || 'Unscored'] || 0) + 1;
