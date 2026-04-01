@@ -342,7 +342,7 @@ Deno.serve(async (req: Request) => {
     let result;
     if (notion_page_id) {
       const { data, error } = await supabase
-        .from("prospects")
+        .from("accounts")
         .update(updateData)
         .eq("notion_page_id", notion_page_id)
         .select()
@@ -352,7 +352,7 @@ Deno.serve(async (req: Request) => {
     } else {
       // If no notion_page_id, try by company_name
       const { data, error } = await supabase
-        .from("prospects")
+        .from("accounts")
         .update(updateData)
         .ilike("company_name", `%${company_name}%`)
         .select()
