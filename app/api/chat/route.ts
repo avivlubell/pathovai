@@ -74,6 +74,7 @@ const tools: Anthropic.Tool[] = [
               query: { type: 'string', description: 'Search query -- company name, person name, title, industry, region, or keyword' },
     },
   },
+      },
   {
     name: 'get_prospect_detail',
           description: 'Get full details for a specific account (company) by name or ID.',
