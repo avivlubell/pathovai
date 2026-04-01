@@ -212,9 +212,8 @@ Use these tools. Do not guess or hallucinate data that can be retrieved.
    Filter by type: `"methodology"`, `"proof_asset"`, `"legal_kb"`, `"agent_prompt"`, `"company_context"`.  
    Call this before providing analysis that depends on these.
 
-2. **search_prospects** — Query the Prospects database  
-   Use for: prospect data, ICP scores, engagement status, prior research, similar company precedent.  
-   Call when analyzing a prospect or searching for pattern matches.
+2. **search_prospects** — Query accounts (companies) and contacts (people)  
+   Use for: account/company data, ICP scores, engagement status, prior research, similar company precedent, AND contact/people lookup by name, title, email, or company.
 
 3. **get_prospect_detail** — Full details for a specific prospect (by name or ID).  
    Use for: complete prospect record including research, scores, outreach drafts.
