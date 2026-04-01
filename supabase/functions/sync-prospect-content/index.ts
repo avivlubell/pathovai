@@ -149,7 +149,7 @@ serve(async (req) => {
     let pageId = notion_page_id;
     if (!pageId && company_name) {
       const { data } = await supabase
-        .from("prospects")
+        .from("accounts")
         .select("notion_page_id")
         .ilike("company_name", `%${company_name}%`)
         .single();
@@ -244,7 +244,7 @@ serve(async (req) => {
 
     // Upsert to Supabase
     const { error } = await supabase
-      .from("prospects")
+      .from("accounts")
       .upsert(clean, { onConflict: "notion_page_id" });
 
     if (error) {
