@@ -8,7 +8,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ### Source of Truth Hierarchy
 
-- **Vercel is authority.** The master prompt lives in `app/api/chat/prompt.txt`. This is the production system prompt for the Quarterback agent. All prompt changes are version-controlled here.
+- **Vercel is authority.** The master prompt lives in `app/api/chat/prompt.txt`. Production calls the Claude API directly from `route.ts` — no Claude Project involved. All prompt changes are version-controlled here.
 - **Claude Projects is sandbox.** Used only for dev-session convenience (persistent system prompt across conversations). No knowledge docs uploaded — that's redundant with Supabase and burns tokens every conversation. Claude Project docs are injected into the context window on every conversation; there is no free persistent memory.
 - **Supabase is the knowledge layer.** Prospect data, reference library, learnings, KB docs — all live in Supabase. The Quarterback queries these via MCP tools at runtime.
 
