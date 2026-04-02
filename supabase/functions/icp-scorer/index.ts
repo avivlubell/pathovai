@@ -58,26 +58,42 @@ Deno.serve(async (req) => {
 
     // --- Lookup prospect ---
     let prospect: any = null;
+
     if (prospect_id) {
-      const { data } = await supabase.from("prospects").select("*").eq("id", prospect_id).single();
+      const { data } = await supabase
+        .from("accounts")
+        .select("*")
+        .eq("id", prospect_id)
+        .single();
       prospect = data;
     } else if (inputName) {
-      const { data } = await supabase.from("prospects").select("*").ilike("company_name", `%${inputName}%`).single();
+      const { data } = await supabase
+        .from("accounts")
+        .select("*")
+        .ilike("company_name", `%${inputName}%`)
+        .single();
       prospect = data;
     }
+
     if (!prospect) {
-      return new Response(JSON.stringify({ error: "Prospect not found" }), { status: 404, headers: { "Content-Type": "application/json" } });
+      return new Response(
+        JSON.stringify({ error: "Prospect not found" }),
+        { status: 404, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     // --- Load ICP framework from reference_library ---
     const { data: icpRefs } = await supabase
       .from("reference_library")
       .select("content")
-      .eq("id", "972c281a-ef08-4eaa-9ff7-993528bb8e43");
+      .eq("reference_type", "methodology")
+      .ilike("title", "%ICP%");
+
     const icpFramework = icpRefs?.map((r: any) => r.content).join("\n\n") || "";
 
     // --- Build prospect data for Claude ---
-      const researchData = prospect.research_output || prospect.research_summary || "No research data available";
+    const researchData = prospect.research_output || prospect.research_summary || "No research data available";
+
     const prospectContext = `
 ## PROSPECT DATA
 Company: ${prospect.company_name}
@@ -116,7 +132,10 @@ Answer the 4 classification questions based ONLY on the above data.`;
     if (!response.ok) {
       const errText = await response.text();
       console.error("Anthropic API error:", errText);
-      return new Response(JSON.stringify({ error: "Anthropic API error", details: errText }), { status: 502, headers: { "Content-Type": "application/json" } });
+      return new Response(
+        JSON.stringify({ error: "Anthropic API error", details: errText }),
+        { status: 502, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     const result = await response.json();
@@ -129,11 +148,17 @@ Answer the 4 classification questions based ONLY on the above data.`;
       scoring = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
     } catch (e) {
       console.error("JSON parse error:", e, "Raw:", rawText);
-      return new Response(JSON.stringify({ error: "Failed to parse scorer response", raw: rawText }), { status: 500, headers: { "Content-Type": "application/json" } });
+      return new Response(
+        JSON.stringify({ error: "Failed to parse scorer response", raw: rawText }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     if (!scoring) {
-      return new Response(JSON.stringify({ error: "No scoring data returned", raw: rawText }), { status: 500, headers: { "Content-Type": "application/json" } });
+      return new Response(
+        JSON.stringify({ error: "No scoring data returned", raw: rawText }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     // === DETERMINISTIC TIER ASSIGNMENT (Claude never decides this) ===
@@ -146,7 +171,12 @@ Answer the 4 classification questions based ONLY on the above data.`;
     const { tier, is_icp } = computeTier(q1, q2, q3, q4Normalized);
 
     // Simple numeric score for DB compatibility: Priority=3, Qualified=2, Monitor=1, Non-ICP=0
-    const tierScore: Record<string, number> = { "Tier 1: Priority": 3, "Tier 2: Qualified": 2, "Tier 3: Monitor": 1, "Non-ICP": 0 };
+    const tierScore: Record<string, number> = {
+      "Tier 1: Priority": 3,
+      "Tier 2: Qualified": 2,
+      "Tier 3: Monitor": 1,
+      "Non-ICP": 0,
+    };
     const numericScore = tierScore[tier] ?? 0;
 
     // === DB UPDATE ===
@@ -167,7 +197,7 @@ Answer the 4 classification questions based ONLY on the above data.`;
     };
 
     const { data: updateData, error: updateError } = await supabase
-      .from("prospects")
+      .from("accounts")
       .update(updatePayload)
       .eq("id", prospect.id)
       .select();
@@ -179,25 +209,45 @@ Answer the 4 classification questions based ONLY on the above data.`;
     }
 
     // === RETURN RESPONSE ===
-    return new Response(JSON.stringify({
-      company_name: prospect.company_name,
-      framework: "Pathova ICP v3.0 (4-Question Classification)",
-      classification: {
-        q1_right_industry: { answer: q1, evidence: scoring.q1_right_industry?.evidence },
-        q2_right_stage: { answer: q2, evidence: scoring.q2_right_stage?.evidence, maturity_signals: scoring.q2_right_stage?.maturity_signals },
-        q3_gap_signals: { answer: q3, signals_found: scoring.q3_gap_signals?.signals_found, signals_absent: scoring.q3_gap_signals?.signals_absent },
-        q4_disqualifiers: { answer: q4Normalized, evidence: scoring.q4_disqualifiers?.evidence },
-      },
-      tier: tier,
-      is_icp: is_icp,
-      icp_score: numericScore,
-      confidence: scoring.confidence,
-      data_gaps: scoring.data_gaps || [],
-      updated_in_db: !updateError,
-    }), { status: 200, headers: { "Content-Type": "application/json" } });
+    return new Response(
+      JSON.stringify({
+        company_name: prospect.company_name,
+        framework: "Pathova ICP v3.0 (4-Question Classification)",
+        classification: {
+          q1_right_industry: {
+            answer: q1,
+            evidence: scoring.q1_right_industry?.evidence,
+          },
+          q2_right_stage: {
+            answer: q2,
+            evidence: scoring.q2_right_stage?.evidence,
+            maturity_signals: scoring.q2_right_stage?.maturity_signals,
+          },
+          q3_gap_signals: {
+            answer: q3,
+            signals_found: scoring.q3_gap_signals?.signals_found,
+            signals_absent: scoring.q3_gap_signals?.signals_absent,
+          },
+          q4_disqualifiers: {
+            answer: q4Normalized,
+            evidence: scoring.q4_disqualifiers?.evidence,
+          },
+        },
+        tier: tier,
+        is_icp: is_icp,
+        icp_score: numericScore,
+        confidence: scoring.confidence,
+        data_gaps: scoring.data_gaps || [],
+        updated_in_db: !updateError,
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
 
   } catch (err) {
     console.error("Unhandled error:", err);
-    return new Response(JSON.stringify({ error: "Internal error", message: String(err) }), { status: 500, headers: { "Content-Type": "application/json" } });
+    return new Response(
+      JSON.stringify({ error: "Internal error", message: String(err) }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
   }
 });
