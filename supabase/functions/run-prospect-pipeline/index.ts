@@ -29,10 +29,10 @@ async function callEdgeFunction(name: string, body: Record<string, unknown>): Pr
 async function getUnprocessedProspects(limit: number) {
   const { data, error } = await supabase
     .from("accounts")
-    .select("id, company_name, icp_score, research_status, notion_content")
+    .select("id, company_name, icp_score, research_status, notion_page_id")
     .is("icp_score", null)
     .not("company_name", "is", null)
-    .not("notion_content", "is", null)
+        .not("notion_page_id", "is", null)
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) throw new Error(`Query failed: ${error.message}`);
@@ -48,11 +48,11 @@ async function runPipelineForProspect(prospect: { id: string; company_name: stri
   try {
     const { data: freshProspect } = await supabase
       .from("accounts")
-      .select("research_raw, notion_content, notion_page_id")
+            .select("research_output, research_summary, notion_page_id")
       .eq("id", prospect.id)
       .single();
 
-    if (!freshProspect?.research_raw && !freshProspect?.notion_content) {
+        if (!freshProspect?.research_output && !freshProspect?.research_summary) {
       console.info(`[Pipeline] ${prospect.company_name} has no research data - attempting sync...`);
 
       if (freshProspect?.notion_page_id) {
