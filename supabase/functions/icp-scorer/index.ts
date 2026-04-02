@@ -77,12 +77,12 @@ Deno.serve(async (req) => {
     const icpFramework = icpRefs?.map((r: any) => r.content).join("\n\n") || "";
 
     // --- Build prospect data for Claude ---
-    const researchData = prospect.research_raw || prospect.research_summary || "No research data available";
+      const researchData = prospect.research_output || prospect.research_summary || "No research data available";
     const prospectContext = `
 ## PROSPECT DATA
 Company: ${prospect.company_name}
-Website: ${prospect.website || "Unknown"}
-Industry: ${prospect.industry || "Unknown"}
+Website: ${prospect.website_url || "Unknown"}
+Industry/Category: ${prospect.product_category || "Unknown"}
 Description: ${prospect.description || "Unknown"}
 FDA Status: ${prospect.fda_status || "Unknown"}
 Funding: ${prospect.funding_stage || "Unknown"}
