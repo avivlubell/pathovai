@@ -17,7 +17,7 @@ const NOTION_HEADERS = {
 function getProp(props: any, name: string, type: string): any {
   var prop = props[name];
   if (!prop) return null;
-  switch (type) {
+  switch (type) {h
     case "title": return prop.title ? prop.title.map((t: any) => t.plain_text).join("") : null;
     case "rich_text": return prop.rich_text ? prop.rich_text.map((t: any) => t.plain_text).join("") : null;
     case "select": return prop.select ? prop.select.name : null;
@@ -79,9 +79,10 @@ async function resolveCompanyName(companyRelationIds: string[]): Promise<string 
   }
 }
 
-async function resolveAccountId(companyName: string): Promise<string | null> {
-  if (!companyName) return null;
-  // Try exact match first
+async function resolveAccountId(companyName: string | null, email?: string | null): Promise<string | null> {
+    if (!companyName && !email) return null;
+    if (companyName) {
+      // Try exact match first
   var { data } = await supabase
     .from("accounts")
     .select("id")
@@ -100,6 +101,20 @@ async function resolveAccountId(companyName: string): Promise<string | null> {
       .maybeSingle();
     if (fuzzy) return fuzzy.id;
   }
+    }
+    // Try email domain match as final fallback
+    if (email) {
+          const domain = email.split("@")[1]?.split(".").slice(-2).join(".");
+          if (domain) {
+                  const { data: domainMatch } = await supabase
+                    .from("accounts")
+                    .select("id")
+                    .ilike("company_name", "%" + domain.split(".")[0] + "%")
+                    .limit(1)
+                    .maybeSingle();
+                  if (domainMatch) return domainMatch.id;
+          }
+    }
   return null;
 }
 
@@ -147,15 +162,15 @@ Deno.serve(async function(_req: Request) {
 
         // Resolve company name from CO relation
         var companyName = await resolveCompanyName(companyRelation);
-        if (companyName) {
-          raw.company_name = companyName;
-          // Resolve account_id from Supabase accounts
-          var accountId = await resolveAccountId(companyName);
-          if (accountId) {
-            raw.account_id = accountId;
-            linkedCount++;
-          }
-        }
+                if (companyName) {
+                            raw.company_name = companyName;
+                }
+                // Resolve account_id from Supabase accounts (with email domain fallback)
+                var accountId = await resolveAccountId(companyName, raw.email);
+                if (accountId) {
+                            raw.account_id = accountId;
+                            linkedCount++;
+                }
 
         records.push(cleanRecord(raw));
       } catch (e: any) {
