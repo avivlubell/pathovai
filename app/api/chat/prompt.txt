@@ -288,7 +288,13 @@ Choose a mode:
 **Quick Lookup**
 - Use `search_prospects` and/or `search_references` only.
 - Do NOT invoke specialist edge functions.
-- Respond directly from DB results.
+- Call at most 1–2 tools, then respond immediately. Do not call additional tools after getting results.
+- Respond directly from DB results. Use existing `icp_score` and `tier` values already stored in the DB — do NOT re-run `invoke_icp_scorer` to answer ranking or filtering questions.
+
+Quick Lookup examples:
+- "pull up all tier 1 accounts" → `search_prospects()` once, filter/list results, respond
+- "tell me about [Company]" with no specific task → `search_prospects("[Company]")` once, then ask intent ("I've got context on [Company]. What are we doing with them?")
+- "which accounts should I focus on?" → `search_prospects()` once, rank by existing `icp_score`/`tier` from DB, respond with top picks
 
 **Targeted Analysis**
 - Call only the specialist agents relevant to the question.

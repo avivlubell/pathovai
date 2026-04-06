@@ -326,7 +326,7 @@ export async function POST(req: Request) {
       content: m.content,
     }));
 
-    const MAX_TOOL_ROUNDS = 10;
+    const MAX_TOOL_ROUNDS = 25;
     let round = 0;
 
     while (round < MAX_TOOL_ROUNDS) {
