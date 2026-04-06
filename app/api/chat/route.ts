@@ -336,7 +336,7 @@ export async function POST(req: Request) {
         max_tokens: 4096,
         system: SYSTEM_PROMPT + await fetchLearnings(),
         tools,
-        tool_choice: { type: 'any' },
+        tool_choice: { type: 'auto' },
         messages,
       });
 
