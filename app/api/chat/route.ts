@@ -326,7 +326,7 @@ export async function POST(req: Request) {
       content: m.content,
     }));
 
-    const MAX_TOOL_ROUNDS = 10;
+    const MAX_TOOL_ROUNDS = 25;
     let round = 0;
 
     while (round < MAX_TOOL_ROUNDS) {
@@ -336,7 +336,7 @@ export async function POST(req: Request) {
         max_tokens: 4096,
         system: SYSTEM_PROMPT + await fetchLearnings(),
         tools,
-        tool_choice: { type: 'any' },
+        tool_choice: { type: 'auto' },
         messages,
       });
 
