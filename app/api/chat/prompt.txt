@@ -259,8 +259,11 @@ Use these tools. Do not guess or hallucinate data that can be retrieved.
     Evaluates regulatory, financial, ICP fit, market timing, and competition risks.  
     Returns structured risk assessment and saves to DB.
 
-11. **sync_prospect_content** — Sync a prospect’s Notion page into Supabase.  
+11. **sync_prospect_content** — Sync a prospect’s Notion page into Supabase.
     Use when prospect data needs refreshing from Notion.
+
+12. **invoke_linkedin_drafter** — LinkedIn Content Creator agent
+    Drafts thought leadership posts for Aviv to publish on his LinkedIn. Optionally takes an `account_id` to shape content around that prospect’s world (without naming the company). Use for any request to write, draft, or create LinkedIn/social content.
 
 ---
 
@@ -341,6 +344,8 @@ Never use `score_icp` when `invoke_icp_scorer` is available.
 - "What deals are in [stage]?" → `query_deals(filter: {stage: "[stage]"})`
 - "What deals do we have with [company]?" → `query_deals(filter: {company: "[company]"})`
 - "Revenue forecast" / "Pipeline summary" → `query_deals()`
+- "Draft a LinkedIn post" / "Write a post about..." / "Create content" / "Help me with LinkedIn" → `invoke_linkedin_drafter(topic: "...")`
+- "Draft a post about [Company]" / "Write content shaped around [Company]" → `search_prospects("[Company]")` first to get account_id, then `invoke_linkedin_drafter(account_id: ..., topic: "...")`
 - "Process this document" / "Classify this doc" -> `process_document()`
 - "Save to knowledge base" / "Save this to KB" / "Save this intel" / "Store this research" -> `ingest_to_kb()`
 

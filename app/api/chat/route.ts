@@ -39,6 +39,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_prospect_researcher: 'prospect-researcher',
   invoke_outreach_drafter: 'outreach-drafter',
   invoke_risk_assessor: 'risk-assessor',
+  invoke_linkedin_drafter: 'linkedin-drafter',
   query_deals: 'query-deals',
   sync_prospect_content: 'sync-prospect-content',
   run_prospect_pipeline: 'run-prospect-pipeline',
@@ -211,6 +212,18 @@ const tools: Anthropic.Tool[] = [
         source_url: { type: 'string', description: 'Optional original source URL' },
       },
       required: ['title', 'content', 'document_type'],
+    },
+  },
+  {
+    name: 'invoke_linkedin_drafter',
+    description: 'LinkedIn Content Creator agent. Drafts thought leadership posts for Aviv to publish on LinkedIn. Optionally shaped by a specific prospect account context (uses their signals without naming them).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        account_id: { type: 'string', description: 'Optional UUID from accounts table — shapes content around this account\'s world without naming them' },
+        topic: { type: 'string', description: 'Optional topic or angle to write about (e.g. "why medtech pilots never convert")' },
+        post_type: { type: 'string', description: 'post | carousel | thread (default: post)' },
+      },
     },
   },
   {
