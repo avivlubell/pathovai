@@ -176,8 +176,8 @@ export default function HomePage() {
         {/* Header */}
         <div className="flex items-center sticky top-0 z-10 bg-slate-950 justify-between px-6 py-3 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovaAI logo" className="h-8 w-8 rounded" />
-            <h1 className="text-lg font-bold">PathovaAI</h1>
+            <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" className="h-8 w-8 rounded" />
+            <h1 className="text-lg font-bold">PathovAI</h1>
           </div>
           <button
             onClick={handleNewChat}
@@ -200,7 +200,7 @@ export default function HomePage() {
               className={`max-w-3xl mx-auto ${m.role === 'user' ? 'text-sky-300' : 'text-slate-200'}`}
             >
               <p className="text-xs font-semibold mb-1 text-slate-400">
-                {m.role === 'user' ? 'You' : 'PathovaAI'}
+                {m.role === 'user' ? 'You' : 'PathovAI'}
               </p>
               <p className="whitespace-pre-wrap">{m.content}</p>
               {m.role === 'assistant' && (
