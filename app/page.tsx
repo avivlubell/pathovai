@@ -216,12 +216,20 @@ export default function HomePage() {
             <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" className="h-8 w-8 rounded" />
             <h1 className="text-lg font-bold">PathovAI</h1>
           </div>
-          <button
-            onClick={handleNewChat}
-            className="px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800"
-          >
-            + New Chat
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleNewChat}
+              className="px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800"
+            >
+              + New Chat
+            </button>
+            <button
+              onClick={() => signOut()}
+              className="px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 text-slate-400 hover:text-slate-200"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
 
         {/* Messages */}
