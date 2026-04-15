@@ -321,7 +321,23 @@ export async function POST(req: Request) {
       );
     }
 
-    const messages: Anthropic.MessageParam[] = chatMessages.map((m: any) => ({
+    // Keep only the most recent messages to stay under the 200k token limit.
+    // Estimate ~4 chars per token; reserve 50k tokens for system prompt + tool rounds.
+    const MAX_HISTORY_CHARS = 150_000 * 4;
+    let historyChars = 0;
+    const trimmedMessages = [];
+    for (let i = chatMessages.length - 1; i >= 0; i--) {
+      const len = (chatMessages[i].content ?? '').length;
+      if (historyChars + len > MAX_HISTORY_CHARS) break;
+      historyChars += len;
+      trimmedMessages.unshift(chatMessages[i]);
+    }
+    // Always include at least the last message so the request isn't empty.
+    if (trimmedMessages.length === 0 && chatMessages.length > 0) {
+      trimmedMessages.push(chatMessages[chatMessages.length - 1]);
+    }
+
+    const messages: Anthropic.MessageParam[] = trimmedMessages.map((m: any) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
