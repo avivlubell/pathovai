@@ -8,6 +8,7 @@ import MessageSources, { type SourceRef } from '../components/MessageSources';
 import ContextDrawer from '../components/ContextDrawer';
 import KbFreshness from '../components/KbFreshness';
 import ShareChatModal from '../components/ShareChatModal';
+import Logo from '../components/Logo';
 
 type ChatMessage = {
   id: string;
@@ -576,7 +577,7 @@ export default function HomePage() {
     return (
       <div className="flex h-[100dvh] bg-bg text-fg items-center justify-center">
         <div className="flex flex-col items-center gap-6 w-full max-w-sm px-6">
-          <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" className="h-14 w-14 rounded" />
+          <Logo size={56} priority />
           <h1 className="text-2xl font-bold">PathovAI</h1>
           <p className="text-fg-muted text-sm text-center">Sign in to continue</p>
           <button
@@ -801,7 +802,7 @@ export default function HomePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" className="h-8 w-8 flex-shrink-0 rounded" />
+            <Logo size={32} priority className="flex-shrink-0" />
             <h1 className="hidden sm:block text-lg font-bold">PathovAI</h1>
             <KbFreshness />
             {activeAccount && (
@@ -945,11 +946,7 @@ export default function HomePage() {
           {messages.length === 0 && (
             <div className="flex h-full min-h-[60vh] w-full items-center justify-center">
               <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-6 px-2 text-center">
-                <img
-                  src="/PATHOVA_LOGO1_edited_edited_edited.png"
-                  alt="PathovAI logo"
-                  className="h-12 w-12 rounded"
-                />
+                <Logo size={48} />
                 <div className="space-y-2">
                   <h2 className="text-2xl font-semibold text-fg">
                     What are we working on?
@@ -1151,13 +1148,9 @@ function AssistantMessageRow({
     >
       <div
         aria-hidden
-        className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated"
+        className="mt-1 flex aspect-square h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated"
       >
-        <img
-          src="/PATHOVA_LOGO1_edited_edited_edited.png"
-          alt=""
-          className="h-7 w-7 rounded"
-        />
+        <Logo size={28} alt="" />
       </div>
       <div className="min-w-0 flex-1">
         <div ref={renderedRef}>
@@ -1224,13 +1217,9 @@ function PendingAssistantRow() {
     >
       <div
         aria-hidden
-        className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated"
+        className="mt-1 flex aspect-square h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated"
       >
-        <img
-          src="/PATHOVA_LOGO1_edited_edited_edited.png"
-          alt=""
-          className="h-7 w-7 rounded"
-        />
+        <Logo size={28} alt="" />
       </div>
       <div className="flex items-center gap-1.5 pt-2">
         <span className="sr-only">PathovAI is thinking</span>

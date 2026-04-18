@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import MessageContent from '../../../components/MessageContent';
+import Logo from '../../../components/Logo';
 import type { SharedMessage } from '../../../lib/sharedChats';
 
 type Props = {
@@ -47,11 +48,7 @@ export default function SharedChatView({
 
       <header className="px-4 py-3 border-b border-border">
         <div className="mx-auto max-w-3xl flex items-center gap-3">
-          <img
-            src="/PATHOVA_LOGO1_edited_edited_edited.png"
-            alt="PathovAI logo"
-            className="h-8 w-8 rounded"
-          />
+          <Logo size={32} />
           <div className="min-w-0">
             <p className="text-xs text-fg-subtle leading-none">PathovAI</p>
             <h1 className="truncate text-sm font-semibold text-fg">
