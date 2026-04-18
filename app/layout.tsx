@@ -38,8 +38,11 @@ export const metadata: Metadata = {
   },
 };
 
+// Must mirror --color-bg in app/globals.css. Kept as a literal string
+// because the Next viewport API serializes into a <meta name="theme-color">
+// tag at build time and can't read CSS custom properties.
 export const viewport = {
-  themeColor: '#020617',
+  themeColor: '#0a0a0a',
   viewportFit: 'cover' as const,
   width: 'device-width',
   initialScale: 1,

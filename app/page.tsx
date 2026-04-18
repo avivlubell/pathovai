@@ -574,21 +574,21 @@ export default function HomePage() {
 
   if (!session) {
     return (
-      <div className="flex h-[100dvh] bg-slate-950 text-slate-100 items-center justify-center">
+      <div className="flex h-[100dvh] bg-bg text-fg items-center justify-center">
         <div className="flex flex-col items-center gap-6 w-full max-w-sm px-6">
           <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" className="h-14 w-14 rounded" />
           <h1 className="text-2xl font-bold">PathovAI</h1>
-          <p className="text-slate-400 text-sm text-center">Sign in to continue</p>
+          <p className="text-fg-muted text-sm text-center">Sign in to continue</p>
           <button
             type="button"
             onClick={() => signIn('google')}
-            className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-md border border-slate-700 hover:bg-slate-800 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+            className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-md border border-border-strong hover:bg-elevated text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              <path style={{ fill: 'var(--brand-google-blue)' }} d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path style={{ fill: 'var(--brand-google-green)' }} d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path style={{ fill: 'var(--brand-google-yellow)' }} d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+              <path style={{ fill: 'var(--brand-google-red)' }} d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
             </svg>
             Sign in with Google
           </button>
@@ -604,10 +604,10 @@ export default function HomePage() {
   })();
 
   return (
-    <div className="flex h-[100dvh] bg-slate-950 text-slate-100">
+    <div className="flex h-[100dvh] bg-bg text-fg">
       <a
         href="#conversation"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[60] focus:rounded focus:bg-sky-600 focus:px-3 focus:py-1.5 focus:text-sm focus:text-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[60] focus:rounded focus:bg-accent focus:px-3 focus:py-1.5 focus:text-sm focus:text-accent-fg focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg"
       >
         Skip to conversation
       </a>
@@ -625,14 +625,14 @@ export default function HomePage() {
           id="chat-history-nav"
           ref={sidebarRef}
           aria-label="Chat history"
-          className="fixed inset-y-0 left-0 z-40 flex w-72 max-w-[80vw] flex-col gap-2 overflow-y-auto border-r border-slate-800 bg-slate-950 p-3 md:static md:z-0 md:w-60 md:max-w-none"
+          className="fixed inset-y-0 left-0 z-40 flex w-72 max-w-[80vw] flex-col gap-2 overflow-y-auto border-r border-border bg-surface p-3 md:static md:z-0 md:w-60 md:max-w-none"
         >
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-300">Chat History</h2>
+            <h2 className="text-sm font-semibold text-fg">Chat History</h2>
             {chatHistory.length > 0 && (
               <button
                 onClick={clearHistory}
-                className="text-xs text-slate-500 hover:text-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 rounded"
+                className="text-xs text-fg-subtle hover:text-danger focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded"
               >
                 Clear All
               </button>
@@ -644,20 +644,20 @@ export default function HomePage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search..."
             aria-label="Search chat history"
-            className="rounded-md border border-slate-800 bg-slate-900 px-2 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 outline-none focus:border-sky-500"
+            className="rounded-md border border-border bg-bg px-2 py-1.5 text-xs text-fg placeholder:text-fg-subtle outline-none focus:border-accent"
           />
           {chatHistory.length === 0 && (
-            <p className="text-xs text-slate-600 mt-2">No previous chats</p>
+            <p className="text-xs text-fg-subtle mt-2">No previous chats</p>
           )}
           {chatHistory.length > 0 && filteredChats.length === 0 && (
-            <p className="text-xs text-slate-600 mt-2">No matches</p>
+            <p className="text-xs text-fg-subtle mt-2">No matches</p>
           )}
           {BUCKET_ORDER.map((bucket) => {
             const items = groupedChats[bucket];
             if (items.length === 0) return null;
             return (
               <div key={bucket} className="flex flex-col gap-1 mt-2">
-                <h3 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                <h3 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-fg-subtle">
                   {bucket}
                 </h3>
                 {items.map((s) => {
@@ -671,8 +671,8 @@ export default function HomePage() {
                       data-chat-row
                       className={`group relative rounded-md ${
                         isActive
-                          ? 'bg-slate-700/80 text-slate-100'
-                          : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                          ? 'bg-elevated text-fg'
+                          : 'text-fg-muted hover:bg-elevated hover:text-fg'
                       }`}
                     >
                       {isRenaming ? (
@@ -691,24 +691,24 @@ export default function HomePage() {
                             }
                           }}
                           aria-label="Rename chat"
-                          className="w-full rounded-md border border-sky-500 bg-slate-900 px-2 py-1.5 text-sm text-slate-100 outline-none"
+                          className="w-full rounded-md border border-accent bg-bg px-2 py-1.5 text-sm text-fg outline-none"
                         />
                       ) : isConfirmingDelete ? (
                         <div className="flex items-center gap-1 px-2 py-1.5">
-                          <span className="flex-1 truncate text-xs text-slate-300">
+                          <span className="flex-1 truncate text-xs text-fg-muted">
                             Delete this chat?
                           </span>
                           <button
                             type="button"
                             onClick={() => setDeletingId(null)}
-                            className="rounded px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                            className="rounded px-1.5 py-0.5 text-xs text-fg-muted hover:bg-elevated focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                           >
                             Cancel
                           </button>
                           <button
                             type="button"
                             onClick={() => deleteChat(s.id)}
-                            className="rounded bg-red-600 px-1.5 py-0.5 text-xs text-white hover:bg-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                            className="rounded bg-danger px-1.5 py-0.5 text-xs text-bg hover:bg-danger/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-danger focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                           >
                             Delete
                           </button>
@@ -718,7 +718,7 @@ export default function HomePage() {
                           <button
                             type="button"
                             onClick={() => loadChat(s)}
-                            className="w-full truncate px-3 py-2 pr-8 text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 rounded-md"
+                            className="w-full truncate px-3 py-2 pr-8 text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded-md"
                           >
                             {s.title}
                           </button>
@@ -733,7 +733,7 @@ export default function HomePage() {
                             aria-label="Chat actions"
                             aria-haspopup="menu"
                             aria-expanded={isMenuOpen}
-                            className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded text-slate-400 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-slate-700 hover:text-slate-100 focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-sky-500"
+                            className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded text-fg-muted opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-border-strong hover:text-fg focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent"
                           >
                             <svg
                               aria-hidden="true"
@@ -749,13 +749,13 @@ export default function HomePage() {
                           {isMenuOpen && (
                             <div
                               role="menu"
-                              className="absolute right-1 top-9 z-20 w-32 overflow-hidden rounded-md border border-slate-700 bg-slate-900 shadow-lg"
+                              className="absolute right-1 top-9 z-20 w-32 overflow-hidden rounded-md border border-border-strong bg-elevated shadow-lg"
                             >
                               <button
                                 role="menuitem"
                                 type="button"
                                 onClick={() => startRename(s)}
-                                className="block w-full px-3 py-1.5 text-left text-xs text-slate-200 hover:bg-slate-800 focus:outline-none focus:bg-slate-800"
+                                className="block w-full px-3 py-1.5 text-left text-xs text-fg hover:bg-border focus:outline-none focus:bg-border"
                               >
                                 Rename
                               </button>
@@ -766,7 +766,7 @@ export default function HomePage() {
                                   setDeletingId(s.id);
                                   setOpenMenuForId(null);
                                 }}
-                                className="block w-full px-3 py-1.5 text-left text-xs text-red-400 hover:bg-slate-800 focus:outline-none focus:bg-slate-800"
+                                className="block w-full px-3 py-1.5 text-left text-xs text-danger hover:bg-border focus:outline-none focus:bg-border"
                               >
                                 Delete
                               </button>
@@ -786,7 +786,7 @@ export default function HomePage() {
       {/* Main Chat */}
       <main id="conversation" className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="flex items-center sticky top-0 z-10 bg-slate-950 justify-between px-4 sm:px-6 py-3 border-b border-slate-800 gap-2">
+        <div className="flex items-center sticky top-0 z-10 bg-surface justify-between px-4 sm:px-6 py-3 border-b border-border gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <button
               type="button"
@@ -794,7 +794,7 @@ export default function HomePage() {
               aria-label="Toggle chat history"
               aria-expanded={sidebarOpen}
               aria-controls="chat-history-nav"
-              className="text-slate-400 hover:text-slate-200 p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              className="text-fg-muted hover:text-fg p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               title={sidebarOpen ? 'Hide history' : 'Show history'}
             >
               <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -806,16 +806,16 @@ export default function HomePage() {
             <KbFreshness />
             {activeAccount && (
               <span
-                className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-sky-700/60 bg-sky-900/30 px-2.5 py-1 text-xs text-sky-200"
+                className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-border-strong bg-info-bg px-2.5 py-1 text-xs text-info"
                 title={`Primary account for this chat: ${activeAccount}`}
               >
-                <span className="hidden sm:inline text-slate-400">Account:</span>
+                <span className="hidden sm:inline text-fg-muted">Account:</span>
                 <span className="truncate font-medium">{activeAccount}</span>
                 <button
                   type="button"
                   onClick={clearActiveAccount}
                   aria-label={`Clear active account ${activeAccount}`}
-                  className="inline-flex h-4 w-4 items-center justify-center rounded-full text-sky-300/80 hover:bg-sky-800/60 hover:text-sky-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full text-info hover:bg-info-bg hover:text-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <svg
                     aria-hidden="true"
@@ -844,7 +844,7 @@ export default function HomePage() {
                   : 'Open conversation context'
               }
               title="Conversation context"
-              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-sm rounded-md border border-border-strong hover:bg-elevated text-fg-muted hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
             >
               <svg
                 aria-hidden="true"
@@ -860,7 +860,7 @@ export default function HomePage() {
               </svg>
               <span className="hidden sm:inline">Context</span>
               {contextCount > 0 && (
-                <span className="ml-0.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-sky-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                <span className="ml-0.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold leading-none text-accent-fg">
                   {contextCount}
                 </span>
               )}
@@ -882,7 +882,7 @@ export default function HomePage() {
                   ? 'Send a message first, then you can share this chat'
                   : 'Share this chat'
               }
-              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-sm rounded-md border border-border-strong hover:bg-elevated text-fg-muted hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:cursor-not-allowed disabled:opacity-50"
             >
               <svg
                 aria-hidden="true"
@@ -907,7 +907,7 @@ export default function HomePage() {
               onClick={handleNewChat}
               aria-label="Start new chat"
               title="New chat"
-              className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-sm rounded-md border border-border-strong hover:bg-elevated focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
             >
               <svg
                 aria-hidden="true"
@@ -928,7 +928,7 @@ export default function HomePage() {
               type="button"
               onClick={() => signOut()}
               aria-label="Sign out"
-              className="hidden sm:inline-flex items-center px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 text-slate-400 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              className="hidden sm:inline-flex items-center px-3 py-1.5 text-sm rounded-md border border-border-strong hover:bg-elevated text-fg-muted hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
             >
               Sign out
             </button>
@@ -951,10 +951,10 @@ export default function HomePage() {
                   className="h-12 w-12 rounded"
                 />
                 <div className="space-y-2">
-                  <h2 className="text-2xl font-semibold text-slate-100">
+                  <h2 className="text-2xl font-semibold text-fg">
                     What are we working on?
                   </h2>
-                  <p className="text-sm text-slate-400">
+                  <p className="text-sm text-fg-muted">
                     Ask about an account, a contact, or an opportunity.
                   </p>
                 </div>
@@ -964,7 +964,7 @@ export default function HomePage() {
                       key={prompt}
                       type="button"
                       onClick={() => prefillFromStarter(prompt)}
-                      className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3 text-left text-sm text-slate-300 transition hover:border-slate-700 hover:bg-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                      className="rounded-lg border border-border bg-surface px-4 py-3 text-left text-sm text-fg-muted transition hover:border-border-strong hover:bg-elevated hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                     >
                       {prompt}
                     </button>
@@ -1001,7 +1001,7 @@ export default function HomePage() {
             type="button"
             onClick={scrollToLatest}
             aria-label="Jump to latest message"
-            className="absolute bottom-4 right-4 inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-200 shadow-lg backdrop-blur hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+            className="absolute bottom-4 right-4 inline-flex items-center gap-1.5 rounded-full border border-border-strong bg-elevated/90 px-3 py-1.5 text-xs text-fg shadow-lg backdrop-blur hover:bg-elevated focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
           >
             <span>Jump to latest</span>
             <svg
@@ -1023,19 +1023,19 @@ export default function HomePage() {
 
         {/* Input Area */}
         <div
-          className="relative bg-slate-950"
+          className="relative bg-bg"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-t from-slate-950 to-transparent"
+            className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-t from-bg to-transparent"
           />
           <form onSubmit={handleSubmit} className="px-4 sm:px-6 pt-2 pb-4">
             <div className="relative mx-auto w-full max-w-[min(768px,100%)] min-w-0">
               <textarea
                 ref={textareaRef}
                 aria-label="Message PathovAI"
-                className="block w-full rounded-xl border border-slate-700 bg-slate-900 pl-4 pr-14 py-3 text-sm outline-none focus:border-sky-500 resize-none overflow-y-hidden leading-6 placeholder:text-slate-500"
+                className="block w-full rounded-xl border border-border-strong bg-surface pl-4 pr-14 py-3 text-sm text-fg outline-none focus:border-accent resize-none overflow-y-hidden leading-6 placeholder:text-fg-subtle"
                 style={{ maxHeight: `${TEXTAREA_MAX_HEIGHT}px` }}
                 rows={1}
                 value={input}
@@ -1054,7 +1054,7 @@ export default function HomePage() {
                   onClick={handleStop}
                   aria-label="Stop generating"
                   title="Stop generating"
-                  className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-slate-700 text-slate-100 hover:bg-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                  className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-border-strong text-fg hover:bg-elevated focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                 >
                   <span className="sr-only">Stop generating</span>
                   <svg
@@ -1072,7 +1072,7 @@ export default function HomePage() {
                   disabled={!input.trim()}
                   aria-label="Send message"
                   title="Send message"
-                  className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-sky-600 text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                  className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-fg hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-border-strong disabled:text-fg-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                 >
                   <span className="sr-only">Send message</span>
                   <svg
@@ -1091,7 +1091,7 @@ export default function HomePage() {
                 </button>
               )}
             </div>
-            <p className="mx-auto mt-2 w-full max-w-[min(768px,100%)] text-center text-xs text-slate-500">
+            <p className="mx-auto mt-2 w-full max-w-[min(768px,100%)] text-center text-xs text-fg-subtle">
               Enter to send · Shift+Enter for newline
             </p>
           </form>
@@ -1147,11 +1147,11 @@ function AssistantMessageRow({
     <article
       tabIndex={0}
       aria-label="PathovAI response"
-      className="group mx-auto flex w-full max-w-[min(768px,100%)] min-w-0 gap-2 sm:gap-3 [overflow-wrap:anywhere] text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 rounded-lg"
+      className="group mx-auto flex w-full max-w-[min(768px,100%)] min-w-0 gap-2 sm:gap-3 [overflow-wrap:anywhere] text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded-lg"
     >
       <div
         aria-hidden
-        className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-800"
+        className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated"
       >
         <img
           src="/PATHOVA_LOGO1_edited_edited_edited.png"
@@ -1202,12 +1202,12 @@ function UserMessageRow({
       aria-label="Your message"
       className="mx-auto flex w-full max-w-[min(768px,100%)] min-w-0 justify-end gap-2 sm:gap-3"
     >
-      <div className="min-w-0 max-w-[85%] rounded-2xl rounded-br-md bg-slate-800/80 px-4 py-2.5 text-sm text-slate-100 [overflow-wrap:anywhere] whitespace-pre-wrap">
+      <div className="min-w-0 max-w-[85%] rounded-2xl rounded-br-md bg-elevated px-4 py-2.5 text-sm text-fg [overflow-wrap:anywhere] whitespace-pre-wrap">
         {content}
       </div>
       <div
         aria-hidden
-        className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-sky-600 text-xs font-semibold text-white"
+        className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-fg"
       >
         {initial}
       </div>
@@ -1224,7 +1224,7 @@ function PendingAssistantRow() {
     >
       <div
         aria-hidden
-        className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-800"
+        className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated"
       >
         <img
           src="/PATHOVA_LOGO1_edited_edited_edited.png"
@@ -1234,9 +1234,9 @@ function PendingAssistantRow() {
       </div>
       <div className="flex items-center gap-1.5 pt-2">
         <span className="sr-only">PathovAI is thinking</span>
-        <span className="h-2 w-2 animate-pulse rounded-full bg-slate-500 [animation-delay:0ms]" />
-        <span className="h-2 w-2 animate-pulse rounded-full bg-slate-500 [animation-delay:150ms]" />
-        <span className="h-2 w-2 animate-pulse rounded-full bg-slate-500 [animation-delay:300ms]" />
+        <span className="h-2 w-2 animate-pulse rounded-full bg-fg-subtle [animation-delay:0ms]" />
+        <span className="h-2 w-2 animate-pulse rounded-full bg-fg-subtle [animation-delay:150ms]" />
+        <span className="h-2 w-2 animate-pulse rounded-full bg-fg-subtle [animation-delay:300ms]" />
       </div>
     </div>
   );

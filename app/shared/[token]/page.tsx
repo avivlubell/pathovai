@@ -108,17 +108,17 @@ export default async function SharedChatPage({
 
 function NotAvailable() {
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-200 px-6">
+    <main className="min-h-screen flex items-center justify-center bg-bg text-fg px-6">
       <div className="max-w-md text-center space-y-4">
         <img
           src="/PATHOVA_LOGO1_edited_edited_edited.png"
           alt="PathovAI logo"
           className="h-12 w-12 rounded mx-auto"
         />
-        <h1 className="text-xl font-semibold text-slate-100">
+        <h1 className="text-xl font-semibold text-fg">
           This shared chat is no longer available
         </h1>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-fg-muted">
           The owner may have stopped sharing this conversation, or the link
           may have expired. Try asking them for a new link.
         </p>

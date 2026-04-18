@@ -72,11 +72,11 @@ function dotColorFor(iso: string | null): {
   stale: boolean;
   tone: 'fresh' | 'warn' | 'stale';
 } {
-  if (!iso) return { color: 'bg-slate-600', stale: false, tone: 'stale' };
+  if (!iso) return { color: 'bg-border-strong', stale: false, tone: 'stale' };
   const hours = diffHours(iso);
-  if (hours < 24) return { color: 'bg-emerald-500', stale: false, tone: 'fresh' };
-  if (hours < 24 * 7) return { color: 'bg-amber-500', stale: false, tone: 'warn' };
-  return { color: 'bg-rose-500', stale: true, tone: 'stale' };
+  if (hours < 24) return { color: 'bg-success', stale: false, tone: 'fresh' };
+  if (hours < 24 * 7) return { color: 'bg-warning', stale: false, tone: 'warn' };
+  return { color: 'bg-danger', stale: true, tone: 'stale' };
 }
 
 function formatAbsolute(iso: string): string {
@@ -153,7 +153,7 @@ export default function KbFreshness() {
         type="button"
         aria-label={ariaLabel}
         onClick={() => setMobileOpen((o) => !o)}
-        className="inline-flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-slate-400 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+        className="inline-flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-fg-muted hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
       >
         <span
           aria-hidden
@@ -163,13 +163,13 @@ export default function KbFreshness() {
           <span className="hidden md:inline">KB updated {relative}</span>
           <span className="md:hidden">{compact}</span>
           {dot.stale && (
-            <span className="ml-1 font-medium text-rose-400">Stale</span>
+            <span className="ml-1 font-medium text-danger">Stale</span>
           )}
         </span>
       </button>
       <div
         role="tooltip"
-        className={`absolute left-0 top-full z-30 mt-1 w-max max-w-xs rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 shadow-lg transition ${
+        className={`absolute left-0 top-full z-30 mt-1 w-max max-w-xs rounded-md border border-border-strong bg-elevated px-3 py-2 text-xs text-fg shadow-lg transition ${
           mobileOpen
             ? 'opacity-100'
             : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'
@@ -177,13 +177,13 @@ export default function KbFreshness() {
       >
         {absolute ? (
           <p>
-            <span className="text-slate-400">Last sync:</span> {absolute}
+            <span className="text-fg-muted">Last sync:</span> {absolute}
           </p>
         ) : (
-          <p className="text-slate-400">Last sync unknown</p>
+          <p className="text-fg-muted">Last sync unknown</p>
         )}
         <p>
-          <span className="text-slate-400">Records:</span>{' '}
+          <span className="text-fg-muted">Records:</span>{' '}
           {formatCount(record_count)}
         </p>
       </div>
