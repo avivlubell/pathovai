@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
+import MessageContent from '../components/MessageContent';
 
 type ChatMessage = {
   id: string;
@@ -200,7 +201,7 @@ export default function HomePage() {
       )}
 
       {/* Main Chat */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <div className="flex items-center sticky top-0 z-10 bg-slate-950 justify-between px-6 py-3 border-b border-slate-800">
           <div className="flex items-center gap-3">
@@ -242,12 +243,16 @@ export default function HomePage() {
           {messages.map((m) => (
             <div
               key={m.id}
-              className={`max-w-3xl mx-auto ${m.role === 'user' ? 'text-sky-300' : 'text-slate-200'}`}
+              className={`mx-auto w-full max-w-[min(768px,100%)] min-w-0 [overflow-wrap:anywhere] ${m.role === 'user' ? 'text-sky-300' : 'text-slate-200'}`}
             >
               <p className="text-xs font-semibold mb-1 text-slate-400">
                 {m.role === 'user' ? 'You' : 'PathovAI'}
               </p>
-              <p className="whitespace-pre-wrap">{m.content}</p>
+              {m.role === 'assistant' ? (
+                <MessageContent content={m.content} />
+              ) : (
+                <p className="whitespace-pre-wrap">{m.content}</p>
+              )}
               {m.role === 'assistant' && (
                 <button
                   onClick={() => downloadAsMarkdown(m.content)}
@@ -259,7 +264,7 @@ export default function HomePage() {
             </div>
           ))}
           {isLoading && (
-            <div className="max-w-3xl mx-auto">
+            <div className="mx-auto w-full max-w-[min(768px,100%)] min-w-0">
               <p className="text-slate-500 animate-pulse">Thinking...</p>
             </div>
           )}
