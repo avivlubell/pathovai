@@ -37,10 +37,12 @@ export default function HomePage() {
   const [contextOpen, setContextOpen] = useState(false);
   const [contextCount, setContextCount] = useState(0);
   const [activeAccount, setActiveAccount] = useState<string | null>(null);
+  const [showJumpButton, setShowJumpButton] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const sidebarRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
 
   const TEXTAREA_MAX_HEIGHT = 200;
 
@@ -68,8 +70,29 @@ export default function HomePage() {
   }, [chatHistory]);
 
   useEffect(() => {
+    if (showJumpButton) return;
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, showJumpButton]);
+
+  // On mobile, sidebar starts hidden. On desktop (>=768px), keeps the default.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      setSidebarOpen(false);
+    }
+  }, []);
+
+  function handleMessagesScroll() {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowJumpButton(distanceFromBottom > 120);
+  }
+
+  function scrollToLatest() {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setShowJumpButton(false);
+  }
 
   const saveCurrentChat = useCallback(
     (msgs: ChatMessage[]): string | null => {
@@ -186,6 +209,12 @@ export default function HomePage() {
   function loadChat(chatSession: ChatSession) {
     setMessages(chatSession.messages);
     setActiveChatId(chatSession.id);
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia('(max-width: 767px)').matches
+    ) {
+      setSidebarOpen(false);
+    }
   }
 
   function clearHistory() {
@@ -496,14 +525,15 @@ export default function HomePage() {
 
   if (!session) {
     return (
-      <div className="flex h-screen bg-slate-950 text-slate-100 items-center justify-center">
+      <div className="flex h-[100dvh] bg-slate-950 text-slate-100 items-center justify-center">
         <div className="flex flex-col items-center gap-6 w-full max-w-sm px-6">
           <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" className="h-14 w-14 rounded" />
           <h1 className="text-2xl font-bold">PathovAI</h1>
           <p className="text-slate-400 text-sm text-center">Sign in to continue</p>
           <button
+            type="button"
             onClick={() => signIn('google')}
-            className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-md border border-slate-700 hover:bg-slate-800 text-sm font-medium"
+            className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-md border border-slate-700 hover:bg-slate-800 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -519,13 +549,34 @@ export default function HomePage() {
     );
   }
 
+  const userInitial = (() => {
+    const src = session?.user?.name || session?.user?.email || 'You';
+    return src.trim().charAt(0).toUpperCase() || 'Y';
+  })();
+
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100">
-      {/* Sidebar */}
+    <div className="flex h-[100dvh] bg-slate-950 text-slate-100">
+      <a
+        href="#conversation"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[60] focus:rounded focus:bg-sky-600 focus:px-3 focus:py-1.5 focus:text-sm focus:text-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+      >
+        Skip to conversation
+      </a>
+      {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
+          aria-hidden
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+        />
+      )}
+      {/* Sidebar */}
+      {sidebarOpen && (
+        <nav
+          id="chat-history-nav"
           ref={sidebarRef}
-          className="w-60 border-r border-slate-800 p-3 flex flex-col gap-2 overflow-y-auto"
+          aria-label="Chat history"
+          className="fixed inset-y-0 left-0 z-40 flex w-72 max-w-[80vw] flex-col gap-2 overflow-y-auto border-r border-slate-800 bg-slate-950 p-3 md:static md:z-0 md:w-60 md:max-w-none"
         >
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-300">Chat History</h2>
@@ -680,32 +731,36 @@ export default function HomePage() {
               </div>
             );
           })}
-        </div>
+        </nav>
       )}
 
       {/* Main Chat */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <main id="conversation" className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="flex items-center sticky top-0 z-10 bg-slate-950 justify-between px-6 py-3 border-b border-slate-800">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center sticky top-0 z-10 bg-slate-950 justify-between px-4 sm:px-6 py-3 border-b border-slate-800 gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <button
+              type="button"
               onClick={() => setSidebarOpen((o) => !o)}
-              className="text-slate-400 hover:text-slate-200 p-1 rounded"
+              aria-label="Toggle chat history"
+              aria-expanded={sidebarOpen}
+              aria-controls="chat-history-nav"
+              className="text-slate-400 hover:text-slate-200 p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
               title={sidebarOpen ? 'Hide history' : 'Show history'}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" className="h-8 w-8 rounded" />
-            <h1 className="text-lg font-bold">PathovAI</h1>
+            <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" className="h-8 w-8 flex-shrink-0 rounded" />
+            <h1 className="hidden sm:block text-lg font-bold">PathovAI</h1>
             {activeAccount && (
               <span
-                className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-sky-700/60 bg-sky-900/30 px-2.5 py-1 text-xs text-sky-200"
-                title="Primary account for this chat"
+                className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-sky-700/60 bg-sky-900/30 px-2.5 py-1 text-xs text-sky-200"
+                title={`Primary account for this chat: ${activeAccount}`}
               >
-                <span className="text-slate-400">Account:</span>
-                <span className="font-medium">{activeAccount}</span>
+                <span className="hidden sm:inline text-slate-400">Account:</span>
+                <span className="truncate font-medium">{activeAccount}</span>
                 <button
                   type="button"
                   onClick={clearActiveAccount}
@@ -733,9 +788,13 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => setContextOpen(true)}
-              aria-label="Open conversation context"
+              aria-label={
+                contextCount > 0
+                  ? `Open conversation context (${contextCount})`
+                  : 'Open conversation context'
+              }
               title="Conversation context"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
             >
               <svg
                 aria-hidden="true"
@@ -749,22 +808,40 @@ export default function HomePage() {
               >
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
-              <span>Context</span>
+              <span className="hidden sm:inline">Context</span>
               {contextCount > 0 && (
-                <span className="ml-1 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-sky-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                <span className="ml-0.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-sky-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
                   {contextCount}
                 </span>
               )}
             </button>
             <button
+              type="button"
               onClick={handleNewChat}
-              className="px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800"
+              aria-label="Start new chat"
+              title="New chat"
+              className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
             >
-              + New Chat
+              <svg
+                aria-hidden="true"
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
+              </svg>
+              <span className="hidden sm:inline">New Chat</span>
             </button>
             <button
+              type="button"
               onClick={() => signOut()}
-              className="px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 text-slate-400 hover:text-slate-200"
+              aria-label="Sign out"
+              className="hidden sm:inline-flex items-center px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 text-slate-400 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
             >
               Sign out
             </button>
@@ -772,7 +849,12 @@ export default function HomePage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div className="relative flex-1 min-h-0">
+        <div
+          ref={messagesContainerRef}
+          onScroll={handleMessagesScroll}
+          className="absolute inset-0 overflow-y-auto px-4 py-4 sm:px-6 space-y-4"
+        >
           {messages.length === 0 && (
             <div className="flex h-full min-h-[60vh] w-full items-center justify-center">
               <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-6 px-2 text-center">
@@ -817,30 +899,51 @@ export default function HomePage() {
                 onDownload={() => downloadAsMarkdown(m.content)}
               />
             ) : (
-              <div
+              <UserMessageRow
                 key={m.id}
-                className="mx-auto w-full max-w-[min(768px,100%)] min-w-0 [overflow-wrap:anywhere] text-sky-300"
-              >
-                <p className="text-xs font-semibold mb-1 text-slate-400">You</p>
-                <p className="whitespace-pre-wrap">{m.content}</p>
-              </div>
+                content={m.content}
+                initial={userInitial}
+              />
             )
           )}
-          {isLoading && (
-            <div className="mx-auto w-full max-w-[min(768px,100%)] min-w-0">
-              <p className="text-slate-500 animate-pulse">Thinking...</p>
-            </div>
-          )}
+          {isLoading && <PendingAssistantRow />}
           <div ref={messagesEndRef} />
+        </div>
+        {showJumpButton && (
+          <button
+            type="button"
+            onClick={scrollToLatest}
+            aria-label="Jump to latest message"
+            className="absolute bottom-4 right-4 inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-200 shadow-lg backdrop-blur hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          >
+            <span>Jump to latest</span>
+            <svg
+              aria-hidden="true"
+              className="h-3.5 w-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 5v14" />
+              <path d="m19 12-7 7-7-7" />
+            </svg>
+          </button>
+        )}
         </div>
 
         {/* Input Area */}
-        <div className="relative bg-slate-950">
+        <div
+          className="relative bg-slate-950"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
           <div
             aria-hidden
             className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-t from-slate-950 to-transparent"
           />
-          <form onSubmit={handleSubmit} className="px-6 pt-2 pb-4">
+          <form onSubmit={handleSubmit} className="px-4 sm:px-6 pt-2 pb-4">
             <div className="relative mx-auto w-full max-w-[min(768px,100%)] min-w-0">
               <textarea
                 ref={textareaRef}
@@ -906,7 +1009,7 @@ export default function HomePage() {
             </p>
           </form>
         </div>
-      </div>
+      </main>
       <ContextDrawer
         open={contextOpen}
         chatId={activeChatId}
@@ -939,26 +1042,38 @@ function AssistantMessageRow({
 }: AssistantMessageRowProps) {
   const renderedRef = useRef<HTMLDivElement>(null);
   return (
-    <div
+    <article
       tabIndex={0}
-      className="group mx-auto w-full max-w-[min(768px,100%)] min-w-0 [overflow-wrap:anywhere] text-slate-200 focus:outline-none"
+      aria-label="PathovAI response"
+      className="group mx-auto flex w-full max-w-[min(768px,100%)] min-w-0 gap-2 sm:gap-3 [overflow-wrap:anywhere] text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 rounded-lg"
     >
-      <p className="text-xs font-semibold mb-1 text-slate-400">PathovAI</p>
-      <div ref={renderedRef}>
-        <MessageContent content={message.content} />
+      <div
+        aria-hidden
+        className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-800"
+      >
+        <img
+          src="/PATHOVA_LOGO1_edited_edited_edited.png"
+          alt=""
+          className="h-7 w-7 rounded"
+        />
       </div>
-      <MessageActions
-        messageId={message.id}
-        chatId={chatId}
-        userId={userId}
-        content={message.content}
-        renderedRef={renderedRef}
-        isStreaming={isStreaming}
-        onRegenerate={onRegenerate}
-        onDownload={onDownload}
-      />
-      <MessagesSourcesOrNothing sources={sources} isStreaming={isStreaming} />
-    </div>
+      <div className="min-w-0 flex-1">
+        <div ref={renderedRef}>
+          <MessageContent content={message.content} />
+        </div>
+        <MessageActions
+          messageId={message.id}
+          chatId={chatId}
+          userId={userId}
+          content={message.content}
+          renderedRef={renderedRef}
+          isStreaming={isStreaming}
+          onRegenerate={onRegenerate}
+          onDownload={onDownload}
+        />
+        <MessagesSourcesOrNothing sources={sources} isStreaming={isStreaming} />
+      </div>
+    </article>
   );
 }
 
@@ -971,4 +1086,56 @@ function MessagesSourcesOrNothing({
 }) {
   if (isStreaming) return null;
   return <MessageSources sources={sources} />;
+}
+
+function UserMessageRow({
+  content,
+  initial,
+}: {
+  content: string;
+  initial: string;
+}) {
+  return (
+    <article
+      aria-label="Your message"
+      className="mx-auto flex w-full max-w-[min(768px,100%)] min-w-0 justify-end gap-2 sm:gap-3"
+    >
+      <div className="min-w-0 max-w-[85%] rounded-2xl rounded-br-md bg-slate-800/80 px-4 py-2.5 text-sm text-slate-100 [overflow-wrap:anywhere] whitespace-pre-wrap">
+        {content}
+      </div>
+      <div
+        aria-hidden
+        className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-sky-600 text-xs font-semibold text-white"
+      >
+        {initial}
+      </div>
+    </article>
+  );
+}
+
+function PendingAssistantRow() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="mx-auto flex w-full max-w-[min(768px,100%)] min-w-0 gap-2 sm:gap-3"
+    >
+      <div
+        aria-hidden
+        className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-800"
+      >
+        <img
+          src="/PATHOVA_LOGO1_edited_edited_edited.png"
+          alt=""
+          className="h-7 w-7 rounded"
+        />
+      </div>
+      <div className="flex items-center gap-1.5 pt-2">
+        <span className="sr-only">PathovAI is thinking</span>
+        <span className="h-2 w-2 animate-pulse rounded-full bg-slate-500 [animation-delay:0ms]" />
+        <span className="h-2 w-2 animate-pulse rounded-full bg-slate-500 [animation-delay:150ms]" />
+        <span className="h-2 w-2 animate-pulse rounded-full bg-slate-500 [animation-delay:300ms]" />
+      </div>
+    </div>
+  );
 }
