@@ -3,11 +3,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import MessageContent from '../components/MessageContent';
+import MessageActions from '../components/MessageActions';
+import MessageSources, { type SourceRef } from '../components/MessageSources';
+import ContextDrawer from '../components/ContextDrawer';
 
 type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  sources?: SourceRef[];
 };
 
 type ChatSession = {
@@ -30,6 +34,9 @@ export default function HomePage() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [contextCount, setContextCount] = useState(0);
+  const [activeAccount, setActiveAccount] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -122,8 +129,37 @@ export default function HomePage() {
     setMessages([]);
     setInput('');
     setIsLoading(false);
-    setActiveChatId(null);
+    setActiveChatId(crypto.randomUUID());
+    setContextCount(0);
+    setActiveAccount(null);
   }
+
+  useEffect(() => {
+    if (!activeChatId) setActiveChatId(crypto.randomUUID());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!activeChatId) return;
+    let cancelled = false;
+    fetch(`/api/context?chat_id=${encodeURIComponent(activeChatId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const hasNotes = typeof data.notes === 'string' && data.notes.trim();
+        const attCount = Array.isArray(data.attachments) ? data.attachments.length : 0;
+        setContextCount((hasNotes ? 1 : 0) + attCount);
+        setActiveAccount(
+          typeof data.active_account === 'string' && data.active_account.trim()
+            ? data.active_account
+            : null
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeChatId]);
 
   const STARTER_PROMPTS = [
     'Is [Account] an ICP fit?',
@@ -236,6 +272,62 @@ export default function HomePage() {
     };
   }, [openMenuForId]);
 
+  async function persistActiveAccount(
+    chatId: string,
+    next: string | null
+  ) {
+    try {
+      await fetch('/api/context', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          user_id: session?.user?.email ?? null,
+          active_account: next,
+        }),
+      });
+    } catch (err) {
+      console.error('persist active_account', err);
+    }
+  }
+
+  async function maybeExtractAccount(
+    chatId: string,
+    userText: string,
+    assistantText: string,
+    current: string | null
+  ) {
+    try {
+      const res = await fetch('/api/extract-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user: userText,
+          assistant: assistantText,
+          current,
+        }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const next: string | null =
+        typeof data?.account === 'string' && data.account.trim()
+          ? data.account.trim()
+          : null;
+      if (!next) return;
+      if ((current ?? '').trim().toLowerCase() === next.toLowerCase()) return;
+      setActiveAccount(next);
+      persistActiveAccount(chatId, next);
+    } catch (err) {
+      console.error('extract-account', err);
+    }
+  }
+
+  function clearActiveAccount() {
+    if (!activeChatId) return;
+    setActiveAccount(null);
+    persistActiveAccount(activeChatId, null);
+  }
+
   function downloadAsMarkdown(content: string) {
     const blob = new Blob([content], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
@@ -271,6 +363,7 @@ export default function HomePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          chat_id: activeChatId,
           messages: nextMessages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -295,10 +388,14 @@ export default function HomePage() {
 
       const data = await res.json();
       const replyText = data.reply ?? '';
+      const replySources: SourceRef[] = Array.isArray(data.sources)
+        ? data.sources
+        : [];
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: replyText,
+        sources: replySources,
       };
       const updatedMessages = [...nextMessages, assistantMessage];
       setMessages(updatedMessages);
@@ -308,6 +405,15 @@ export default function HomePage() {
         generateTitle(userMessage.content, replyText).then((title) => {
           if (title) updateChatTitle(chatId, title);
         });
+      }
+      const extractChatId = chatId ?? activeChatId;
+      if (extractChatId && replyText) {
+        maybeExtractAccount(
+          extractChatId,
+          userMessage.content,
+          replyText,
+          activeAccount
+        );
       }
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') {
@@ -325,6 +431,67 @@ export default function HomePage() {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setIsLoading(false);
+  }
+
+  async function handleRegenerate(assistantIdx: number) {
+    if (isLoading) return;
+    const assistantMsg = messages[assistantIdx];
+    const prevUser = messages[assistantIdx - 1];
+    if (!assistantMsg || assistantMsg.role !== 'assistant') return;
+    if (!prevUser || prevUser.role !== 'user') return;
+
+    const priorMessages = messages.slice(0, assistantIdx);
+    setMessages(priorMessages);
+    setIsLoading(true);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: activeChatId,
+          messages: priorMessages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        const errorMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `\u26a0\ufe0f Error: ${errorData?.error || errorData?.details || 'Server error.'}`,
+        };
+        setMessages([...priorMessages, errorMessage]);
+        return;
+      }
+      const data = await res.json();
+      const replyText = data.reply ?? '';
+      const replySources: SourceRef[] = Array.isArray(data.sources)
+        ? data.sources
+        : [];
+      const newAssistant: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: replyText,
+        sources: replySources,
+      };
+      const updated = [...priorMessages, newAssistant];
+      setMessages(updated);
+      saveCurrentChat(updated);
+    } catch (err) {
+      if ((err as Error)?.name !== 'AbortError') {
+        console.error('Regenerate error', err);
+      }
+    } finally {
+      abortControllerRef.current = null;
+      setIsLoading(false);
+    }
   }
 
   if (!session) {
@@ -532,8 +699,63 @@ export default function HomePage() {
             </button>
             <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" className="h-8 w-8 rounded" />
             <h1 className="text-lg font-bold">PathovAI</h1>
+            {activeAccount && (
+              <span
+                className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-sky-700/60 bg-sky-900/30 px-2.5 py-1 text-xs text-sky-200"
+                title="Primary account for this chat"
+              >
+                <span className="text-slate-400">Account:</span>
+                <span className="font-medium">{activeAccount}</span>
+                <button
+                  type="button"
+                  onClick={clearActiveAccount}
+                  aria-label={`Clear active account ${activeAccount}`}
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full text-sky-300/80 hover:bg-sky-800/60 hover:text-sky-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                >
+                  <svg
+                    aria-hidden="true"
+                    className="h-3 w-3"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                  </svg>
+                </button>
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setContextOpen(true)}
+              aria-label="Open conversation context"
+              title="Conversation context"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+            >
+              <svg
+                aria-hidden="true"
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>Context</span>
+              {contextCount > 0 && (
+                <span className="ml-1 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-sky-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                  {contextCount}
+                </span>
+              )}
+            </button>
             <button
               onClick={handleNewChat}
               className="px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800"
@@ -582,29 +804,28 @@ export default function HomePage() {
               </div>
             </div>
           )}
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={`mx-auto w-full max-w-[min(768px,100%)] min-w-0 [overflow-wrap:anywhere] ${m.role === 'user' ? 'text-sky-300' : 'text-slate-200'}`}
-            >
-              <p className="text-xs font-semibold mb-1 text-slate-400">
-                {m.role === 'user' ? 'You' : 'PathovAI'}
-              </p>
-              {m.role === 'assistant' ? (
-                <MessageContent content={m.content} />
-              ) : (
+          {messages.map((m, idx) =>
+            m.role === 'assistant' ? (
+              <AssistantMessageRow
+                key={m.id}
+                message={m}
+                chatId={activeChatId}
+                userId={session?.user?.email ?? null}
+                isStreaming={isLoading}
+                sources={m.sources}
+                onRegenerate={() => handleRegenerate(idx)}
+                onDownload={() => downloadAsMarkdown(m.content)}
+              />
+            ) : (
+              <div
+                key={m.id}
+                className="mx-auto w-full max-w-[min(768px,100%)] min-w-0 [overflow-wrap:anywhere] text-sky-300"
+              >
+                <p className="text-xs font-semibold mb-1 text-slate-400">You</p>
                 <p className="whitespace-pre-wrap">{m.content}</p>
-              )}
-              {m.role === 'assistant' && (
-                <button
-                  onClick={() => downloadAsMarkdown(m.content)}
-                  className="mt-2 text-xs text-slate-500 hover:text-slate-300 underline"
-                >
-                  Download as .md
-                </button>
-              )}
-            </div>
-          ))}
+              </div>
+            )
+          )}
           {isLoading && (
             <div className="mx-auto w-full max-w-[min(768px,100%)] min-w-0">
               <p className="text-slate-500 animate-pulse">Thinking...</p>
@@ -686,6 +907,68 @@ export default function HomePage() {
           </form>
         </div>
       </div>
+      <ContextDrawer
+        open={contextOpen}
+        chatId={activeChatId}
+        userId={session?.user?.email ?? null}
+        onClose={() => setContextOpen(false)}
+        onCountChange={setContextCount}
+      />
     </div>
   );
+}
+
+type AssistantMessageRowProps = {
+  message: ChatMessage;
+  chatId: string | null;
+  userId: string | null;
+  isStreaming: boolean;
+  sources: SourceRef[] | undefined;
+  onRegenerate: () => void;
+  onDownload: () => void;
+};
+
+function AssistantMessageRow({
+  message,
+  chatId,
+  userId,
+  isStreaming,
+  sources,
+  onRegenerate,
+  onDownload,
+}: AssistantMessageRowProps) {
+  const renderedRef = useRef<HTMLDivElement>(null);
+  return (
+    <div
+      tabIndex={0}
+      className="group mx-auto w-full max-w-[min(768px,100%)] min-w-0 [overflow-wrap:anywhere] text-slate-200 focus:outline-none"
+    >
+      <p className="text-xs font-semibold mb-1 text-slate-400">PathovAI</p>
+      <div ref={renderedRef}>
+        <MessageContent content={message.content} />
+      </div>
+      <MessageActions
+        messageId={message.id}
+        chatId={chatId}
+        userId={userId}
+        content={message.content}
+        renderedRef={renderedRef}
+        isStreaming={isStreaming}
+        onRegenerate={onRegenerate}
+        onDownload={onDownload}
+      />
+      <MessagesSourcesOrNothing sources={sources} isStreaming={isStreaming} />
+    </div>
+  );
+}
+
+function MessagesSourcesOrNothing({
+  sources,
+  isStreaming,
+}: {
+  sources: SourceRef[] | undefined;
+  isStreaming: boolean;
+}) {
+  if (isStreaming) return null;
+  return <MessageSources sources={sources} />;
 }
