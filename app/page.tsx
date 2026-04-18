@@ -35,7 +35,10 @@ export default function HomePage() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT) + 'px';
+    const nextHeight = Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT);
+    el.style.height = nextHeight + 'px';
+    el.style.overflowY =
+      el.scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden';
   }, []);
 
   useEffect(() => {
@@ -312,7 +315,7 @@ export default function HomePage() {
               <textarea
                 ref={textareaRef}
                 aria-label="Message PathovAI"
-                className="block w-full rounded-xl border border-slate-700 bg-slate-900 pl-4 pr-12 py-3 text-sm outline-none focus:border-sky-500 resize-none overflow-y-auto leading-6 placeholder:text-slate-500"
+                className="block w-full rounded-xl border border-slate-700 bg-slate-900 pl-4 pr-14 py-3 text-sm outline-none focus:border-sky-500 resize-none overflow-y-hidden leading-6 placeholder:text-slate-500"
                 style={{ maxHeight: `${TEXTAREA_MAX_HEIGHT}px` }}
                 rows={1}
                 value={input}
