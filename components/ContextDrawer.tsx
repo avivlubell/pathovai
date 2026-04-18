@@ -189,17 +189,17 @@ export default function ContextDrawer({
         role="dialog"
         aria-modal="true"
         aria-label="Conversation context"
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-slate-800 bg-slate-950 shadow-xl md:max-w-lg"
+        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-surface shadow-xl md:max-w-lg"
       >
-        <header className="flex items-center justify-between border-b border-slate-800 px-5 py-3">
-          <h2 className="text-base font-semibold text-slate-100">
+        <header className="flex items-center justify-between border-b border-border px-5 py-3">
+          <h2 className="text-base font-semibold text-fg">
             Conversation context
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close context"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-fg-muted hover:bg-elevated hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
           >
             <svg
               aria-hidden="true"
@@ -219,7 +219,7 @@ export default function ContextDrawer({
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
           {!chatId && (
-            <p className="rounded-md border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-400">
+            <p className="rounded-md border border-border bg-elevated p-3 text-xs text-fg-muted">
               Start a new chat and send a message — or reopen this drawer —
               to attach context.
             </p>
@@ -229,11 +229,11 @@ export default function ContextDrawer({
           <section className="space-y-2">
             <label
               htmlFor="context-notes"
-              className="block text-sm font-semibold text-slate-200"
+              className="block text-sm font-semibold text-fg"
             >
               Notes
             </label>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-fg-subtle">
               Anything Pathov should keep in mind for this conversation? e.g.,
               the prospect&apos;s recent press release, a competitor angle, a
               specific stakeholder note.
@@ -244,15 +244,15 @@ export default function ContextDrawer({
               onChange={(e) => setNotes(e.target.value)}
               rows={6}
               disabled={!chatId || loading}
-              className="w-full resize-y rounded-md border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 placeholder:text-slate-600 disabled:opacity-50"
+              className="w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent placeholder:text-fg-subtle disabled:opacity-50"
               placeholder="Type notes that should inform this chat only..."
             />
           </section>
 
           {/* Attachments */}
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-200">Attachments</h3>
-            <p className="text-xs text-slate-500">
+            <h3 className="text-sm font-semibold text-fg">Attachments</h3>
+            <p className="text-xs text-fg-subtle">
               PDF, DOCX, TXT, MD, or images (jpg/png). Up to 15 MB each.
             </p>
 
@@ -271,8 +271,8 @@ export default function ContextDrawer({
               }}
               className={`rounded-md border border-dashed px-4 py-6 text-center text-xs transition ${
                 dragOver
-                  ? 'border-sky-500 bg-sky-500/10 text-sky-200'
-                  : 'border-slate-800 text-slate-500 hover:border-slate-700'
+                  ? 'border-accent bg-info-bg text-info'
+                  : 'border-border text-fg-subtle hover:border-border-strong'
               } ${!chatId ? 'opacity-50 pointer-events-none' : ''}`}
             >
               <p>
@@ -280,7 +280,7 @@ export default function ContextDrawer({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="font-semibold text-sky-400 underline hover:text-sky-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 rounded"
+                  className="font-semibold text-accent underline hover:text-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded"
                 >
                   browse
                 </button>
@@ -297,10 +297,10 @@ export default function ContextDrawer({
                 }}
               />
               {uploading && (
-                <p className="mt-2 text-sky-300">Uploading…</p>
+                <p className="mt-2 text-accent-hover">Uploading…</p>
               )}
               {uploadError && (
-                <p className="mt-2 text-rose-400">{uploadError}</p>
+                <p className="mt-2 text-danger">{uploadError}</p>
               )}
             </div>
 
@@ -309,17 +309,17 @@ export default function ContextDrawer({
                 {attachments.map((a) => (
                   <li
                     key={a.id}
-                    className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm"
+                    className="flex items-center gap-2 rounded-md border border-border bg-elevated px-3 py-2 text-sm"
                   >
-                    <span className="flex-1 truncate text-slate-200" title={a.file_name}>
+                    <span className="flex-1 truncate text-fg" title={a.file_name}>
                       {a.file_name}
                     </span>
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-fg-subtle">
                       {formatBytes(a.file_size)}
                     </span>
                     {!a.has_text && (
                       <span
-                        className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-400"
+                        className="rounded bg-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fg-muted"
                         title="No text was extracted from this file; it will not influence the LLM"
                       >
                         no text
@@ -329,7 +329,7 @@ export default function ContextDrawer({
                       type="button"
                       onClick={() => removeAttachment(a.id)}
                       aria-label={`Remove ${a.file_name}`}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-500 hover:bg-slate-800 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded text-fg-subtle hover:bg-border hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                     >
                       <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                         <path d="M18 6 6 18" />
@@ -343,29 +343,29 @@ export default function ContextDrawer({
           </section>
         </div>
 
-        <footer className="flex items-center justify-between gap-3 border-t border-slate-800 px-5 py-3">
+        <footer className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
           <button
             type="button"
             onClick={clearAll}
             disabled={
               !chatId || (!notes.trim() && attachments.length === 0)
             }
-            className="text-xs text-slate-500 hover:text-red-400 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 rounded"
+            className="text-xs text-fg-subtle hover:text-danger disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded"
           >
             Clear context
           </button>
           <div className="flex items-center gap-2">
             {saving === 'saved' && (
-              <span className="text-xs text-slate-500">Saved</span>
+              <span className="text-xs text-success">Saved</span>
             )}
             {saving === 'error' && (
-              <span className="text-xs text-rose-400">Save failed</span>
+              <span className="text-xs text-danger">Save failed</span>
             )}
             <button
               type="button"
               onClick={saveNotes}
               disabled={!chatId || saving === 'saving'}
-              className="rounded-md bg-sky-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-accent-fg hover:bg-accent-hover disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
             >
               {saving === 'saving' ? 'Saving…' : 'Save'}
             </button>

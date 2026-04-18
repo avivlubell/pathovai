@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import MessageContent from '../../../components/MessageContent';
+import Logo from '../../../components/Logo';
 import type { SharedMessage } from '../../../lib/sharedChats';
 
 type Props = {
@@ -27,10 +28,10 @@ export default function SharedChatView({
   messages,
 }: Props) {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-bg text-fg flex flex-col">
       {/* Banner: makes it unmistakable that this is a read-only shared
           view, and surfaces who shared it. */}
-      <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 text-xs text-amber-200">
+      <div className="bg-warning-bg border-b border-warning/30 px-4 py-2 text-xs text-warning">
         <div className="mx-auto max-w-3xl flex flex-wrap items-center justify-between gap-2">
           <span>
             Shared by{' '}
@@ -39,22 +40,18 @@ export default function SharedChatView({
             </span>{' '}
             · {formatDate(createdAt)}
           </span>
-          <span className="rounded-full border border-amber-400/40 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+          <span className="rounded-full border border-warning/40 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
             Read-only
           </span>
         </div>
       </div>
 
-      <header className="px-4 py-3 border-b border-slate-800">
+      <header className="px-4 py-3 border-b border-border">
         <div className="mx-auto max-w-3xl flex items-center gap-3">
-          <img
-            src="/PATHOVA_LOGO1_edited_edited_edited.png"
-            alt="PathovAI logo"
-            className="h-8 w-8 rounded"
-          />
+          <Logo size={32} />
           <div className="min-w-0">
-            <p className="text-xs text-slate-500 leading-none">PathovAI</p>
-            <h1 className="truncate text-sm font-semibold text-slate-100">
+            <p className="text-xs text-fg-subtle leading-none">PathovAI</p>
+            <h1 className="truncate text-sm font-semibold text-fg">
               {title || 'Shared chat'}
             </h1>
           </div>
@@ -64,7 +61,7 @@ export default function SharedChatView({
       <main className="flex-1 px-4 py-6">
         <div className="mx-auto max-w-3xl space-y-5">
           {messages.length === 0 && (
-            <p className="text-slate-500 text-center mt-12">
+            <p className="text-fg-subtle text-center mt-12">
               This chat has no messages yet.
             </p>
           )}
@@ -74,7 +71,7 @@ export default function SharedChatView({
         </div>
       </main>
 
-      <footer className="px-4 py-4 border-t border-slate-800 text-center text-[11px] text-slate-500">
+      <footer className="px-4 py-4 border-t border-border text-center text-[11px] text-fg-subtle">
         This is a read-only view. The viewer cannot send messages or see other
         chats.
       </footer>
@@ -98,10 +95,10 @@ function SharedMessageRow({ message }: { message: SharedMessage }) {
   return (
     <div
       className={`min-w-0 [overflow-wrap:anywhere] ${
-        message.role === 'user' ? 'text-sky-300' : 'text-slate-200'
+        message.role === 'user' ? 'text-accent-hover' : 'text-fg'
       }`}
     >
-      <p className="text-xs font-semibold mb-1 text-slate-400">
+      <p className="text-xs font-semibold mb-1 text-fg-muted">
         {message.role === 'user' ? 'User' : 'PathovAI'}
       </p>
       {message.role === 'assistant' ? (
@@ -112,7 +109,7 @@ function SharedMessageRow({ message }: { message: SharedMessage }) {
       <button
         onClick={copy}
         aria-label="Copy message"
-        className="mt-2 text-xs text-slate-500 hover:text-slate-300"
+        className="mt-2 text-xs text-fg-subtle hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded"
       >
         {copied ? 'Copied' : 'Copy'}
       </button>

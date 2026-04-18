@@ -263,21 +263,21 @@ export default function ShareChatModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="share-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-bg/70 px-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
-        <div className="flex items-start justify-between px-5 pt-4 pb-3 border-b border-slate-800">
-          <h2 id="share-modal-title" className="text-base font-semibold text-slate-100">
+      <div className="w-full max-w-md rounded-xl border border-border-strong bg-elevated shadow-2xl">
+        <div className="flex items-start justify-between px-5 pt-4 pb-3 border-b border-border">
+          <h2 id="share-modal-title" className="text-base font-semibold text-fg">
             Share this chat
           </h2>
           <button
             ref={closeButtonRef}
             onClick={onClose}
             aria-label="Close share dialog"
-            className="text-slate-400 hover:text-slate-200 -mt-1 -mr-1 p-1"
+            className="text-fg-muted hover:text-fg -mt-1 -mr-1 p-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded"
           >
             <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
               <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22z" />
@@ -287,7 +287,7 @@ export default function ShareChatModal({
 
         <div className="px-5 py-4 space-y-4">
           {loading ? (
-            <p className="text-sm text-slate-400">Loading…</p>
+            <p className="text-sm text-fg-muted">Loading…</p>
           ) : (
             <>
               <ToggleRow
@@ -299,11 +299,11 @@ export default function ShareChatModal({
               />
 
               {sharingOn && share && (
-                <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                <div className="space-y-3 rounded-lg border border-border bg-surface p-3">
                   <div>
                     <label
                       htmlFor="share-link"
-                      className="block text-xs font-medium text-slate-400 mb-1"
+                      className="block text-xs font-medium text-fg-muted mb-1"
                     >
                       Share link
                     </label>
@@ -314,11 +314,11 @@ export default function ShareChatModal({
                         readOnly
                         value={share.url}
                         onFocus={(e) => e.currentTarget.select()}
-                        className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200 outline-none focus:border-sky-500"
+                        className="flex-1 rounded-md border border-border-strong bg-bg px-2 py-1.5 text-xs text-fg outline-none focus:border-accent"
                       />
                       <button
                         onClick={copyLink}
-                        className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500"
+                        className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                       >
                         Copy link
                       </button>
@@ -347,7 +347,7 @@ export default function ShareChatModal({
                     onChange={(next) => updateSetting({ include_context: next })}
                   />
 
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-fg-subtle">
                     {share.view_count === 0
                       ? 'Not viewed yet.'
                       : `Viewed ${share.view_count} time${share.view_count === 1 ? '' : 's'}.`}
@@ -356,7 +356,7 @@ export default function ShareChatModal({
                   <button
                     onClick={stopSharing}
                     disabled={busy}
-                    className="w-full rounded-md border border-rose-700/60 bg-rose-900/20 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-900/40 disabled:opacity-60"
+                    className="w-full rounded-md border border-danger/40 bg-danger-bg px-3 py-1.5 text-xs font-medium text-danger hover:bg-danger/20 disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-danger focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                   >
                     Stop sharing
                   </button>
@@ -364,7 +364,7 @@ export default function ShareChatModal({
               )}
 
               {!sharingOn && (
-                <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3 opacity-70">
+                <div className="space-y-3 rounded-lg border border-border bg-surface p-3 opacity-70">
                   <ToggleRow
                     id="share-require-auth-pre"
                     label="Require sign-in to view"
@@ -392,12 +392,12 @@ export default function ShareChatModal({
                 </div>
               )}
 
-              {error && <p className="text-xs text-rose-400">{error}</p>}
+              {error && <p className="text-xs text-danger">{error}</p>}
             </>
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-slate-800 text-xs text-slate-500 space-y-1">
+        <div className="px-5 py-3 border-t border-border text-xs text-fg-subtle space-y-1">
           <p>
             Shared chats are read-only. The viewer cannot send messages or see
             other chats.
@@ -409,7 +409,7 @@ export default function ShareChatModal({
           <div
             role="status"
             aria-live="polite"
-            className="pointer-events-none fixed bottom-6 left-1/2 -translate-x-1/2 rounded-md bg-slate-800 px-3 py-1.5 text-xs text-slate-100 shadow-lg"
+            className="pointer-events-none fixed bottom-6 left-1/2 -translate-x-1/2 rounded-md bg-elevated border border-border-strong px-3 py-1.5 text-xs text-fg shadow-lg"
           >
             {toast}
           </div>
@@ -443,21 +443,21 @@ function ToggleRow({
         aria-checked={checked}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative mt-0.5 inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${
-          checked ? 'bg-sky-600' : 'bg-slate-700'
+        className={`relative mt-0.5 inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg ${
+          checked ? 'bg-accent' : 'bg-border-strong'
         } disabled:opacity-60`}
       >
         <span
           aria-hidden
-          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+          className={`inline-block h-4 w-4 transform rounded-full bg-fg transition-transform ${
             checked ? 'translate-x-4' : 'translate-x-0.5'
           }`}
         />
       </button>
       <label htmlFor={id} className="flex-1 cursor-pointer select-none">
-        <span className="block text-sm font-medium text-slate-100">{label}</span>
+        <span className="block text-sm font-medium text-fg">{label}</span>
         {description && (
-          <span className="block text-xs text-slate-500 mt-0.5">{description}</span>
+          <span className="block text-xs text-fg-subtle mt-0.5">{description}</span>
         )}
       </label>
     </div>

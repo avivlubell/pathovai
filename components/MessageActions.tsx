@@ -104,7 +104,7 @@ export default function MessageActions({
   }
 
   const btnClass =
-    'inline-flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-800 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed';
+    'inline-flex h-7 w-7 items-center justify-center rounded text-fg-subtle hover:bg-elevated hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:cursor-not-allowed';
 
   return (
     <div className="mt-2">
@@ -158,7 +158,7 @@ export default function MessageActions({
           <DownloadIcon />
         </button>
 
-        <span className="mx-1 h-4 w-px bg-slate-800" aria-hidden="true" />
+        <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
 
         <button
           type="button"
@@ -166,7 +166,7 @@ export default function MessageActions({
           aria-label="Good response"
           aria-pressed={rating === 'up'}
           title="Good response"
-          className={`${btnClass} ${rating === 'up' ? 'text-emerald-400' : ''}`}
+          className={`${btnClass} ${rating === 'up' ? 'text-success' : ''}`}
         >
           <ThumbsUpIcon />
         </button>
@@ -177,25 +177,25 @@ export default function MessageActions({
           aria-label="Bad response"
           aria-pressed={rating === 'down'}
           title="Bad response"
-          className={`${btnClass} ${rating === 'down' ? 'text-rose-400' : ''}`}
+          className={`${btnClass} ${rating === 'down' ? 'text-danger' : ''}`}
         >
           <ThumbsDownIcon />
         </button>
 
         {feedbackState === 'saving' && (
-          <span className="ml-1 text-xs text-slate-500">Saving…</span>
+          <span className="ml-1 text-xs text-fg-subtle">Saving…</span>
         )}
         {feedbackState === 'saved' && (
           <span
             role="status"
             aria-live="polite"
-            className="ml-1 text-xs text-slate-500"
+            className="ml-1 inline-flex items-center gap-1 rounded bg-success-bg px-2 py-0.5 text-xs text-success"
           >
             Thanks
           </span>
         )}
         {feedbackState === 'error' && (
-          <span className="ml-1 text-xs text-rose-400">
+          <span className="ml-1 text-xs text-danger">
             Couldn&apos;t save
           </span>
         )}
@@ -215,20 +215,20 @@ export default function MessageActions({
             placeholder="What was wrong? (optional)"
             aria-label="Reason for thumbs down"
             rows={2}
-            className="flex-1 resize-none rounded-md border border-slate-800 bg-slate-900 px-2 py-1.5 text-xs text-slate-200 outline-none focus:border-sky-500 placeholder:text-slate-600"
+            className="flex-1 resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-xs text-fg outline-none focus:border-accent placeholder:text-fg-subtle"
           />
           <div className="flex flex-col gap-1">
             <button
               type="button"
               onClick={handleReasonSubmit}
-              className="rounded-md bg-sky-600 px-2 py-1 text-xs text-white hover:bg-sky-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              className="rounded-md bg-accent px-2 py-1 text-xs text-accent-fg hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
             >
               Save
             </button>
             <button
               type="button"
               onClick={() => setShowReason(false)}
-              className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              className="rounded-md border border-border-strong px-2 py-1 text-xs text-fg-muted hover:bg-elevated focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
             >
               Skip
             </button>

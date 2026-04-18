@@ -25,7 +25,7 @@ export default function MessageSources({ sources }: Props) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="inline-flex items-center gap-1 rounded text-slate-500 hover:text-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+        className="inline-flex items-center gap-1 rounded text-fg-subtle hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
       >
         <svg
           aria-hidden="true"
@@ -42,21 +42,21 @@ export default function MessageSources({ sources }: Props) {
         <span>Sources ({count})</span>
       </button>
       {open && (
-        <ul className="mt-2 space-y-2 border-l border-slate-800 pl-3">
+        <ul className="mt-2 space-y-2 border-l border-border pl-3">
           {hasKbSources &&
             sources!.map((s) => (
               <li key={s.id} className="space-y-0.5">
-                <p className="font-medium text-slate-300">{s.title}</p>
+                <p className="font-medium text-fg">{s.title}</p>
                 {s.snippet && (
-                  <p className="text-slate-500">{s.snippet}</p>
+                  <p className="text-fg-muted">{s.snippet}</p>
                 )}
-                <p className="text-[10px] uppercase tracking-wide text-slate-600">
+                <p className="text-[10px] uppercase tracking-wide text-fg-subtle">
                   KB · {s.id.slice(0, 8)}
                 </p>
               </li>
             ))}
           {!hasKbSources && (
-            <li className="text-slate-500">General medtech industry knowledge</li>
+            <li className="text-fg-subtle">General medtech industry knowledge</li>
           )}
         </ul>
       )}
