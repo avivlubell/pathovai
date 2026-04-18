@@ -9,3 +9,5 @@ export const supabaseAdmin = createClient(
     auth: { persistSession: false, autoRefreshToken: false },
   }
 );
+
+export const ATTACHMENTS_BUCKET = 'chat-attachments';
