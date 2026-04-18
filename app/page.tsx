@@ -6,6 +6,7 @@ import MessageContent from '../components/MessageContent';
 import MessageActions from '../components/MessageActions';
 import MessageSources, { type SourceRef } from '../components/MessageSources';
 import ContextDrawer from '../components/ContextDrawer';
+import KbFreshness from '../components/KbFreshness';
 
 type ChatMessage = {
   id: string;
@@ -754,6 +755,7 @@ export default function HomePage() {
             </button>
             <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" className="h-8 w-8 flex-shrink-0 rounded" />
             <h1 className="hidden sm:block text-lg font-bold">PathovAI</h1>
+            <KbFreshness />
             {activeAccount && (
               <span
                 className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-sky-700/60 bg-sky-900/30 px-2.5 py-1 text-xs text-sky-200"
