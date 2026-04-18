@@ -1,0 +1,16 @@
+{
+  "channel": "email",
+  "subject": "Riverbend's 9% case-volume gap",
+  "body": "Dr. Vasquez — your annual report cites a 9% YoY decline in cardiac case volume tied to turnover and staffing [E1], and your AHA panel comments suggest referrals are being turned away [E3]. Mercy Heart hit the same ceiling and recovered 14% weekly volume by restructuring room turnover without adding OR footprint [E4]. With the FY27 capex window closing in May, it's worth seeing whether that playbook fits Riverbend before the decision is locked. Would a 20-minute walk-through of Mercy's turnover data against your current schedule be useful the week of May 5?",
+  "cta": "20-min walk-through of Mercy's turnover data against your schedule, week of May 5.",
+  "references": [
+    { "pic_section": "problem_diagnosis", "evidence_id": "E1" },
+    { "pic_section": "problem_diagnosis", "evidence_id": "E3" },
+    { "pic_section": "hypothesis", "evidence_id": "E4" }
+  ],
+  "sender": {
+    "name": "Sample Rep",
+    "title": "Director, Cardiac Service Line Solutions",
+    "company": "PathovAI"
+  }
+}

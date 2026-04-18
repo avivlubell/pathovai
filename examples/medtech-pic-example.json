@@ -1,0 +1,63 @@
+{
+  "account": {
+    "name": "Riverbend Heart Institute",
+    "url": "https://www.riverbendheart.example.org",
+    "segment": "IDN cardiac service line",
+    "size": "4 hospitals, ~2,800 cardiac cases/yr"
+  },
+  "persona": {
+    "title": "Chief of Cardiac Surgery",
+    "role_family": "clinical",
+    "seniority": "c_suite"
+  },
+  "evidence": [
+    {
+      "id": "E1",
+      "claim": "Riverbend's 2025 annual report cites cardiac OR case volume down 9% YoY, attributed to staffing and room-turnover time.",
+      "source": "https://www.riverbendheart.example.org/about/annual-report-2025.pdf",
+      "date": "2026-01-15"
+    },
+    {
+      "id": "E2",
+      "claim": "Open job posts for two Cardiac Perfusionists and one CV Surgical First Assistant, unfilled for 90+ days.",
+      "source": "Riverbend careers page (captured 2026-04-02)",
+      "date": "2026-04-02"
+    },
+    {
+      "id": "E3",
+      "claim": "Chief of Cardiac Surgery quoted in AHA regional panel: 'We can't accept every referral we're offered — throughput is our binding constraint.'",
+      "source": "AHA Midwest Cardiac Summit panel recap, Feb 2026",
+      "date": "2026-02-22"
+    },
+    {
+      "id": "E4",
+      "claim": "Peer institution (Mercy Heart, comparable size) published a case study in JTCVS showing 14% increase in weekly case volume after adopting a room-turnover optimization program.",
+      "source": "https://www.jtcvs.org/article/mercy-turnover-2025",
+      "date": "2025-11-03"
+    }
+  ],
+  "problem_diagnosis": {
+    "symptoms": [
+      "Cardiac case volume declined 9% YoY despite demand",
+      "Persistent unfilled perfusionist and CV first-assist roles",
+      "Public acknowledgment by the chief that throughput caps referrals"
+    ],
+    "likely_root_cause": "Room turnover and staffing gaps are compounding — each unfilled role forces conservative scheduling, which depresses throughput more than the headcount gap alone would predict.",
+    "cost_of_inaction": "At an estimated contribution margin of $38k per cardiac case, the 9% volume decline represents ~$9.6M/yr in lost contribution at current mix.",
+    "why_now": "The fiscal year closes in June; the service line's FY27 capex request is being finalized in May and will lock in OR investment decisions for 24 months."
+  },
+  "hypothesis": {
+    "gap": "Throughput ceiling set by turnover + staffing, not by demand or physical capacity.",
+    "desired_outcome": "Restore case volume to pre-decline baseline without adding OR footprint, before the FY27 plan is locked."
+  },
+  "qualification": {
+    "icp_fit_score": 82,
+    "readiness_signals": [
+      "Public acknowledgment of the binding constraint",
+      "Peer institution has a published playbook for the same problem",
+      "Capex decision window closes in ~6 weeks"
+    ],
+    "disqualifiers": []
+  },
+  "confidence": "high"
+}

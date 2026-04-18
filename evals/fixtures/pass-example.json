@@ -1,0 +1,21 @@
+{
+  "description": "Expected QA output for examples/medtech-outreach-example.json against examples/medtech-pic-example.json. Used as a golden fixture for the eval harness.",
+  "input": {
+    "pic": "examples/medtech-pic-example.json",
+    "draft": "examples/medtech-outreach-example.json"
+  },
+  "expected_qa": {
+    "score": 6,
+    "passed": true,
+    "checks": {
+      "diagnosis_stated": true,
+      "evidence_cited": true,
+      "no_banned_phrases": true,
+      "cta_specific": true,
+      "persona_appropriate": true,
+      "channel_constraints": true
+    },
+    "banned_phrases_found": [],
+    "suggestions": []
+  }
+}

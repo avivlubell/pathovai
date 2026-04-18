@@ -1,0 +1,47 @@
+{
+  "description": "A deliberately bad draft: generic opener, banned phrase, vague CTA, no evidence references. Used as a fail fixture for the eval harness.",
+  "input": {
+    "pic": "examples/medtech-pic-example.json",
+    "draft": {
+      "channel": "email",
+      "subject": "Quick question about Riverbend",
+      "body": "Dr. Vasquez — hope this finds you well. I wanted to reach out and circle back on cardiac care at Riverbend. We've helped leading institutions leverage synergies to move the needle on outcomes. Would you be open to a quick chat next week?",
+      "cta": "Open to a quick chat next week?",
+      "references": [],
+      "sender": {
+        "name": "Sample Rep",
+        "title": "Director, Cardiac Service Line Solutions",
+        "company": "PathovAI"
+      }
+    }
+  },
+  "expected_qa": {
+    "score": 1,
+    "passed": false,
+    "checks": {
+      "diagnosis_stated": false,
+      "evidence_cited": false,
+      "no_banned_phrases": false,
+      "cta_specific": false,
+      "persona_appropriate": true,
+      "channel_constraints": false
+    },
+    "banned_phrases_found": [
+      "hope this finds you well",
+      "reach out",
+      "circle back",
+      "leverage",
+      "synergies",
+      "move the needle",
+      "quick chat",
+      "quick question"
+    ],
+    "suggestions": [
+      { "check": "diagnosis_stated", "fix": "Open with the 9% cardiac case-volume decline (E1) and the throughput-ceiling quote (E3) instead of a generic greeting." },
+      { "check": "evidence_cited", "fix": "Cite at least E1 and E4 in the body and populate the references array." },
+      { "check": "no_banned_phrases", "fix": "Remove 'hope this finds you well', 'reach out', 'circle back', 'leverage', 'synergies', 'move the needle', 'quick chat', and 'quick question'." },
+      { "check": "cta_specific", "fix": "Replace 'a quick chat' with a scoped ask like '20 minutes on Mercy's turnover data against your May schedule.'" },
+      { "check": "channel_constraints", "fix": "Tighten subject to ≤ 8 words that names the gap, e.g. 'Riverbend's 9% case-volume gap.'" }
+    ]
+  }
+}

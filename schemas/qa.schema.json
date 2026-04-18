@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pathovai.com/schemas/qa.schema.json",
+  "title": "Outreach QA Result",
+  "type": "object",
+  "required": ["score", "passed", "checks", "banned_phrases_found", "suggestions"],
+  "additionalProperties": false,
+  "properties": {
+    "score": { "type": "integer", "minimum": 0, "maximum": 6 },
+    "passed": { "type": "boolean" },
+    "checks": {
+      "type": "object",
+      "required": [
+        "diagnosis_stated",
+        "evidence_cited",
+        "no_banned_phrases",
+        "cta_specific",
+        "persona_appropriate",
+        "channel_constraints"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "diagnosis_stated": { "type": "boolean" },
+        "evidence_cited": { "type": "boolean" },
+        "no_banned_phrases": { "type": "boolean" },
+        "cta_specific": { "type": "boolean" },
+        "persona_appropriate": { "type": "boolean" },
+        "channel_constraints": { "type": "boolean" }
+      }
+    },
+    "banned_phrases_found": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["check", "fix"],
+        "additionalProperties": false,
+        "properties": {
+          "check": { "type": "string" },
+          "fix": { "type": "string" }
+        }
+      }
+    }
+  }
+}
