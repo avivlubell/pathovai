@@ -49,19 +49,38 @@ export interface Outreach {
   sender?: { name?: string; title?: string; company?: string };
 }
 
+export interface QAChecks {
+  diagnosis_stated: boolean;
+  no_generic_opener: boolean;
+  evidence_cited: boolean;
+  no_banned_phrases: boolean;
+  cta_specific: boolean;
+  persona_appropriate: boolean;
+  channel_constraints: boolean;
+}
+
+export interface DeterministicBlock {
+  banned_phrases: { passed: boolean; found: string[] };
+  generic_opener: { passed: boolean; matched_pattern: string | null };
+  channel_constraints: { passed: boolean; violations: string[] };
+  evidence_cited: { passed: boolean; dangling_references: string[] };
+}
+
 export interface QAResult {
   score: number;
   passed: boolean;
-  checks: {
-    diagnosis_stated: boolean;
-    evidence_cited: boolean;
-    no_banned_phrases: boolean;
-    cta_specific: boolean;
-    persona_appropriate: boolean;
-    channel_constraints: boolean;
-  };
+  checks: QAChecks;
   banned_phrases_found: string[];
   suggestions: { check: string; fix: string }[];
+  deterministic: DeterministicBlock;
+}
+
+// The LLM emits this loose shape; the pipeline fills in deterministic
+// findings and recomputes score/passed before writing qa.json.
+export interface LLMQADraft {
+  checks?: Partial<QAChecks>;
+  suggestions?: { check: string; fix: string }[];
+  banned_phrases_found?: string[];
 }
 
 export type Stage = 'pic' | 'outreach' | 'qa';

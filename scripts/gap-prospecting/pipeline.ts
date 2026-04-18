@@ -1,8 +1,17 @@
 import { readFileSync } from 'node:fs';
 import type { LLMClient } from './llm.js';
 import { PROMPTS, RUBRIC, SCHEMAS } from './paths.js';
-import type { Outreach, PIC, Prospect, QAResult } from './types.js';
+import type {
+  DeterministicBlock,
+  LLMQADraft,
+  Outreach,
+  PIC,
+  Prospect,
+  QAChecks,
+  QAResult,
+} from './types.js';
 import { assertValid } from './validate.js';
+import { runDeterministicChecks } from './qa-deterministic.js';
 
 export interface PipelineResult {
   prospect: Prospect;
@@ -33,13 +42,7 @@ export async function runPipeline(
     schemaPath: SCHEMAS.outreach,
   });
 
-  const qa = await runStage<QAResult>({
-    client,
-    stage: 'qa',
-    system: loadPrompt(PROMPTS.qa),
-    user: buildQaUser(pic, outreach),
-    schemaPath: SCHEMAS.qa,
-  });
+  const qa = await runQaStage(client, pic, outreach);
 
   return { prospect, pic, outreach, qa };
 }
@@ -58,16 +61,103 @@ async function runStage<T>(args: StageArgs): Promise<T> {
     system: args.system,
     user: args.user,
   });
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    throw new Error(
-      `Stage "${args.stage}" returned non-JSON output:\n${raw.slice(0, 400)}\n---\n${(err as Error).message}`,
-    );
-  }
+  const parsed = parseJson(raw, args.stage);
   assertValid(args.schemaPath, parsed);
   return parsed as T;
+}
+
+// QA stage is special: the LLM emits a loose shape covering only the
+// semantic checks it owns. Deterministic findings are computed in code
+// and merged in. The merged object is what's validated and persisted.
+async function runQaStage(
+  client: LLMClient,
+  pic: PIC,
+  outreach: Outreach,
+): Promise<QAResult> {
+  const raw = await client.generate({
+    stage: 'qa',
+    system: loadPrompt(PROMPTS.qa),
+    user: buildQaUser(pic, outreach),
+  });
+  const llmDraft = parseJson(raw, 'qa') as LLMQADraft;
+  const deterministic = runDeterministicChecks(outreach, pic);
+  const merged = mergeQa(llmDraft, deterministic);
+  assertValid(SCHEMAS.qa, merged);
+  return merged;
+}
+
+function mergeQa(llm: LLMQADraft, det: DeterministicBlock): QAResult {
+  // Deterministic wins for overlapping checks. LLM keeps the semantic ones.
+  const checks: QAChecks = {
+    diagnosis_stated: llm.checks?.diagnosis_stated ?? false,
+    no_generic_opener: det.generic_opener.passed,
+    evidence_cited: det.evidence_cited.passed,
+    no_banned_phrases: det.banned_phrases.passed,
+    cta_specific: llm.checks?.cta_specific ?? false,
+    persona_appropriate: llm.checks?.persona_appropriate ?? false,
+    channel_constraints: det.channel_constraints.passed,
+  };
+  const score = Object.values(checks).filter(Boolean).length;
+  const passed =
+    score >= 6 && checks.no_banned_phrases && checks.no_generic_opener;
+
+  const suggestions = [
+    ...(llm.suggestions ?? []),
+    ...synthesizeSuggestionsFromDeterministic(det),
+  ];
+
+  return {
+    score,
+    passed,
+    checks,
+    banned_phrases_found: det.banned_phrases.found,
+    suggestions,
+    deterministic: det,
+  };
+}
+
+function synthesizeSuggestionsFromDeterministic(
+  det: DeterministicBlock,
+): { check: string; fix: string }[] {
+  const out: { check: string; fix: string }[] = [];
+  if (!det.banned_phrases.passed) {
+    out.push({
+      check: 'no_banned_phrases',
+      fix: `Remove banned phrase(s): ${det.banned_phrases.found.join(', ')}.`,
+    });
+  }
+  if (!det.generic_opener.passed) {
+    out.push({
+      check: 'no_generic_opener',
+      fix: `Opener matches template "${det.generic_opener.matched_pattern}". Replace with an evidence-grounded first sentence.`,
+    });
+  }
+  if (!det.channel_constraints.passed) {
+    out.push({
+      check: 'channel_constraints',
+      fix: `Fix channel violations: ${det.channel_constraints.violations.join('; ')}.`,
+    });
+  }
+  if (!det.evidence_cited.passed) {
+    const dangling = det.evidence_cited.dangling_references;
+    out.push({
+      check: 'evidence_cited',
+      fix: dangling.length
+        ? `Cited evidence IDs not in PIC: ${dangling.join(', ')}. Remove or correct.`
+        : 'Populate references[] with at least one PIC evidence_id supporting the body.',
+    });
+  }
+  return out;
+}
+
+function parseJson(raw: string, stage: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `Stage "${stage}" returned non-JSON output:\n${raw.slice(0, 400)}\n---\n${(err as Error).message}`,
+    );
+  }
 }
 
 function loadPrompt(path: string): string {
@@ -107,7 +197,6 @@ function buildOutreachUser(prospect: Prospect, pic: PIC): string {
 
 function buildQaUser(pic: PIC, outreach: Outreach): string {
   const rubric = readFileSync(RUBRIC, 'utf8');
-  const schema = readFileSync(SCHEMAS.qa, 'utf8');
   return [
     '<pic>',
     JSON.stringify(pic, null, 2),
@@ -118,9 +207,6 @@ function buildQaUser(pic: PIC, outreach: Outreach): string {
     '<rubric>',
     rubric,
     '</rubric>',
-    '<schema name="qa">',
-    schema,
-    '</schema>',
-    'Grade the outreach. Produce a JSON object matching the schema.',
+    'Grade the outreach for the semantic checks you own (diagnosis_stated, cta_specific, persona_appropriate). Emit a JSON object with { checks, banned_phrases_found, suggestions }.',
   ].join('\n');
 }

@@ -1,14 +1,15 @@
 {
-  "description": "Expected QA output for examples/medtech-outreach-example.json against examples/medtech-pic-example.json. Used as a golden fixture for the eval harness.",
+  "description": "Expected QA output for examples/medtech-outreach-example.json against examples/medtech-pic-example.json. Used as a golden fixture for the eval harness. Reflects the merged qa shape (LLM + deterministic).",
   "input": {
     "pic": "examples/medtech-pic-example.json",
     "draft": "examples/medtech-outreach-example.json"
   },
   "expected_qa": {
-    "score": 6,
+    "score": 7,
     "passed": true,
     "checks": {
       "diagnosis_stated": true,
+      "no_generic_opener": true,
       "evidence_cited": true,
       "no_banned_phrases": true,
       "cta_specific": true,
@@ -16,6 +17,12 @@
       "channel_constraints": true
     },
     "banned_phrases_found": [],
-    "suggestions": []
+    "suggestions": [],
+    "deterministic": {
+      "banned_phrases": { "passed": true, "found": [] },
+      "generic_opener": { "passed": true, "matched_pattern": null },
+      "channel_constraints": { "passed": true, "violations": [] },
+      "evidence_cited": { "passed": true, "dangling_references": [] }
+    }
   }
 }

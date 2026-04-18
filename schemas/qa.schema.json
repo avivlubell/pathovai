@@ -2,16 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://pathovai.com/schemas/qa.schema.json",
   "title": "Outreach QA Result",
+  "description": "Merged QA result. `checks` is authoritative (deterministic findings win where they overlap with LLM judgment). `deterministic` preserves raw code-level findings so reviewers can audit code/LLM agreement.",
   "type": "object",
-  "required": ["score", "passed", "checks", "banned_phrases_found", "suggestions"],
+  "required": ["score", "passed", "checks", "banned_phrases_found", "suggestions", "deterministic"],
   "additionalProperties": false,
   "properties": {
-    "score": { "type": "integer", "minimum": 0, "maximum": 6 },
+    "score": { "type": "integer", "minimum": 0, "maximum": 7 },
     "passed": { "type": "boolean" },
     "checks": {
       "type": "object",
       "required": [
         "diagnosis_stated",
+        "no_generic_opener",
         "evidence_cited",
         "no_banned_phrases",
         "cta_specific",
@@ -21,6 +23,7 @@
       "additionalProperties": false,
       "properties": {
         "diagnosis_stated": { "type": "boolean" },
+        "no_generic_opener": { "type": "boolean" },
         "evidence_cited": { "type": "boolean" },
         "no_banned_phrases": { "type": "boolean" },
         "cta_specific": { "type": "boolean" },
@@ -41,6 +44,54 @@
         "properties": {
           "check": { "type": "string" },
           "fix": { "type": "string" }
+        }
+      }
+    },
+    "deterministic": {
+      "type": "object",
+      "description": "Raw code-level findings. These are merged into `checks` (deterministic wins for overlapping checks) but preserved here so reviewers can see what the scanner found regardless of LLM judgment.",
+      "required": ["banned_phrases", "generic_opener", "channel_constraints", "evidence_cited"],
+      "additionalProperties": false,
+      "properties": {
+        "banned_phrases": {
+          "type": "object",
+          "required": ["passed", "found"],
+          "additionalProperties": false,
+          "properties": {
+            "passed": { "type": "boolean" },
+            "found": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "generic_opener": {
+          "type": "object",
+          "required": ["passed"],
+          "additionalProperties": false,
+          "properties": {
+            "passed": { "type": "boolean" },
+            "matched_pattern": { "type": ["string", "null"] }
+          }
+        },
+        "channel_constraints": {
+          "type": "object",
+          "required": ["passed", "violations"],
+          "additionalProperties": false,
+          "properties": {
+            "passed": { "type": "boolean" },
+            "violations": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "evidence_cited": {
+          "type": "object",
+          "required": ["passed", "dangling_references"],
+          "additionalProperties": false,
+          "properties": {
+            "passed": { "type": "boolean" },
+            "dangling_references": {
+              "type": "array",
+              "description": "Evidence IDs referenced by the outreach that don't exist in the PIC.",
+              "items": { "type": "string" }
+            }
+          }
         }
       }
     }

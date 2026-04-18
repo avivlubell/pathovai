@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "prospect": "tsx scripts/gap-prospecting/run.ts"
+    "prospect": "tsx scripts/gap-prospecting/run.ts",
+    "test:prospect": "node --import tsx --test scripts/gap-prospecting/*.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

@@ -1,9 +1,9 @@
 import type { LLMClient } from './llm.js';
-import type { PIC, Outreach, Prospect, QAResult } from './types.js';
+import type { LLMQADraft, Outreach, PIC, Prospect } from './types.js';
 
 // Mock LLM client for pipeline wiring verification when no API key is
 // available. Returns schema-valid JSON synthesized from the input, with
-// every generated claim marked "[MOCK]" so mock output is never confused
+// every generated claim tagged "[MOCK]" so mock output is never confused
 // with a real run. Real content requires ANTHROPIC_API_KEY.
 export function createMockClient(prospect: Prospect): LLMClient {
   let pic: PIC | null = null;
@@ -21,7 +21,7 @@ export function createMockClient(prospect: Prospect): LLMClient {
         return JSON.stringify(outreach);
       }
       if (!pic || !outreach) throw new Error('mock: qa requested before pic/outreach');
-      return JSON.stringify(buildMockQa());
+      return JSON.stringify(buildMockQaDraft());
     },
   };
 }
@@ -58,12 +58,12 @@ function buildMockPic(p: Prospect): PIC {
 
 function buildMockOutreach(p: Prospect, pic: PIC): Outreach {
   const firstEvidence = pic.evidence[0]?.id ?? 'E1';
-  const body =
-    `${p.persona.title} -- this is a mock draft referencing ${firstEvidence}. ` +
-    `Real outreach requires an API-backed run; see README for how to enable.`;
+  // Kept short and opener-safe so the deterministic checks exercise
+  // their pass paths against mock output.
+  const body = `${p.account.name}: mock draft citing ${firstEvidence}. Enable a real API run for grounded content.`;
   return {
     channel: p.channel,
-    subject: p.channel === 'email' ? `[MOCK] Note for ${p.account.name}` : null,
+    subject: p.channel === 'email' ? `Mock note for ${p.account.name}` : null,
     body,
     cta: '[MOCK] Specific next step placeholder.',
     references: [{ pic_section: 'problem_diagnosis', evidence_id: firstEvidence }],
@@ -71,26 +71,20 @@ function buildMockOutreach(p: Prospect, pic: PIC): Outreach {
   };
 }
 
-function buildMockQa(): QAResult {
-  // Mock draft trivially fails most checks. That's useful: it proves the
-  // QA schema validator handles a realistic fail shape end-to-end.
+// The pipeline owns score/passed/banned_phrases_found/deterministic, so
+// the mock only needs to supply the LLM-owned subset.
+function buildMockQaDraft(): LLMQADraft {
   return {
-    score: 1,
-    passed: false,
     checks: {
       diagnosis_stated: false,
-      evidence_cited: true,
-      no_banned_phrases: true,
       cta_specific: false,
       persona_appropriate: false,
-      channel_constraints: false,
     },
-    banned_phrases_found: [],
     suggestions: [
-      { check: 'diagnosis_stated', fix: '[MOCK] Replace mock opener with a specific symptom from PIC.' },
+      { check: 'diagnosis_stated', fix: '[MOCK] Open with a PIC-grounded symptom.' },
       { check: 'cta_specific', fix: '[MOCK] Replace placeholder CTA with a scoped next step.' },
-      { check: 'persona_appropriate', fix: '[MOCK] Rewrite for the persona; mock is generic.' },
-      { check: 'channel_constraints', fix: '[MOCK] Tighten length to channel limits.' },
+      { check: 'persona_appropriate', fix: '[MOCK] Tailor register to the persona.' },
     ],
+    banned_phrases_found: [],
   };
 }

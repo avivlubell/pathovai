@@ -68,7 +68,7 @@ async function main() {
       `mode:     ${args.mock ? 'mock' : 'anthropic'}`,
       `time:     ${ms}ms`,
       `outputs:  ${dir}/{pic,outreach,qa}.json`,
-      `qa:       score=${result.qa.score}/6 passed=${result.qa.passed}`,
+      `qa:       score=${result.qa.score}/7 passed=${result.qa.passed}`,
       '',
     ].join('\n'),
   );
