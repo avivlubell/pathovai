@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import MessageContent from '../components/MessageContent';
 import MessageActions from '../components/MessageActions';
+import ContextDrawer from '../components/ContextDrawer';
 
 type ChatMessage = {
   id: string;
@@ -31,6 +32,8 @@ export default function HomePage() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [contextCount, setContextCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -123,8 +126,31 @@ export default function HomePage() {
     setMessages([]);
     setInput('');
     setIsLoading(false);
-    setActiveChatId(null);
+    setActiveChatId(crypto.randomUUID());
+    setContextCount(0);
   }
+
+  useEffect(() => {
+    if (!activeChatId) setActiveChatId(crypto.randomUUID());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!activeChatId) return;
+    let cancelled = false;
+    fetch(`/api/context?chat_id=${encodeURIComponent(activeChatId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const hasNotes = typeof data.notes === 'string' && data.notes.trim();
+        const attCount = Array.isArray(data.attachments) ? data.attachments.length : 0;
+        setContextCount((hasNotes ? 1 : 0) + attCount);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeChatId]);
 
   const STARTER_PROMPTS = [
     'Is [Account] an ICP fit?',
@@ -272,6 +298,7 @@ export default function HomePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          chat_id: activeChatId,
           messages: nextMessages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -347,6 +374,7 @@ export default function HomePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          chat_id: activeChatId,
           messages: priorMessages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -592,6 +620,32 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={() => setContextOpen(true)}
+              aria-label="Open conversation context"
+              title="Conversation context"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+            >
+              <svg
+                aria-hidden="true"
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>Context</span>
+              {contextCount > 0 && (
+                <span className="ml-1 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-sky-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                  {contextCount}
+                </span>
+              )}
+            </button>
+            <button
               onClick={handleNewChat}
               className="px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800"
             >
@@ -741,6 +795,13 @@ export default function HomePage() {
           </form>
         </div>
       </div>
+      <ContextDrawer
+        open={contextOpen}
+        chatId={activeChatId}
+        userId={session?.user?.email ?? null}
+        onClose={() => setContextOpen(false)}
+        onCountChange={setContextCount}
+      />
     </div>
   );
 }

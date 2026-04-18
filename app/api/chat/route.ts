@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { SYSTEM_PROMPT } from './system-prompt';
 import { createClient } from '@supabase/supabase-js';
+import { buildConversationContext } from '../../../lib/contextPrompt';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -314,12 +315,18 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const chatMessages = body?.messages;
+    const chatId: string | null =
+      typeof body?.chat_id === 'string' && body.chat_id ? body.chat_id : null;
     if (!Array.isArray(chatMessages)) {
       return NextResponse.json(
         { error: 'Invalid payload: messages must be an array' },
         { status: 400 }
       );
     }
+
+    const conversationContext = chatId
+      ? await buildConversationContext(chatId).catch(() => '')
+      : '';
 
     // Keep only the most recent messages to stay under the 200k token limit.
     // Estimate ~4 chars per token; reserve 50k tokens for system prompt + tool rounds.
@@ -350,7 +357,8 @@ export async function POST(req: Request) {
       const response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4096,
-        system: SYSTEM_PROMPT + await fetchLearnings(),
+        system:
+          SYSTEM_PROMPT + (await fetchLearnings()) + conversationContext,
         tools,
         tool_choice: { type: 'auto' },
         messages,
