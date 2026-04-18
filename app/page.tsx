@@ -7,6 +7,7 @@ import MessageActions from '../components/MessageActions';
 import MessageSources, { type SourceRef } from '../components/MessageSources';
 import ContextDrawer from '../components/ContextDrawer';
 import KbFreshness from '../components/KbFreshness';
+import ShareChatModal from '../components/ShareChatModal';
 
 type ChatMessage = {
   id: string;
@@ -39,6 +40,11 @@ export default function HomePage() {
   const [contextCount, setContextCount] = useState(0);
   const [activeAccount, setActiveAccount] = useState<string | null>(null);
   const [showJumpButton, setShowJumpButton] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  // Maps localStorage chat ids to their server-side shared_chats row id
+  // so we can PATCH the snapshot after each new turn in a shared chat.
+  // Persisted so the mapping survives reloads.
+  const [sharedSnapshotMap, setSharedSnapshotMap] = useState<Record<string, string>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -64,11 +70,24 @@ export default function HomePage() {
   useEffect(() => {
     const saved = localStorage.getItem('pathovai-history');
     if (saved) setChatHistory(JSON.parse(saved));
+    const sharedRaw = localStorage.getItem('pathovai-shared-map');
+    if (sharedRaw) {
+      try {
+        const parsed = JSON.parse(sharedRaw);
+        if (parsed && typeof parsed === 'object') setSharedSnapshotMap(parsed);
+      } catch {
+        // Ignore corrupted entries; user can re-share.
+      }
+    }
   }, []);
 
   useEffect(() => {
     localStorage.setItem('pathovai-history', JSON.stringify(chatHistory));
   }, [chatHistory]);
+
+  useEffect(() => {
+    localStorage.setItem('pathovai-shared-map', JSON.stringify(sharedSnapshotMap));
+  }, [sharedSnapshotMap]);
 
   useEffect(() => {
     if (showJumpButton) return;
@@ -445,6 +464,22 @@ export default function HomePage() {
           activeAccount
         );
       }
+      // Keep the shared snapshot current so a manager opening the link
+      // immediately after this turn lands sees the latest state.
+      const chatIdForShareSync = chatId ?? activeChatId;
+      const shareId = chatIdForShareSync
+        ? sharedSnapshotMap[chatIdForShareSync]
+        : null;
+      if (shareId) {
+        fetch(`/api/shared-chats/${shareId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: updatedMessages }),
+        }).catch(() => {
+          // Best-effort sync; we'll catch up next turn or when the
+          // owner reopens the share modal.
+        });
+      }
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') {
         // User hit Stop; nothing to log.
@@ -513,7 +548,20 @@ export default function HomePage() {
       };
       const updated = [...priorMessages, newAssistant];
       setMessages(updated);
-      saveCurrentChat(updated);
+      const savedId = saveCurrentChat(updated);
+      const chatIdForShareSync = savedId ?? activeChatId;
+      const shareId = chatIdForShareSync
+        ? sharedSnapshotMap[chatIdForShareSync]
+        : null;
+      if (shareId) {
+        fetch(`/api/shared-chats/${shareId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: updated }),
+        }).catch(() => {
+          // Best-effort sync.
+        });
+      }
     } catch (err) {
       if ((err as Error)?.name !== 'AbortError') {
         console.error('Regenerate error', err);
@@ -819,6 +867,43 @@ export default function HomePage() {
             </button>
             <button
               type="button"
+              onClick={() => {
+                if (!activeChatId && messages.length >= 2) {
+                  // Persist the chat first so we have a stable id to
+                  // attach the share to.
+                  saveCurrentChat(messages);
+                }
+                setShareModalOpen(true);
+              }}
+              disabled={messages.length < 2}
+              aria-label="Share this chat"
+              title={
+                messages.length < 2
+                  ? 'Send a message first, then you can share this chat'
+                  : 'Share this chat'
+              }
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-sm rounded-md border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <svg
+                aria-hidden="true"
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <path d="M8.59 13.51l6.83 3.98" />
+                <path d="M15.41 6.51l-6.82 3.98" />
+              </svg>
+              <span className="hidden sm:inline">Share</span>
+            </button>
+            <button
+              type="button"
               onClick={handleNewChat}
               aria-label="Start new chat"
               title="New chat"
@@ -1018,6 +1103,21 @@ export default function HomePage() {
         userId={session?.user?.email ?? null}
         onClose={() => setContextOpen(false)}
         onCountChange={setContextCount}
+      />
+      <ShareChatModal
+        open={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        chatId={activeChatId}
+        title={messages[0]?.content?.slice(0, 80) || null}
+        messages={messages}
+        onShareChange={(chatId, shareId) => {
+          setSharedSnapshotMap((prev) => {
+            const next = { ...prev };
+            if (shareId) next[chatId] = shareId;
+            else delete next[chatId];
+            return next;
+          });
+        }}
       />
     </div>
   );
