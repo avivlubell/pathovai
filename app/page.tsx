@@ -81,6 +81,28 @@ export default function HomePage() {
     setActiveChatId(null);
   }
 
+  const STARTER_PROMPTS = [
+    'Is [Account] an ICP fit?',
+    'Who at [Account] should I reach out to and why?',
+    'Draft an outreach email to [Contact] at [Account].',
+    'How do I move the [Account] opportunity forward?',
+  ];
+
+  function prefillFromStarter(prompt: string) {
+    setInput(prompt);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      const match = /\[[^\]]+\]/.exec(prompt);
+      if (match) {
+        el.setSelectionRange(match.index, match.index + match[0].length);
+      } else {
+        el.setSelectionRange(prompt.length, prompt.length);
+      }
+    });
+  }
+
   function loadChat(chatSession: ChatSession) {
     setMessages(chatSession.messages);
     setActiveChatId(chatSession.id);
@@ -269,9 +291,35 @@ export default function HomePage() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {messages.length === 0 && (
-            <p className="text-slate-500 text-center mt-20">
-              Name a company or tell me what we're working on.
-            </p>
+            <div className="flex h-full min-h-[60vh] w-full items-center justify-center">
+              <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-6 px-2 text-center">
+                <img
+                  src="/PATHOVA_LOGO1_edited_edited_edited.png"
+                  alt="PathovAI logo"
+                  className="h-12 w-12 rounded"
+                />
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-semibold text-slate-100">
+                    What are we working on?
+                  </h2>
+                  <p className="text-sm text-slate-400">
+                    Ask about an account, a contact, or an opportunity.
+                  </p>
+                </div>
+                <div className="mt-2 grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
+                  {STARTER_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => prefillFromStarter(prompt)}
+                      className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3 text-left text-sm text-slate-300 transition hover:border-slate-700 hover:bg-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
           {messages.map((m) => (
             <div
