@@ -26,6 +26,21 @@ export default function HomePage() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const TEXTAREA_MAX_HEIGHT = 200;
+
+  const resizeTextarea = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT) + 'px';
+  }, []);
+
+  useEffect(() => {
+    resizeTextarea();
+  }, [input, resizeTextarea]);
 
   useEffect(() => {
     const saved = localStorage.getItem('pathovai-history');
@@ -100,6 +115,9 @@ export default function HomePage() {
     setInput('');
     setIsLoading(true);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -110,6 +128,7 @@ export default function HomePage() {
             content: m.content,
           })),
         }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -137,10 +156,21 @@ export default function HomePage() {
       setMessages(updatedMessages);
       saveCurrentChat(updatedMessages);
     } catch (err) {
-      console.error('Network error', err);
+      if ((err as Error)?.name === 'AbortError') {
+        // User hit Stop; nothing to log.
+      } else {
+        console.error('Network error', err);
+      }
     } finally {
+      abortControllerRef.current = null;
       setIsLoading(false);
     }
+  }
+
+  function handleStop() {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
   }
 
   if (!session) {
@@ -272,35 +302,77 @@ export default function HomePage() {
         </div>
 
         {/* Input Area */}
-        <form onSubmit={handleSubmit} className="px-6 py-3 border-t border-slate-800">
-          <div className="flex items-end gap-2">
-            <textarea
-              className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-sky-500 resize-none overflow-auto"
-              style={{ minHeight: '4lh', maxHeight: '200px' }}
-              rows={4}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                e.target.style.height = 'auto';
-                e.target.style.height = e.target.scrollHeight + 'px';
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit(e);
-                }
-              }}
-              placeholder="Let's make some money. What's on tap..."
-            />
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="px-4 py-2 rounded-md bg-sky-600 text-sm font-medium hover:bg-sky-500 disabled:opacity-50"
-            >
-              Send
-            </button>
-          </div>
-        </form>
+        <div className="relative bg-slate-950">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-t from-slate-950 to-transparent"
+          />
+          <form onSubmit={handleSubmit} className="px-6 pt-2 pb-4">
+            <div className="relative mx-auto w-full max-w-[min(768px,100%)] min-w-0">
+              <textarea
+                ref={textareaRef}
+                aria-label="Message PathovAI"
+                className="block w-full rounded-xl border border-slate-700 bg-slate-900 pl-4 pr-12 py-3 text-sm outline-none focus:border-sky-500 resize-none overflow-y-auto leading-6 placeholder:text-slate-500"
+                style={{ maxHeight: `${TEXTAREA_MAX_HEIGHT}px` }}
+                rows={1}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!isLoading && input.trim()) handleSubmit(e);
+                  }
+                }}
+                placeholder="Let's make some money. What's on tap..."
+              />
+              {isLoading ? (
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  aria-label="Stop generating"
+                  title="Stop generating"
+                  className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-slate-700 text-slate-100 hover:bg-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                >
+                  <span className="sr-only">Stop generating</span>
+                  <svg
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                  >
+                    <rect x="3" y="3" width="10" height="10" rx="1.5" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim()}
+                  aria-label="Send message"
+                  title="Send message"
+                  className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-sky-600 text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                >
+                  <span className="sr-only">Send message</span>
+                  <svg
+                    aria-hidden="true"
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M22 2 11 13" />
+                    <path d="M22 2 15 22l-4-9-9-4z" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            <p className="mx-auto mt-2 w-full max-w-[min(768px,100%)] text-center text-xs text-slate-500">
+              Enter to send · Shift+Enter for newline
+            </p>
+          </form>
+        </div>
       </div>
     </div>
   );
