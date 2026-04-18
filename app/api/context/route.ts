@@ -7,6 +7,7 @@ type ContextBody = {
   chat_id?: unknown;
   user_id?: unknown;
   notes?: unknown;
+  active_account?: unknown;
 };
 
 export async function GET(req: Request) {
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
   const [ctxRes, attRes] = await Promise.all([
     supabaseAdmin
       .from('chat_contexts')
-      .select('notes')
+      .select('notes, active_account')
       .eq('chat_id', chat_id)
       .maybeSingle(),
     supabaseAdmin
@@ -49,6 +50,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     notes: ctxRes.data?.notes ?? '',
+    active_account: ctxRes.data?.active_account ?? null,
     attachments,
   });
 }
@@ -58,18 +60,28 @@ export async function PUT(req: Request) {
   const chat_id = typeof body.chat_id === 'string' ? body.chat_id : '';
   const user_id =
     typeof body.user_id === 'string' && body.user_id ? body.user_id : null;
-  const notes = typeof body.notes === 'string' ? body.notes : '';
 
   if (!chat_id) {
     return NextResponse.json({ error: 'chat_id is required' }, { status: 400 });
   }
 
+  // Partial update: only set fields the caller sent, so the notes-save
+  // path and the active_account path don't clobber each other.
+  const payload: Record<string, unknown> = {
+    chat_id,
+    user_id,
+    updated_at: new Date().toISOString(),
+  };
+  if (typeof body.notes === 'string') payload.notes = body.notes;
+  if ('active_account' in body) {
+    const val = body.active_account;
+    payload.active_account =
+      typeof val === 'string' && val.trim() ? val.trim() : null;
+  }
+
   const { error } = await supabaseAdmin
     .from('chat_contexts')
-    .upsert(
-      { chat_id, user_id, notes, updated_at: new Date().toISOString() },
-      { onConflict: 'chat_id' }
-    );
+    .upsert(payload, { onConflict: 'chat_id' });
 
   if (error) {
     console.error('chat_contexts upsert', error);

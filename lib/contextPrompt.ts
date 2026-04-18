@@ -19,7 +19,7 @@ export async function buildConversationContext(
   const [ctxRes, attRes] = await Promise.all([
     supabaseAdmin
       .from('chat_contexts')
-      .select('notes')
+      .select('notes, active_account')
       .eq('chat_id', chatId)
       .maybeSingle(),
     supabaseAdmin
@@ -30,11 +30,12 @@ export async function buildConversationContext(
   ]);
 
   const notes = (ctxRes.data?.notes ?? '').trim();
+  const activeAccount = (ctxRes.data?.active_account ?? '').trim();
   const attachments = (attRes.data ?? []).filter(
     (a) => a.extracted_text && a.extracted_text.trim()
   );
 
-  if (!notes && attachments.length === 0) return '';
+  if (!notes && !activeAccount && attachments.length === 0) return '';
 
   const sections: string[] = [];
   sections.push(
@@ -45,6 +46,16 @@ export async function buildConversationContext(
     'follow the team-wide rules.',
     ''
   );
+
+  if (activeAccount) {
+    sections.push(
+      '### Active account for this chat',
+      `The rep is primarily working on: ${activeAccount}. Treat this as the`,
+      'default subject when the rep says "the account", "they", "this prospect",',
+      'etc., unless they clearly name a different company.',
+      ''
+    );
+  }
 
   if (notes) {
     sections.push('### Notes from the rep', notes, '');

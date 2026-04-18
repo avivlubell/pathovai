@@ -277,6 +277,32 @@ async function executeTool(
   return typeof result === 'string' ? result : JSON.stringify(result);
 }
 
+function collectSources(
+  rawResult: string,
+  acc: Array<{ id: string; title: string; snippet: string }>,
+  seen: Set<string>
+): void {
+  try {
+    const parsed = JSON.parse(rawResult);
+    const refs = parsed?.references;
+    if (!Array.isArray(refs)) return;
+    for (const r of refs) {
+      const id = typeof r?.id === 'string' ? r.id : null;
+      const title = typeof r?.title === 'string' ? r.title : null;
+      if (!id || !title || seen.has(id)) continue;
+      seen.add(id);
+      const content = typeof r?.content === 'string' ? r.content : '';
+      const snippet = content
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 240);
+      acc.push({ id, title, snippet });
+    }
+  } catch {
+    // ignore malformed results
+  }
+}
+
 function extractReply(finalText: string): string {
   let parsed: any;
   try {
@@ -351,6 +377,8 @@ export async function POST(req: Request) {
 
     const MAX_TOOL_ROUNDS = 25;
     let round = 0;
+    const sources: Array<{ id: string; title: string; snippet: string }> = [];
+    const seenSourceIds = new Set<string>();
 
     while (round < MAX_TOOL_ROUNDS) {
       round++;
@@ -376,7 +404,7 @@ export async function POST(req: Request) {
         );
         const finalText = textBlocks.map((b: any) => b.text).join('\n');
         const reply = extractReply(finalText);
-        return NextResponse.json({ reply });
+        return NextResponse.json({ reply, sources });
       }
 
       messages.push({
@@ -390,6 +418,9 @@ export async function POST(req: Request) {
           toolBlock.name,
           (toolBlock as any).input as Record<string, unknown>
         );
+        if (toolBlock.name === 'search_references') {
+          collectSources(result, sources, seenSourceIds);
+        }
         toolResults.push({
           type: 'tool_result',
           tool_use_id: toolBlock.id,
@@ -405,6 +436,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       reply: '[Agent reached maximum tool-use rounds. Please try a simpler query.]',
+      sources,
     });
   } catch (err: any) {
     console.error('Claude error', err);

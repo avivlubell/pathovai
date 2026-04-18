@@ -10,9 +10,14 @@ create table if not exists public.chat_contexts (
   chat_id text not null unique,
   user_id text,
   notes text,
+  active_account text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Columns added after initial rollout; safe to re-run.
+alter table public.chat_contexts
+  add column if not exists active_account text;
 
 create index if not exists chat_contexts_user_idx
   on public.chat_contexts (user_id, updated_at desc);

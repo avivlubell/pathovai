@@ -4,12 +4,14 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import MessageContent from '../components/MessageContent';
 import MessageActions from '../components/MessageActions';
+import MessageSources, { type SourceRef } from '../components/MessageSources';
 import ContextDrawer from '../components/ContextDrawer';
 
 type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  sources?: SourceRef[];
 };
 
 type ChatSession = {
@@ -34,6 +36,7 @@ export default function HomePage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const [contextCount, setContextCount] = useState(0);
+  const [activeAccount, setActiveAccount] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -128,6 +131,7 @@ export default function HomePage() {
     setIsLoading(false);
     setActiveChatId(crypto.randomUUID());
     setContextCount(0);
+    setActiveAccount(null);
   }
 
   useEffect(() => {
@@ -145,6 +149,11 @@ export default function HomePage() {
         const hasNotes = typeof data.notes === 'string' && data.notes.trim();
         const attCount = Array.isArray(data.attachments) ? data.attachments.length : 0;
         setContextCount((hasNotes ? 1 : 0) + attCount);
+        setActiveAccount(
+          typeof data.active_account === 'string' && data.active_account.trim()
+            ? data.active_account
+            : null
+        );
       })
       .catch(() => {});
     return () => {
@@ -263,6 +272,62 @@ export default function HomePage() {
     };
   }, [openMenuForId]);
 
+  async function persistActiveAccount(
+    chatId: string,
+    next: string | null
+  ) {
+    try {
+      await fetch('/api/context', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          user_id: session?.user?.email ?? null,
+          active_account: next,
+        }),
+      });
+    } catch (err) {
+      console.error('persist active_account', err);
+    }
+  }
+
+  async function maybeExtractAccount(
+    chatId: string,
+    userText: string,
+    assistantText: string,
+    current: string | null
+  ) {
+    try {
+      const res = await fetch('/api/extract-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user: userText,
+          assistant: assistantText,
+          current,
+        }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const next: string | null =
+        typeof data?.account === 'string' && data.account.trim()
+          ? data.account.trim()
+          : null;
+      if (!next) return;
+      if ((current ?? '').trim().toLowerCase() === next.toLowerCase()) return;
+      setActiveAccount(next);
+      persistActiveAccount(chatId, next);
+    } catch (err) {
+      console.error('extract-account', err);
+    }
+  }
+
+  function clearActiveAccount() {
+    if (!activeChatId) return;
+    setActiveAccount(null);
+    persistActiveAccount(activeChatId, null);
+  }
+
   function downloadAsMarkdown(content: string) {
     const blob = new Blob([content], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
@@ -323,10 +388,14 @@ export default function HomePage() {
 
       const data = await res.json();
       const replyText = data.reply ?? '';
+      const replySources: SourceRef[] = Array.isArray(data.sources)
+        ? data.sources
+        : [];
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: replyText,
+        sources: replySources,
       };
       const updatedMessages = [...nextMessages, assistantMessage];
       setMessages(updatedMessages);
@@ -336,6 +405,15 @@ export default function HomePage() {
         generateTitle(userMessage.content, replyText).then((title) => {
           if (title) updateChatTitle(chatId, title);
         });
+      }
+      const extractChatId = chatId ?? activeChatId;
+      if (extractChatId && replyText) {
+        maybeExtractAccount(
+          extractChatId,
+          userMessage.content,
+          replyText,
+          activeAccount
+        );
       }
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') {
@@ -394,10 +472,14 @@ export default function HomePage() {
       }
       const data = await res.json();
       const replyText = data.reply ?? '';
+      const replySources: SourceRef[] = Array.isArray(data.sources)
+        ? data.sources
+        : [];
       const newAssistant: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: replyText,
+        sources: replySources,
       };
       const updated = [...priorMessages, newAssistant];
       setMessages(updated);
@@ -617,6 +699,35 @@ export default function HomePage() {
             </button>
             <img src="/PATHOVA_LOGO1_edited_edited_edited.png" alt="PathovAI logo" className="h-8 w-8 rounded" />
             <h1 className="text-lg font-bold">PathovAI</h1>
+            {activeAccount && (
+              <span
+                className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-sky-700/60 bg-sky-900/30 px-2.5 py-1 text-xs text-sky-200"
+                title="Primary account for this chat"
+              >
+                <span className="text-slate-400">Account:</span>
+                <span className="font-medium">{activeAccount}</span>
+                <button
+                  type="button"
+                  onClick={clearActiveAccount}
+                  aria-label={`Clear active account ${activeAccount}`}
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full text-sky-300/80 hover:bg-sky-800/60 hover:text-sky-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                >
+                  <svg
+                    aria-hidden="true"
+                    className="h-3 w-3"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                  </svg>
+                </button>
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -701,6 +812,7 @@ export default function HomePage() {
                 chatId={activeChatId}
                 userId={session?.user?.email ?? null}
                 isStreaming={isLoading}
+                sources={m.sources}
                 onRegenerate={() => handleRegenerate(idx)}
                 onDownload={() => downloadAsMarkdown(m.content)}
               />
@@ -811,6 +923,7 @@ type AssistantMessageRowProps = {
   chatId: string | null;
   userId: string | null;
   isStreaming: boolean;
+  sources: SourceRef[] | undefined;
   onRegenerate: () => void;
   onDownload: () => void;
 };
@@ -820,6 +933,7 @@ function AssistantMessageRow({
   chatId,
   userId,
   isStreaming,
+  sources,
   onRegenerate,
   onDownload,
 }: AssistantMessageRowProps) {
@@ -843,6 +957,18 @@ function AssistantMessageRow({
         onRegenerate={onRegenerate}
         onDownload={onDownload}
       />
+      <MessagesSourcesOrNothing sources={sources} isStreaming={isStreaming} />
     </div>
   );
+}
+
+function MessagesSourcesOrNothing({
+  sources,
+  isStreaming,
+}: {
+  sources: SourceRef[] | undefined;
+  isStreaming: boolean;
+}) {
+  if (isStreaming) return null;
+  return <MessageSources sources={sources} />;
 }
