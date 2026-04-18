@@ -1,0 +1,36 @@
+{
+  "account": {
+    "name": "Coastal Dermatology Group",
+    "url": "https://www.coastalderm.example.com",
+    "segment": "Multi-site physician practice",
+    "size": "18 clinics, ~220 providers"
+  },
+  "persona": {
+    "title": "VP of Revenue Cycle",
+    "role_family": "finance",
+    "seniority": "vp"
+  },
+  "research_signals": [
+    {
+      "claim": "Q4 earnings call disclosed first-pass claim denial rate climbed from 7.2% to 11.8% YoY, concentrated in Mohs surgery and teledermatology CPT codes.",
+      "source": "Coastal Dermatology Q4 2025 earnings transcript",
+      "date": "2026-02-10"
+    },
+    {
+      "claim": "LinkedIn post by VP Revenue Cycle: 'Payer edits are moving faster than our coding team can adapt. Hiring alone isn't solving it.'",
+      "source": "LinkedIn - VP Revenue Cycle public post",
+      "date": "2026-03-04"
+    },
+    {
+      "claim": "Recent acquisition of two Florida dermatology groups adds 35 new providers onto a payer contract mix the existing RCM team hasn't worked before.",
+      "source": "Coastal press release: 'Coastal closes Florida expansion'",
+      "date": "2026-01-20"
+    }
+  ],
+  "channel": "linkedin",
+  "sender": {
+    "name": "Sample Rep",
+    "title": "Practice Partnerships Lead",
+    "company": "PathovAI"
+  }
+}

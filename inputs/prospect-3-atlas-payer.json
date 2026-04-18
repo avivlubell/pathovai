@@ -1,0 +1,36 @@
+{
+  "account": {
+    "name": "Atlas Health Plan",
+    "url": "https://www.atlashealthplan.example.com",
+    "segment": "Regional commercial payer",
+    "size": "1.4M members across 6 states"
+  },
+  "persona": {
+    "title": "Director of Medical Policy",
+    "role_family": "market_access",
+    "seniority": "director"
+  },
+  "research_signals": [
+    {
+      "claim": "Atlas's 2026 medical-policy bulletin announced a new prior-auth requirement for advanced cardiac imaging, effective July 1.",
+      "source": "Atlas Health Plan Policy Bulletin 2026-04",
+      "date": "2026-03-28"
+    },
+    {
+      "claim": "Two peer-reviewed meta-analyses in 2025 questioned the incremental value of the imaging modality Atlas is now restricting.",
+      "source": "PubMed meta-analysis links (2 refs, 2025)",
+      "date": "2025-09-15"
+    },
+    {
+      "claim": "Director of Medical Policy spoke at AHIP 2026 on 'evidence-based utilization management' and fielded questions on appeal volume.",
+      "source": "AHIP 2026 session recap (internal note)",
+      "date": "2026-04-09"
+    }
+  ],
+  "channel": "phone",
+  "sender": {
+    "name": "Sample Rep",
+    "title": "Clinical Evidence Liaison",
+    "company": "PathovAI"
+  }
+}

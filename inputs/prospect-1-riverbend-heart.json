@@ -1,0 +1,41 @@
+{
+  "account": {
+    "name": "Riverbend Heart Institute",
+    "url": "https://www.riverbendheart.example.org",
+    "segment": "IDN cardiac service line",
+    "size": "4 hospitals, ~2,800 cardiac cases/yr"
+  },
+  "persona": {
+    "title": "Chief of Cardiac Surgery",
+    "role_family": "clinical",
+    "seniority": "c_suite"
+  },
+  "research_signals": [
+    {
+      "claim": "Riverbend's 2025 annual report cites cardiac OR case volume down 9% YoY, attributed to staffing and room-turnover time.",
+      "source": "https://www.riverbendheart.example.org/about/annual-report-2025.pdf",
+      "date": "2026-01-15"
+    },
+    {
+      "claim": "Open job posts for two Cardiac Perfusionists and one CV Surgical First Assistant, unfilled for 90+ days.",
+      "source": "Riverbend careers page (captured 2026-04-02)",
+      "date": "2026-04-02"
+    },
+    {
+      "claim": "Chief of Cardiac Surgery on AHA regional panel: 'We can't accept every referral we're offered -- throughput is our binding constraint.'",
+      "source": "AHA Midwest Cardiac Summit panel recap",
+      "date": "2026-02-22"
+    },
+    {
+      "claim": "Mercy Heart (peer institution, comparable size) published in JTCVS showing 14% weekly case-volume gain after adopting room-turnover optimization.",
+      "source": "https://www.jtcvs.org/article/mercy-turnover-2025",
+      "date": "2025-11-03"
+    }
+  ],
+  "channel": "email",
+  "sender": {
+    "name": "Sample Rep",
+    "title": "Director, Cardiac Service Line Solutions",
+    "company": "PathovAI"
+  }
+}
