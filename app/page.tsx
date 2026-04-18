@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import MessageContent from '../components/MessageContent';
+import MessageActions from '../components/MessageActions';
 
 type ChatMessage = {
   id: string;
@@ -327,6 +328,62 @@ export default function HomePage() {
     setIsLoading(false);
   }
 
+  async function handleRegenerate(assistantIdx: number) {
+    if (isLoading) return;
+    const assistantMsg = messages[assistantIdx];
+    const prevUser = messages[assistantIdx - 1];
+    if (!assistantMsg || assistantMsg.role !== 'assistant') return;
+    if (!prevUser || prevUser.role !== 'user') return;
+
+    const priorMessages = messages.slice(0, assistantIdx);
+    setMessages(priorMessages);
+    setIsLoading(true);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: priorMessages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        const errorMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `\u26a0\ufe0f Error: ${errorData?.error || errorData?.details || 'Server error.'}`,
+        };
+        setMessages([...priorMessages, errorMessage]);
+        return;
+      }
+      const data = await res.json();
+      const replyText = data.reply ?? '';
+      const newAssistant: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: replyText,
+      };
+      const updated = [...priorMessages, newAssistant];
+      setMessages(updated);
+      saveCurrentChat(updated);
+    } catch (err) {
+      if ((err as Error)?.name !== 'AbortError') {
+        console.error('Regenerate error', err);
+      }
+    } finally {
+      abortControllerRef.current = null;
+      setIsLoading(false);
+    }
+  }
+
   if (!session) {
     return (
       <div className="flex h-screen bg-slate-950 text-slate-100 items-center justify-center">
@@ -582,29 +639,27 @@ export default function HomePage() {
               </div>
             </div>
           )}
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={`mx-auto w-full max-w-[min(768px,100%)] min-w-0 [overflow-wrap:anywhere] ${m.role === 'user' ? 'text-sky-300' : 'text-slate-200'}`}
-            >
-              <p className="text-xs font-semibold mb-1 text-slate-400">
-                {m.role === 'user' ? 'You' : 'PathovAI'}
-              </p>
-              {m.role === 'assistant' ? (
-                <MessageContent content={m.content} />
-              ) : (
+          {messages.map((m, idx) =>
+            m.role === 'assistant' ? (
+              <AssistantMessageRow
+                key={m.id}
+                message={m}
+                chatId={activeChatId}
+                userId={session?.user?.email ?? null}
+                isStreaming={isLoading}
+                onRegenerate={() => handleRegenerate(idx)}
+                onDownload={() => downloadAsMarkdown(m.content)}
+              />
+            ) : (
+              <div
+                key={m.id}
+                className="mx-auto w-full max-w-[min(768px,100%)] min-w-0 [overflow-wrap:anywhere] text-sky-300"
+              >
+                <p className="text-xs font-semibold mb-1 text-slate-400">You</p>
                 <p className="whitespace-pre-wrap">{m.content}</p>
-              )}
-              {m.role === 'assistant' && (
-                <button
-                  onClick={() => downloadAsMarkdown(m.content)}
-                  className="mt-2 text-xs text-slate-500 hover:text-slate-300 underline"
-                >
-                  Download as .md
-                </button>
-              )}
-            </div>
-          ))}
+              </div>
+            )
+          )}
           {isLoading && (
             <div className="mx-auto w-full max-w-[min(768px,100%)] min-w-0">
               <p className="text-slate-500 animate-pulse">Thinking...</p>
@@ -686,6 +741,47 @@ export default function HomePage() {
           </form>
         </div>
       </div>
+    </div>
+  );
+}
+
+type AssistantMessageRowProps = {
+  message: ChatMessage;
+  chatId: string | null;
+  userId: string | null;
+  isStreaming: boolean;
+  onRegenerate: () => void;
+  onDownload: () => void;
+};
+
+function AssistantMessageRow({
+  message,
+  chatId,
+  userId,
+  isStreaming,
+  onRegenerate,
+  onDownload,
+}: AssistantMessageRowProps) {
+  const renderedRef = useRef<HTMLDivElement>(null);
+  return (
+    <div
+      tabIndex={0}
+      className="group mx-auto w-full max-w-[min(768px,100%)] min-w-0 [overflow-wrap:anywhere] text-slate-200 focus:outline-none"
+    >
+      <p className="text-xs font-semibold mb-1 text-slate-400">PathovAI</p>
+      <div ref={renderedRef}>
+        <MessageContent content={message.content} />
+      </div>
+      <MessageActions
+        messageId={message.id}
+        chatId={chatId}
+        userId={userId}
+        content={message.content}
+        renderedRef={renderedRef}
+        isStreaming={isStreaming}
+        onRegenerate={onRegenerate}
+        onDownload={onDownload}
+      />
     </div>
   );
 }
