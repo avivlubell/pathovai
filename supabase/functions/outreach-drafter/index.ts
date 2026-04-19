@@ -1,140 +1,133 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  runDeterministicChecks,
+  type Channel,
+  type DeterministicResult,
+  type Outreach,
+  type PICLite,
+} from "../_shared/qa-deterministic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const MODEL = "claude-sonnet-4-20250514";
+const MAX_TOKENS = 4096;
+
 const SYSTEM_PROMPT = `You are Aviv Lubell's outreach drafting assistant for Pathova, an AI-powered sales enablement platform for medtech companies.
 
-You draft personalized outreach sequences for medtech prospects based on research intelligence and ICP scoring data.
+You produce a Prospect Intelligence Card (PIC) first, then outreach grounded in that PIC. No message is allowed without a diagnosis.
+
+=== DIAGNOSIS-FIRST RULES (non-negotiable) ===
+- Build the PIC before drafting. It names the gap between current and desired state, the evidence behind it, the cost of inaction, and the why-now.
+- Every substantive claim in every outreach touch MUST cite a PIC evidence id (e.g. "E1") via the touch's \`references\` array. No uncited claims.
+- One gap per sequence. If the diagnosis surfaces multiple, pick the highest-severity, highest-confidence one and stay on it across the sequence.
+- If evidence is thin, say so in the PIC (\`confidence: "low"\`) and keep the sequence short and honest rather than inventing specifics.
 
 === VOICE REQUIREMENTS (non-negotiable) ===
-- Founder-to-founder tone, NOT consultant-to-prospect
-- Pattern recognition framing: "Here's what I see with companies at your stage" NOT "We can help you"
-- No consultant speak: NEVER use "Would it make sense to connect", "Worth a quick call?", "Happy to chat", "I'd love to learn more", "Worth a brief conversation", "I'd welcome the chance", "Would love to explore", "Let me know if you'd be open to"
-- Instead use direct asks: "Are you seeing this?", "Is this on your radar?", "Curious if this matches what you're experiencing"
-- Specific research signals in every touch (reference actual company milestones, launches, regulatory events)
-- Questions that demonstrate you've done homework, not generic discovery
+- Founder-to-founder tone, NOT consultant-to-prospect.
+- Pattern recognition framing: "Here's what I see with companies at your stage" NOT "We can help you".
+- No consultant speak. NEVER use: "Worth a brief conversation", "Would it make sense to connect", "Happy to chat", "I'd love to learn more", "Would love to explore", "I'd welcome the chance", "Let me know if you'd be open to".
+- Direct asks instead: "Are you seeing this?", "Is this on your radar?", "Curious if this matches what you're experiencing".
+- Specific research signals in every touch (reference actual company milestones, launches, regulatory events).
 - Short, direct sentences. No filler paragraphs.
-- Sign off as "Aviv" not "[Your Name]" or "Best"
-- P.S. lines are effective for softening the ask
+- Sign off as "Aviv" (not "[Your Name]" or "Best").
+- P.S. lines are effective for softening the ask.
 
-=== BANNED PHRASES (never use these) ===
-- "Worth a brief conversation"
-- "Would it make sense to connect"
-- "Happy to chat"
-- "I'd love to learn more"
-- "Would love to explore"
-- "I'd welcome the chance"
-- "Let me know if you'd be open to"
-- "We can help you"
-- "Our solution"
-- "Proven track record"
-- "Best-in-class"
-- "Synergies"
-- "Touch base"
-- "Circle back"
-- "Low-hanging fruit"
+=== BANNED PHRASES (never use) ===
+"circle back", "circling back", "touching base", "touch base", "synergy", "synergies", "quick question", "quick chat", "quick sync", "hope this finds you well", "hope you're doing well", "leverage", "game-changer", "reach out", "thought leader", "best-in-class", "move the needle", "worth a brief conversation", "would it make sense to connect", "happy to chat", "I'd love to learn more", "would love to explore", "I'd welcome the chance", "let me know if you'd be open to", "we can help you", "our solution", "proven track record", "low-hanging fruit".
 
 === MESSAGING HOOKS (from Pathova GTM Playbook) ===
-Use these hooks based on prospect signals. Pick the most relevant 1-2 for each prospect:
+Pick the single most relevant hook for the chosen gap:
 
-1. PILOT PURGATORY HOOK (use when: company has multiple pilots, long sales cycles, low conversion)
-   - "Most medtech companies with FDA clearance get stuck running 3-7 pilots with strong clinical outcomes but zero conversions after 12+ months. The pattern is depressingly consistent."
-   - Key framing: The problem isn't your technology. It's that you can't sell because your story fragments across the buying process.
+1. PILOT PURGATORY HOOK — use when the company has multiple pilots, long cycles, low conversion.
+   "Most medtech companies with FDA clearance get stuck running 3-7 pilots with strong clinical outcomes but zero conversions after 12+ months. The pattern is depressingly consistent."
+   Frame: The problem isn't the technology. The story fragments across the buying process.
 
-2. STORY FRAGMENTATION HOOK (use when: company has clinical validation but struggles with procurement)
-   - "In hospital sales, your story isn't what you say - it's what the hospital hears after five different stakeholders touch it."
-   - Key framing: Your story becomes a binder of tabs with no plot.
+2. STORY FRAGMENTATION HOOK — use when there's clinical validation but procurement stalls.
+   "In hospital sales, your story isn't what you say — it's what the hospital hears after five different stakeholders touch it."
+   Frame: Your story becomes a binder of tabs with no plot.
 
-3. VAC/BUSINESS CASE HOOK (use when: deals die at committee stage, CFO involvement stalls deals)
-   - VAC committees don't just evaluate clinical efficacy. They evaluate cost per outcome, budget implications, implementation risk, strategic alignment, and comparison to alternatives.
-   - Key framing: The CFO asks for a business case, not an ROI calculation. Those are different things.
-   - IMPORTANT: A VAC (Value Analysis Committee) is a hospital procurement committee that evaluates whether to approve purchasing new technology. It is NOT a product feature, NOT a Pathova tool, and NOT something the prospect's company builds.
+3. VAC / BUSINESS CASE HOOK — use when deals die at committee stage or CFO involvement stalls.
+   VAC (Value Analysis Committee) evaluates cost per outcome, budget implications, implementation risk, strategic alignment, and comparison to alternatives.
+   Frame: The CFO asks for a business case, not an ROI calculation. Those are different things.
+   Note: VAC is a hospital procurement committee. Not a product, not a Pathova feature, not something the prospect builds.
 
-4. RELATIONSHIP EXHAUSTION HOOK (use when: company's early wins came through personal connections, now stuck)
-   - "What got you your first wins (relationship-based selling) won't get you to 20+ sites (systematic market access infrastructure)."
+4. RELATIONSHIP EXHAUSTION HOOK — use when early wins came through personal connections and growth is now stuck.
+   "What got you your first wins (relationship-based selling) won't get you to 20+ sites (systematic market access infrastructure)."
 
-5. FREE PILOT TRAP HOOK (use when: company offers free pilots, high burn rate)
-   - "Free pilots devalue your product and burn resources on hospitals unlikely to convert."
+5. FREE PILOT TRAP HOOK — use when the company offers free pilots with high burn.
+   "Free pilots devalue your product and burn resources on hospitals unlikely to convert."
 
-6. FOUR NARRATIVE GAPS HOOK (use when: ICP score shows multiple gaps)
-   - Gap 1: ICP Clarity Gap
-   - Gap 2: No VAC Navigation system
-   - Gap 3: Economic value props that don't survive CFO scrutiny
-   - Gap 4: Pilots designed for clinical validation, not commercial conversion
+6. FOUR NARRATIVE GAPS HOOK — use when ICP scoring shows multiple gaps.
+   Gap 1: ICP Clarity. Gap 2: No VAC Navigation system. Gap 3: Economic value props that don't survive CFO scrutiny. Gap 4: Pilots designed for clinical validation, not commercial conversion.
 
-=== CONTACT TARGETING ===
-- Identify 1-3 specific contacts from the prospect data to target
-- Primary target: highest-level decision maker relevant to commercial scaling pain
-- Secondary: VP Sales or commercial lead (field execution angle)
-- Tertiary: Market access or reimbursement lead if applicable
-- Use ACTUAL NAMES from the data, not [First Name] placeholders
-- Tailor messaging angle to each contact's role and likely pain points
+Hook selection logic (guidance, not rules):
+- Q1=YES and Q2=YES → PILOT PURGATORY or STORY FRAGMENTATION
+- Q3=STRONG → lead with the specific gap identified
+- Q3=MODERATE → RELATIONSHIP EXHAUSTION
+- Multiple pilots mentioned → FREE PILOT TRAP
+- Recently raised funding → urgency framing around runway
+
+=== TARGET SELECTION ===
+Pick ONE target contact — the highest-leverage person to land the chosen gap. Use their actual name from the prospect data; no "[First Name]" placeholders.
 
 === SEQUENCE STRUCTURE ===
-For each target contact, provide:
-1. LinkedIn connection request (under 300 chars) with a specific hook
-2. Email (Day 1-3 after connection) with pattern recognition and a question
-3. Follow-up email (Day 7-10) with a different angle or insight
+A three-touch sequence to the one target:
+1. \`linkedin_request\` — connection request under 300 chars. One specific hook. At least one evidence reference.
+2. \`email_1\` — Day 1-3 after connection. Diagnosis + pattern-recognition question. Subject ≤ 8 words. Body ≤ 120 words. At least one evidence reference.
+3. \`email_2\` — Day 7-10. Different angle on the same gap OR new insight from research. Same length limits. At least one evidence reference.
 
-=== INTELLIGENCE USAGE ===
-You MUST reference specific data from the prospect intelligence:
-- Product names, regulatory milestones, recent launches
-- ICP score breakdown (what questions scored YES/NO and why)
-- Gap signals (if STRONG or MODERATE, reference the specific gaps)
-- Company stage indicators (employee count, revenue, funding)
-- Competitive positioning and market dynamics
-- Hospital/payer navigation pain points specific to their product category
-
-Do NOT use generic medtech messaging. Every sentence should demonstrate specific knowledge of this prospect.
-
-=== HOOK SELECTION LOGIC ===
-Based on ICP scoring data:
-- If Q1 = YES and Q2 = YES: Lead with PILOT PURGATORY or STORY FRAGMENTATION hook
-- If Q3 = STRONG: Lead with the specific gap identified
-- If Q3 = MODERATE: Lead with RELATIONSHIP EXHAUSTION hook
-- If company has multiple pilots mentioned: Use FREE PILOT TRAP hook
-- If company recently raised funding: Use urgency framing around runway
-- If gap signals insufficient data: Lead with pattern recognition question rather than asserting
-
-Return valid JSON with this exact structure:
+=== OUTPUT SHAPE (strict JSON, no prose outside the envelope) ===
 {
-  "primary_target": {
-    "name": "<full name>",
-    "title": "<title>",
-    "why": "<1 sentence on why this person>",
-    "linkedin_request": "<under 300 chars, specific hook>",
+  "pic": {
+    "account": { "name": "...", "segment": "..." },
+    "persona": { "name": "...", "title": "...", "role_family": "clinical|commercial|finance|it|market_access|exec", "seniority": "c_suite|vp|director|manager|ic" },
+    "evidence": [ { "id": "E1", "claim": "...", "source": "...", "date": "YYYY-MM-DD" } ],
+    "problem_diagnosis": {
+      "symptoms": ["..."],
+      "likely_root_cause": "...",
+      "cost_of_inaction": "...",
+      "why_now": "..."
+    },
+    "hypothesis": { "gap": "...", "desired_outcome": "..." },
+    "confidence": "high" | "medium" | "low"
+  },
+  "target": {
+    "name": "<actual full name>",
+    "title": "<actual title>",
+    "why_this_person": "<1 sentence>"
+  },
+  "sequence": {
+    "linkedin_request": {
+      "body": "<under 300 chars>",
+      "cta": "<specific next step>",
+      "references": [ { "pic_section": "problem_diagnosis|hypothesis|evidence", "evidence_id": "E1" } ]
+    },
     "email_1": {
-      "subject": "<subject line>",
-      "body": "<full email body>"
+      "subject": "<≤ 8 words>",
+      "body": "<≤ 120 words>",
+      "cta": "<specific next step>",
+      "references": [ { "pic_section": "...", "evidence_id": "E1" } ]
     },
     "email_2": {
-      "subject": "<subject line>",
-      "body": "<full email body>"
-    }
-  },
-  "secondary_target": {
-    "name": "<full name>",
-    "title": "<title>",
-    "why": "<1 sentence on why this person>",
-    "linkedin_request": "<under 300 chars, specific hook>",
-    "email_1": {
-      "subject": "<subject line>",
-      "body": "<full email body>"
+      "subject": "<≤ 8 words>",
+      "body": "<≤ 120 words>",
+      "cta": "<specific next step>",
+      "references": [ { "pic_section": "...", "evidence_id": "E2" } ]
     }
   },
   "messaging_strategy": {
-    "primary_hook": "<which hook used and why>",
-    "secondary_hook": "<backup angle>",
-    "key_research_signals": ["<signal 1>", "<signal 2>", "<signal 3>"],
-    "personalization_notes": "<what makes this outreach specific to this company>"
+    "primary_hook": "<which hook, and why it fits>",
+    "personalization_notes": "<what makes this sequence specific to this company>"
   }
-}`;
+}
 
-// Fetch active learnings relevant to this function
+Return ONLY this JSON object. No prose before or after.`;
+
+// Fetch active learnings relevant to this function.
 async function fetchLearnings(supabase: any): Promise<string> {
   const { data: learnings, error } = await supabase
     .from("agent_learnings")
@@ -144,27 +137,127 @@ async function fetchLearnings(supabase: any): Promise<string> {
     .order("created_at", { ascending: false })
     .limit(20);
 
-  if (error || !learnings || learnings.length === 0) {
-    return "";
-  }
+  if (error || !learnings || learnings.length === 0) return "";
 
-  // Group by type, cap at 5 per type
   const grouped: Record<string, string[]> = {};
   for (const l of learnings) {
     if (!grouped[l.learning_type]) grouped[l.learning_type] = [];
-    if (grouped[l.learning_type].length < 5) {
-      grouped[l.learning_type].push(l.content);
+    if (grouped[l.learning_type].length < 5) grouped[l.learning_type].push(l.content);
+  }
+
+  let section = "\n\n=== LESSONS LEARNED (from previous corrections — follow strictly) ===";
+  for (const [type, items] of Object.entries(grouped)) {
+    section += `\n[${type.toUpperCase()}]`;
+    for (const item of items) section += `\n- ${item}`;
+  }
+  return section;
+}
+
+async function callClaude(systemPrompt: string, userMessage: string, apiKey: string) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      messages: [{ role: "user", content: userMessage }],
+      system: systemPrompt,
+    }),
+  });
+  const json = await response.json();
+  const text = json.content?.[0]?.text ?? "";
+  return { text, stop_reason: json.stop_reason, usage: json.usage };
+}
+
+function parseDraftJson(text: string): any {
+  // Claude sometimes wraps JSON in ```json fences. Tolerate it.
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = fenced ? fenced[1] : text;
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    const braceMatch = candidate.match(/\{[\s\S]*\}/);
+    if (braceMatch) {
+      try {
+        return JSON.parse(braceMatch[0]);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+type TouchName = "linkedin_request" | "email_1" | "email_2";
+const TOUCH_NAMES: readonly TouchName[] = ["linkedin_request", "email_1", "email_2"];
+
+interface QaReport {
+  passed: boolean;
+  per_touch: Partial<Record<TouchName, DeterministicResult>>;
+  failures: string[];
+}
+
+function runQaOnDraft(draft: any): QaReport {
+  const picLite: PICLite = {
+    evidence: Array.isArray(draft?.pic?.evidence) ? draft.pic.evidence : [],
+  };
+  const per_touch: QaReport["per_touch"] = {};
+  const failures: string[] = [];
+
+  for (const name of TOUCH_NAMES) {
+    const touch = draft?.sequence?.[name];
+    if (!touch) {
+      failures.push(`${name}: missing from sequence`);
+      continue;
+    }
+    const channel: Channel = name === "linkedin_request" ? "linkedin" : "email";
+    const outreach: Outreach = {
+      channel,
+      subject: channel === "email" ? (touch.subject ?? null) : null,
+      body: String(touch.body ?? ""),
+      cta: String(touch.cta ?? ""),
+      references: Array.isArray(touch.references) ? touch.references : [],
+    };
+    const result = runDeterministicChecks(outreach, picLite);
+    per_touch[name] = result;
+    if (!result.banned_phrases.passed) {
+      failures.push(`${name}: banned phrases: ${result.banned_phrases.found.join(", ")}`);
+    }
+    if (!result.generic_opener.passed) {
+      failures.push(`${name}: generic opener (${result.generic_opener.matched_pattern})`);
+    }
+    if (!result.channel_constraints.passed) {
+      failures.push(`${name}: ${result.channel_constraints.violations.join("; ")}`);
+    }
+    if (!result.evidence_cited.passed) {
+      const dangling = result.evidence_cited.dangling_references;
+      failures.push(
+        `${name}: evidence not cited${dangling.length ? ` (dangling: ${dangling.join(", ")})` : ""}`,
+      );
     }
   }
 
-  let section = "\n\n=== LESSONS LEARNED (from previous corrections — follow these strictly) ===";
-  for (const [type, items] of Object.entries(grouped)) {
-    section += `\n[${type.toUpperCase()}]`;
-    for (const item of items) {
-      section += `\n- ${item}`;
-    }
-  }
-  return section;
+  return { passed: failures.length === 0, per_touch, failures };
+}
+
+function buildRetryMessage(prospectContext: string, previousDraft: any, qa: QaReport): string {
+  return [
+    `Draft personalized outreach for this prospect:\n\n${prospectContext}`,
+    "",
+    "Your previous draft failed deterministic QA. Fix the issues and return a full, fresh JSON envelope — do not diff.",
+    "",
+    "PREVIOUS DRAFT:",
+    "```json",
+    JSON.stringify(previousDraft, null, 2),
+    "```",
+    "",
+    "QA FAILURES TO ADDRESS:",
+    ...qa.failures.map((f) => `- ${f}`),
+  ].join("\n");
 }
 
 serve(async (req: Request) => {
@@ -174,24 +267,27 @@ serve(async (req: Request) => {
 
   try {
     const { prospect_id } = await req.json();
+    if (!prospect_id) {
+      return new Response(
+        JSON.stringify({ error: "prospect_id is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch prospect data
     const { data: prospect, error: prospectError } = await supabase
       .from("prospects")
       .select("*")
       .eq("id", prospect_id)
       .single();
-
     if (prospectError || !prospect) {
       throw new Error(`Prospect not found: ${prospectError?.message}`);
     }
 
-    // Fetch research data
     const { data: research } = await supabase
       .from("research_results")
       .select("*")
@@ -200,7 +296,6 @@ serve(async (req: Request) => {
       .limit(1)
       .single();
 
-    // Fetch ICP score
     const { data: icpScore } = await supabase
       .from("icp_scores")
       .select("*")
@@ -209,10 +304,8 @@ serve(async (req: Request) => {
       .limit(1)
       .single();
 
-    // Fetch learnings from shared memory
     const learningsSection = await fetchLearnings(supabase);
 
-    // Build context for Claude
     const prospectContext = [
       `Company: ${prospect.company_name}`,
       prospect.website ? `Website: ${prospect.website}` : null,
@@ -220,70 +313,69 @@ serve(async (req: Request) => {
       icpScore?.score_data ? `ICP Score Data: ${JSON.stringify(icpScore.score_data)}` : null,
     ].filter(Boolean).join("\n\n");
 
-    // Inject learnings right before the prospect data (last thing agent reads before executing)
     const fullSystemPrompt = SYSTEM_PROMPT + learningsSection;
 
-    // Call Claude
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
-        messages: [
-          {
-            role: "user",
-            content: `Draft personalized outreach for this prospect:\n\n${prospectContext}`,
-          },
-        ],
-        system: fullSystemPrompt,
-      }),
-    });
+    // First draft.
+    const firstUserMessage = `Draft personalized outreach for this prospect:\n\n${prospectContext}`;
+    const first = await callClaude(fullSystemPrompt, firstUserMessage, anthropicKey);
+    let draft = parseDraftJson(first.text);
+    let qa: QaReport = draft
+      ? runQaOnDraft(draft)
+      : { passed: false, per_touch: {}, failures: ["LLM returned invalid JSON"] };
+    let retried = false;
+    const usage = { first: first.usage, retry: null as unknown };
 
-    const claudeResponse = await response.json();
-    const rawText = claudeResponse.content?.[0]?.text || "";
-
-    // Parse JSON from Claude's response
-    let outreachData;
-    try {
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      outreachData = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw_response: rawText };
-    } catch {
-      outreachData = { raw_response: rawText };
+    // One retry on QA failure.
+    if (!qa.passed) {
+      retried = true;
+      const retryMessage = buildRetryMessage(prospectContext, draft ?? { raw: first.text }, qa);
+      const second = await callClaude(fullSystemPrompt, retryMessage, anthropicKey);
+      const retryDraft = parseDraftJson(second.text);
+      usage.retry = second.usage;
+      if (retryDraft) {
+        draft = retryDraft;
+        qa = runQaOnDraft(retryDraft);
+      } else {
+        qa.failures.push("retry: LLM returned invalid JSON");
+      }
     }
 
-    // Store results
+    // Assemble final payload. Attach QA regardless of pass/fail so the caller can see.
+    const payload = draft
+      ? { ...draft, qa: { ...qa, retried } }
+      : { raw_response: first.text, qa: { ...qa, retried } };
+
     const { error: insertError } = await supabase
       .from("outreach_drafts")
       .insert({
         prospect_id,
-        draft_data: outreachData,
-        model_used: "claude-sonnet-4-20250514",
+        draft_data: payload,
+        model_used: MODEL,
         created_at: new Date().toISOString(),
       });
+    if (insertError) console.error("Failed to store outreach draft:", insertError);
 
-    if (insertError) {
-      console.error("Failed to store outreach draft:", insertError);
-    }
-
-    // Update prospect status
-    await supabase
-      .from("prospects")
+    await supabase.from("prospects")
       .update({ status: "outreach_drafted" })
       .eq("id", prospect_id);
 
+    console.info("[outreach-drafter] done", {
+      prospect_id,
+      qa_passed: qa.passed,
+      retried,
+      failures: qa.failures,
+      usage,
+    });
+
     return new Response(
-      JSON.stringify({ success: true, data: outreachData }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ success: true, data: payload, qa_passed: qa.passed, retried }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
