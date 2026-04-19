@@ -154,13 +154,13 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'invoke_outreach_drafter',
-    description: 'Outreach Drafter specialist agent. Drafts multi-step outreach sequence.',
+    description: 'Outreach Drafter specialist agent. Produces a diagnosis-first PIC (Prospect Intelligence Card) then a 3-touch sequence (LinkedIn + 2 emails) to a single target, grounded in evidence and QA-checked.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        account_id: { type: 'string', description: 'Required -- UUID from accounts table' },
+        prospect_id: { type: 'string', description: 'Required -- UUID from prospects table' },
       },
-      required: ['account_id'],
+      required: ['prospect_id'],
     },
   },
   {
