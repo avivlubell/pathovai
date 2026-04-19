@@ -7,12 +7,15 @@ Deno.serve(async (req: Request) => {
   );
 
   const body = await req.json().catch(() => ({}));
-  const { prospect_id, action_type, decision_mode, context_score, summary } = body;
+  // Accept account_id (canonical) and prospect_id (legacy) for back-compat.
+  const account_id: string | undefined = body?.account_id ?? body?.prospect_id;
+  const { action_type, decision_mode, context_score, summary } = body;
 
+  // agent_runs.prospect_id is still the column name in the DB (rename deferred to Layer 2).
   const { data, error } = await supabase
     .from('agent_runs')
     .insert({
-      prospect_id: prospect_id || null,
+      prospect_id: account_id || null,
       action_type: action_type || 'unknown',
       decision_mode: decision_mode || null,
       context_score: context_score || null,

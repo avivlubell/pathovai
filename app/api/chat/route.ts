@@ -41,12 +41,12 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_outreach_drafter: 'outreach-drafter',
   invoke_risk_assessor: 'risk-assessor',
   query_deals: 'query-deals',
-  sync_prospect_content: 'sync-prospect-content',
+  sync_account_content: 'sync-prospect-content',
   run_prospect_pipeline: 'run-prospect-pipeline',
   prospect_researcher_batch: 'prospect-researcher',
   search_references: 'search-references',
-  search_prospects: 'search-prospects',
-  get_prospect_detail: 'get-prospect-detail',
+  search_accounts_and_contacts: 'search-prospects',
+  get_account_detail: 'get-prospect-detail',
   score_icp: 'icp-scorer',
   log_agent_run: 'log-agent-run',
   process_document: 'process-document',
@@ -67,8 +67,8 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'search_prospects',
-    description: 'Search accounts (companies) and contacts (people). Use this to find companies by name, industry, or keyword, AND to find people by name, title, email, or region. Returns both account and contact results.',
+    name: 'search_accounts_and_contacts',
+    description: 'Search accounts (companies) and contacts (people). Use this to find companies by name, industry, or keyword, AND to find people by name, title, email, or region. Returns both account and contact results. An "account" is a company; a "contact" is an individual person at a company.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -77,12 +77,12 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'get_prospect_detail',
-    description: 'Get full details for a specific account (company) by name or ID.',
+    name: 'get_account_detail',
+    description: 'Get full details for a specific account (a COMPANY) by name or ID. For an individual person, use search_accounts_and_contacts instead.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        account_id: { type: 'string', description: 'UUID from accounts table' },
+        account_id: { type: 'string', description: 'Company UUID from accounts table (NOT a contact/person id)' },
         company_name: { type: 'string', description: 'Company name to look up' },
       },
     },
@@ -93,7 +93,7 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        account_id: { type: 'string', description: 'UUID from accounts table' },
+        account_id: { type: 'string', description: 'Company UUID from accounts table' },
         company_name: { type: 'string', description: 'Company name' },
       },
     },
@@ -118,11 +118,11 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'log_agent_run',
-    description: 'Log an agent action for audit trail.',
+    description: 'Log an agent action for audit trail. account_id is the company UUID this action relates to.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        account_id: { type: 'string' },
+        account_id: { type: 'string', description: 'Company UUID from accounts table' },
         action_type: { type: 'string' },
         decision_mode: { type: 'string' },
         context_score: { type: 'number' },
@@ -132,55 +132,55 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'invoke_prospect_researcher',
-    description: 'Prospect Researcher specialist agent. Uses Perplexity API for live web research.',
+    description: 'Prospect Researcher specialist agent. Uses Perplexity API for live web research on a company. Operates at the COMPANY level, not individual people.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        account_id: { type: 'string', description: 'UUID from accounts table' },
+        account_id: { type: 'string', description: 'Company UUID from accounts table' },
         company_name: { type: 'string', description: 'Company name to research' },
       },
     },
   },
   {
     name: 'invoke_icp_scorer',
-    description: 'ICP Scorer specialist agent. Scores prospect against Pathova ICP framework. Writes to database.',
+    description: 'ICP Scorer specialist agent. Scores a COMPANY against Pathova ICP framework. Writes to database.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        account_id: { type: 'string', description: 'UUID from accounts table' },
+        account_id: { type: 'string', description: 'Company UUID from accounts table' },
         company_name: { type: 'string', description: 'Company name to score' },
       },
     },
   },
   {
     name: 'invoke_outreach_drafter',
-    description: 'Outreach Drafter specialist agent. Produces a diagnosis-first PIC (Prospect Intelligence Card) then a 3-touch sequence (LinkedIn + 2 emails) to a single target, grounded in evidence and QA-checked.',
+    description: 'Outreach Drafter specialist agent. Takes an ACCOUNT (company) and produces a diagnosis-first PIC (Prospect Intelligence Card) then a 3-touch sequence (LinkedIn + 2 emails) to a single target person AT that company, grounded in evidence and QA-checked. You do NOT need a contact/person id -- the drafter picks the best target from the account data.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        prospect_id: { type: 'string', description: 'Required -- UUID from prospects table' },
+        account_id: { type: 'string', description: 'Required -- company UUID from accounts table (NOT a contact/person id)' },
       },
-      required: ['prospect_id'],
+      required: ['account_id'],
     },
   },
   {
     name: 'invoke_risk_assessor',
-    description: 'Risk Assessor specialist agent. Evaluates regulatory, financial, ICP fit, market timing risks.',
+    description: 'Risk Assessor specialist agent. Evaluates regulatory, financial, ICP fit, market timing risks for a COMPANY.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        account_id: { type: 'string', description: 'UUID from accounts table' },
+        account_id: { type: 'string', description: 'Company UUID from accounts table' },
         company_name: { type: 'string', description: 'Company name' },
       },
     },
   },
   {
-    name: 'sync_prospect_content',
-    description: 'Sync a prospect full Notion page content into Supabase.',
+    name: 'sync_account_content',
+    description: 'Sync an account full Notion page content into Supabase.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        account_id: { type: 'string', description: 'Prospect UUID to sync' },
+        account_id: { type: 'string', description: 'Company UUID to sync' },
       },
     },
   },
@@ -192,7 +192,7 @@ const tools: Anthropic.Tool[] = [
       properties: {
         document_text: { type: 'string', description: 'Extracted raw text from the uploaded document' },
         document_type: { type: 'string', description: 'Optional override for document classification' },
-        prospect_id: { type: 'string', description: 'Optional prospect UUID for context' },
+        account_id: { type: 'string', description: 'Optional linked company UUID for context' },
         intent: { type: 'string', description: 'User intent or goal for the uploaded document' },
       },
       required: ['document_text'],
@@ -208,7 +208,7 @@ const tools: Anthropic.Tool[] = [
         content: { type: 'string', description: 'Text content to save into the knowledge base' },
         document_type: { type: 'string', description: 'Classification such as competitive_intel, research_note, battle_card, case_study, white_paper, or general_document' },
         tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags for categorization' },
-        account_id: { type: 'string', description: 'Optional linked prospect UUID' },
+        account_id: { type: 'string', description: 'Optional linked company UUID from accounts table' },
         source_url: { type: 'string', description: 'Optional original source URL' },
       },
       required: ['title', 'content', 'document_type'],

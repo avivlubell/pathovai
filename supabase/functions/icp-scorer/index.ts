@@ -22,9 +22,9 @@ function computeTier(q1: string, q2: string, q3: string, q4: string): { tier: st
 const SYSTEM_PROMPT = `You are Pathova's ICP Classification Agent. You answer exactly 4 questions about a company based ONLY on the data provided. You do not strategize, draft outreach, or do anything else.
 
 CRITICAL RULES:
-1. For each question, you MUST quote specific evidence from the PROSPECT DATA. Use exact names, numbers, and phrases from the data.
+1. For each question, you MUST quote specific evidence from the ACCOUNT DATA. Use exact names, numbers, and phrases from the data.
 2. If the data does not contain enough information to answer a question confidently, say "INSUFFICIENT DATA" and explain what is missing.
-3. Do NOT invent hospital names, partnership names, employee names, dates, revenue figures, or any facts not present in the PROSPECT DATA.
+3. Do NOT invent hospital names, partnership names, employee names, dates, revenue figures, or any facts not present in the ACCOUNT DATA.
 4. Your job is CLASSIFICATION, not scoring. Answer each question with the specified options only.
 
 You must return valid JSON with this exact structure:
@@ -54,30 +54,33 @@ You must return valid JSON with this exact structure:
 
 Deno.serve(async (req) => {
   try {
-    const { prospect_id, company_name: inputName } = await req.json();
+    const body = await req.json();
+    // Accept account_id (canonical) and prospect_id (legacy) for back-compat.
+    const account_id: string | undefined = body?.account_id ?? body?.prospect_id;
+    const inputName: string | undefined = body?.company_name;
 
-    // --- Lookup prospect ---
-    let prospect: any = null;
+    // --- Lookup account ---
+    let account: any = null;
 
-    if (prospect_id) {
+    if (account_id) {
       const { data } = await supabase
         .from("accounts")
         .select("*")
-        .eq("id", prospect_id)
+        .eq("id", account_id)
         .single();
-      prospect = data;
+      account = data;
     } else if (inputName) {
       const { data } = await supabase
         .from("accounts")
         .select("*")
         .ilike("company_name", `%${inputName}%`)
         .single();
-      prospect = data;
+      account = data;
     }
 
-    if (!prospect) {
+    if (!account) {
       return new Response(
-        JSON.stringify({ error: "Prospect not found" }),
+        JSON.stringify({ error: "Account not found" }),
         { status: 404, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -91,19 +94,19 @@ Deno.serve(async (req) => {
 
     const icpFramework = icpRefs?.map((r: any) => r.content).join("\n\n") || "";
 
-    // --- Build prospect data for Claude ---
-    const researchData = prospect.research_output || prospect.research_summary || "No research data available";
+    // --- Build account data for Claude ---
+    const researchData = account.research_output || account.research_summary || "No research data available";
 
-    const prospectContext = `
-## PROSPECT DATA
-Company: ${prospect.company_name}
-Website: ${prospect.website_url || "Unknown"}
-Industry/Category: ${prospect.product_category || "Unknown"}
-Description: ${prospect.description || "Unknown"}
-FDA Status: ${prospect.fda_status || "Unknown"}
-Funding: ${prospect.funding_stage || "Unknown"}
-Employee Count: ${prospect.employee_count || "Unknown"}
-Location: ${prospect.hq_location || "Unknown"}
+    const accountContext = `
+## ACCOUNT DATA
+Company: ${account.company_name}
+Website: ${account.website_url || "Unknown"}
+Industry/Category: ${account.product_category || "Unknown"}
+Description: ${account.description || "Unknown"}
+FDA Status: ${account.fda_status || "Unknown"}
+Funding: ${account.funding_stage || "Unknown"}
+Employee Count: ${account.employee_count || "Unknown"}
+Location: ${account.hq_location || "Unknown"}
 
 ## RESEARCH DATA
 ${typeof researchData === "string" ? researchData : JSON.stringify(researchData, null, 2)}
@@ -125,7 +128,7 @@ Answer the 4 classification questions based ONLY on the above data.`;
         model: "claude-sonnet-4-20250514",
         max_tokens: 2000,
         system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: prospectContext }],
+        messages: [{ role: "user", content: accountContext }],
       }),
     });
 
@@ -199,7 +202,7 @@ Answer the 4 classification questions based ONLY on the above data.`;
     const { data: updateData, error: updateError } = await supabase
       .from("accounts")
       .update(updatePayload)
-      .eq("id", prospect.id)
+      .eq("id", account.id)
       .select();
 
     if (updateError) {
@@ -211,7 +214,8 @@ Answer the 4 classification questions based ONLY on the above data.`;
     // === RETURN RESPONSE ===
     return new Response(
       JSON.stringify({
-        company_name: prospect.company_name,
+        account_id: account.id,
+        company_name: account.company_name,
         framework: "Pathova ICP v3.0 (4-Question Classification)",
         classification: {
           q1_right_industry: {
