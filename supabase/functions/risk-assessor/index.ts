@@ -7,9 +7,9 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-const RISK_SYSTEM_PROMPT = `You are Pathova's Risk Assessment Specialist — an expert analyst focused exclusively on identifying commercial, financial, and operational risks for medtech prospect companies.
+const RISK_SYSTEM_PROMPT = `You are Pathova's Risk Assessment Specialist — an expert analyst focused exclusively on identifying commercial, financial, and operational risks for medtech companies.
 
-Your ONLY job is to assess risks that would affect whether Pathova should engage with this prospect. You do not score ICP fit, draft outreach, or make engagement recommendations — you surface risks.
+Your ONLY job is to assess risks that would affect whether Pathova should engage with this account. You do not score ICP fit, draft outreach, or make engagement recommendations — you surface risks.
 
 RISK CATEGORIES TO EVALUATE:
 1. Capital Risk: Funding recency, burn rate signals, runway indicators. Seed-only with no follow-on 36+ months = RED FLAG.
@@ -53,26 +53,29 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { prospect_id, company_name } = await req.json();
+    const body = await req.json();
+    // Accept account_id (canonical) and prospect_id (legacy) for back-compat.
+    const account_id: string | undefined = body?.account_id ?? body?.prospect_id;
+    const company_name: string | undefined = body?.company_name;
 
-    if (!prospect_id && !company_name) {
+    if (!account_id && !company_name) {
       return new Response(
-        JSON.stringify({ error: "Must provide prospect_id or company_name" }),
+        JSON.stringify({ error: "Must provide account_id or company_name" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    let prospectQuery = supabase.from("prospects").select("*");
-    if (prospect_id) {
-      prospectQuery = prospectQuery.eq("id", prospect_id);
+    let accountQuery = supabase.from("accounts").select("*");
+    if (account_id) {
+      accountQuery = accountQuery.eq("id", account_id);
     } else {
-      prospectQuery = prospectQuery.ilike("company_name", `%${company_name}%`);
+      accountQuery = accountQuery.ilike("company_name", `%${company_name}%`);
     }
-    const { data: prospect, error: prospectError } = await prospectQuery.single();
+    const { data: account, error: accountError } = await accountQuery.single();
 
-    if (prospectError || !prospect) {
+    if (accountError || !account) {
       return new Response(
-        JSON.stringify({ error: "Prospect not found", details: prospectError?.message }),
+        JSON.stringify({ error: "Account not found", details: accountError?.message }),
         { status: 404, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -94,22 +97,22 @@ Deno.serve(async (req) => {
       : '';
 
     
-    const userMessage = `## PROSPECT DATA
-Company: ${prospect.company_name}
-FDA Status: ${prospect.fda_status || "Unknown"}
-Product Category: ${prospect.product_category || "Unknown"}
-Tier: ${prospect.tier || "Unscored"}
-ICP Score: ${prospect.icp_score || "None"}
-Funding Stage: ${prospect.funding_stage || "Unknown"}
-Company Size: ${prospect.company_size || "Unknown"}
-Outreach Status: ${prospect.outreach_status || "Not started"}
-CEO/Founder: ${prospect.ceo_name || "Unknown"}
+    const userMessage = `## ACCOUNT DATA
+Company: ${account.company_name}
+FDA Status: ${account.fda_status || "Unknown"}
+Product Category: ${account.product_category || "Unknown"}
+Tier: ${account.tier || "Unscored"}
+ICP Score: ${account.icp_score || "None"}
+Funding Stage: ${account.funding_stage || "Unknown"}
+Company Size: ${account.company_size || "Unknown"}
+Outreach Status: ${account.outreach_status || "Not started"}
+CEO/Founder: ${account.ceo_name || "Unknown"}
 
 ## RESEARCH ON FILE
-${prospect.research_raw ? prospect.research_raw.substring(0, 4000) : "No research on file."}
+${account.research_raw ? account.research_raw.substring(0, 4000) : "No research on file."}
 
 ## ICP SCORE BREAKDOWN
-${prospect.icp_score_breakdown ? JSON.stringify(prospect.icp_score_breakdown, null, 2) : "No scoring data available."}
+${account.icp_score_breakdown ? JSON.stringify(account.icp_score_breakdown, null, 2) : "No scoring data available."}
 
 ## PATTERN CONTEXT
 ${(patterns || []).map(p => p.content?.substring(0, 1000)).join("\n\n") || "No pattern data available."}
@@ -117,7 +120,7 @@ ${(patterns || []).map(p => p.content?.substring(0, 1000)).join("\n\n") || "No p
 ---
 ${lessonsBlock}
 
-Assess all risks for this prospect. Return ONLY valid JSON.`;
+Assess all risks for this account. Return ONLY valid JSON.`;
 
     const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -155,9 +158,9 @@ Assess all risks for this prospect. Return ONLY valid JSON.`;
 
         // Persist risk assessment to database
     const { error: updateError } = await supabase
-      .from('prospects')
+      .from('accounts')
       .update({ risk_assessment: assessment })
-      .eq('id', prospect.id);
+      .eq('id', account.id);
 
     if (updateError) {
       console.error('Failed to persist risk assessment:', updateError);
@@ -166,8 +169,8 @@ Assess all risks for this prospect. Return ONLY valid JSON.`;
 
     return new Response(
       JSON.stringify({
-        prospect_id: prospect.id,
-        company_name: prospect.company_name,
+        account_id: account.id,
+        company_name: account.company_name,
         assessment,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }

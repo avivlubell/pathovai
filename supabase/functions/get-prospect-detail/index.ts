@@ -7,15 +7,17 @@ Deno.serve(async (req: Request) => {
   );
 
   const body = await req.json().catch(() => ({}));
-  const { prospect_id, company_name } = body;
+  // Accept account_id (canonical) and prospect_id (legacy) for back-compat.
+  const account_id: string | undefined = body?.account_id ?? body?.prospect_id;
+  const company_name: string | undefined = body?.company_name;
 
   let data, error;
 
-  if (prospect_id) {
+  if (account_id) {
     ({ data, error } = await supabase
       .from('accounts')
       .select('*')
-      .eq('id', prospect_id)
+      .eq('id', account_id)
       .single());
   } else if (company_name) {
     ({ data, error } = await supabase
@@ -25,7 +27,7 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .single());
   } else {
-    return new Response(JSON.stringify({ error: 'Must provide prospect_id or company_name' }), {
+    return new Response(JSON.stringify({ error: 'Must provide account_id or company_name' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' }
     });

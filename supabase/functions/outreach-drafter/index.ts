@@ -244,9 +244,9 @@ function runQaOnDraft(draft: any): QaReport {
   return { passed: failures.length === 0, per_touch, failures };
 }
 
-function buildRetryMessage(prospectContext: string, previousDraft: any, qa: QaReport): string {
+function buildRetryMessage(accountContext: string, previousDraft: any, qa: QaReport): string {
   return [
-    `Draft personalized outreach for this prospect:\n\n${prospectContext}`,
+    `Draft personalized outreach for this account:\n\n${accountContext}`,
     "",
     "Your previous draft failed deterministic QA. Fix the issues and return a full, fresh JSON envelope — do not diff.",
     "",
@@ -266,10 +266,12 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { prospect_id } = await req.json();
-    if (!prospect_id) {
+    const body = await req.json();
+    // Accept account_id (canonical) and prospect_id (legacy) for back-compat.
+    const account_id: string | undefined = body?.account_id ?? body?.prospect_id;
+    if (!account_id) {
       return new Response(
-        JSON.stringify({ error: "prospect_id is required" }),
+        JSON.stringify({ error: "account_id is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -279,19 +281,19 @@ serve(async (req: Request) => {
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: prospect, error: prospectError } = await supabase
-      .from("prospects")
+    const { data: account, error: accountError } = await supabase
+      .from("accounts")
       .select("*")
-      .eq("id", prospect_id)
+      .eq("id", account_id)
       .single();
-    if (prospectError || !prospect) {
-      throw new Error(`Prospect not found: ${prospectError?.message}`);
+    if (accountError || !account) {
+      throw new Error(`Account not found: ${accountError?.message}`);
     }
 
     const { data: research } = await supabase
       .from("research_results")
       .select("*")
-      .eq("prospect_id", prospect_id)
+      .eq("prospect_id", account_id)
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
@@ -299,16 +301,16 @@ serve(async (req: Request) => {
     const { data: icpScore } = await supabase
       .from("icp_scores")
       .select("*")
-      .eq("prospect_id", prospect_id)
+      .eq("prospect_id", account_id)
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
 
     const learningsSection = await fetchLearnings(supabase);
 
-    const prospectContext = [
-      `Company: ${prospect.company_name}`,
-      prospect.website ? `Website: ${prospect.website}` : null,
+    const accountContext = [
+      `Company: ${account.company_name}`,
+      account.website ? `Website: ${account.website}` : null,
       research?.research_data ? `Research Intelligence: ${JSON.stringify(research.research_data)}` : null,
       icpScore?.score_data ? `ICP Score Data: ${JSON.stringify(icpScore.score_data)}` : null,
     ].filter(Boolean).join("\n\n");
@@ -316,7 +318,7 @@ serve(async (req: Request) => {
     const fullSystemPrompt = SYSTEM_PROMPT + learningsSection;
 
     // First draft.
-    const firstUserMessage = `Draft personalized outreach for this prospect:\n\n${prospectContext}`;
+    const firstUserMessage = `Draft personalized outreach for this account:\n\n${accountContext}`;
     const first = await callClaude(fullSystemPrompt, firstUserMessage, anthropicKey);
     let draft = parseDraftJson(first.text);
     let qa: QaReport = draft
@@ -328,7 +330,7 @@ serve(async (req: Request) => {
     // One retry on QA failure.
     if (!qa.passed) {
       retried = true;
-      const retryMessage = buildRetryMessage(prospectContext, draft ?? { raw: first.text }, qa);
+      const retryMessage = buildRetryMessage(accountContext, draft ?? { raw: first.text }, qa);
       const second = await callClaude(fullSystemPrompt, retryMessage, anthropicKey);
       const retryDraft = parseDraftJson(second.text);
       usage.retry = second.usage;
@@ -345,22 +347,23 @@ serve(async (req: Request) => {
       ? { ...draft, qa: { ...qa, retried } }
       : { raw_response: first.text, qa: { ...qa, retried } };
 
+    // outreach_drafts.prospect_id is still the column name in the DB (rename deferred to Layer 2).
     const { error: insertError } = await supabase
       .from("outreach_drafts")
       .insert({
-        prospect_id,
+        prospect_id: account_id,
         draft_data: payload,
         model_used: MODEL,
         created_at: new Date().toISOString(),
       });
     if (insertError) console.error("Failed to store outreach draft:", insertError);
 
-    await supabase.from("prospects")
+    await supabase.from("accounts")
       .update({ status: "outreach_drafted" })
-      .eq("id", prospect_id);
+      .eq("id", account_id);
 
     console.info("[outreach-drafter] done", {
-      prospect_id,
+      account_id,
       qa_passed: qa.passed,
       retried,
       failures: qa.failures,
@@ -368,7 +371,7 @@ serve(async (req: Request) => {
     });
 
     return new Response(
-      JSON.stringify({ success: true, data: payload, qa_passed: qa.passed, retried }),
+      JSON.stringify({ success: true, account_id, data: payload, qa_passed: qa.passed, retried }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
