@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pathovai.com/schemas/pic.schema.json",
+  "title": "Prospect Intelligence Card",
+  "type": "object",
+  "required": ["account", "persona", "evidence", "problem_diagnosis", "hypothesis", "qualification", "confidence"],
+  "additionalProperties": false,
+  "properties": {
+    "account": {
+      "type": "object",
+      "required": ["name", "segment"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "segment": { "type": "string", "description": "e.g. IDN, community hospital, ASC, payer, pharma" },
+        "size": { "type": "string", "description": "beds / rev / headcount — free-form" }
+      }
+    },
+    "persona": {
+      "type": "object",
+      "required": ["title", "role_family", "seniority"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "role_family": {
+          "type": "string",
+          "enum": ["clinical", "commercial", "market_access", "operations", "finance", "it", "executive"]
+        },
+        "seniority": {
+          "type": "string",
+          "enum": ["ic", "manager", "director", "vp", "c_suite"]
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "claim", "source", "date"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^E[0-9]+$" },
+          "claim": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "description": "URL or document name" },
+          "date": { "type": "string", "format": "date" }
+        }
+      }
+    },
+    "problem_diagnosis": {
+      "type": "object",
+      "required": ["symptoms", "likely_root_cause", "cost_of_inaction", "why_now"],
+      "additionalProperties": false,
+      "properties": {
+        "symptoms": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "likely_root_cause": { "type": "string" },
+        "cost_of_inaction": { "type": "string" },
+        "why_now": { "type": "string" }
+      }
+    },
+    "hypothesis": {
+      "type": "object",
+      "required": ["gap", "desired_outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "gap": { "type": "string" },
+        "desired_outcome": { "type": "string" }
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "required": ["icp_fit_score", "readiness_signals", "disqualifiers"],
+      "additionalProperties": false,
+      "properties": {
+        "icp_fit_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "readiness_signals": { "type": "array", "items": { "type": "string" } },
+        "disqualifiers": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    }
+  }
+}

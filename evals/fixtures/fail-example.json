@@ -1,0 +1,66 @@
+{
+  "description": "A deliberately bad draft: generic opener, banned phrases, vague CTA, no evidence references. Used as a fail fixture for the eval harness. Reflects the merged qa shape.",
+  "input": {
+    "pic": "examples/medtech-pic-example.json",
+    "draft": {
+      "channel": "email",
+      "subject": "Quick question about Riverbend",
+      "body": "Dr. Vasquez -- I hope this finds you well. I wanted to reach out and circle back on cardiac care at Riverbend. We've helped leading institutions leverage synergies to move the needle on outcomes. Would you be open to a quick chat next week?",
+      "cta": "Open to a quick chat next week?",
+      "references": [],
+      "sender": {
+        "name": "Sample Rep",
+        "title": "Director, Cardiac Service Line Solutions",
+        "company": "PathovAI"
+      }
+    }
+  },
+  "expected_qa": {
+    "score": 1,
+    "passed": false,
+    "checks": {
+      "diagnosis_stated": false,
+      "no_generic_opener": false,
+      "evidence_cited": false,
+      "no_banned_phrases": false,
+      "cta_specific": false,
+      "persona_appropriate": true,
+      "channel_constraints": true
+    },
+    "banned_phrases_found": [
+      "circle back",
+      "synergies",
+      "quick question",
+      "quick chat",
+      "hope this finds you well",
+      "leverage",
+      "reach out",
+      "move the needle"
+    ],
+    "suggestions": [
+      { "check": "diagnosis_stated", "fix": "Open with the 9% cardiac case-volume decline (E1) and the throughput-ceiling quote (E3) instead of a generic greeting." },
+      { "check": "cta_specific", "fix": "Replace 'a quick chat' with a scoped ask like '20 minutes on Mercy's turnover data against your May schedule.'" },
+      { "check": "no_banned_phrases", "fix": "Remove banned phrase(s): circle back, synergies, quick question, quick chat, hope this finds you well, leverage, reach out, move the needle." },
+      { "check": "no_generic_opener", "fix": "Opener matches template \"hope this finds you\". Replace with an evidence-grounded first sentence." },
+      { "check": "evidence_cited", "fix": "Populate references[] with at least one PIC evidence_id supporting the body." }
+    ],
+    "deterministic": {
+      "banned_phrases": {
+        "passed": false,
+        "found": [
+          "circle back",
+          "synergies",
+          "quick question",
+          "quick chat",
+          "hope this finds you well",
+          "leverage",
+          "reach out",
+          "move the needle"
+        ]
+      },
+      "generic_opener": { "passed": false, "matched_pattern": "hope this finds you" },
+      "channel_constraints": { "passed": true, "violations": [] },
+      "evidence_cited": { "passed": false, "dangling_references": [] }
+    }
+  }
+}

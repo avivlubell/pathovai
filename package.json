@@ -6,11 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "prospect": "tsx scripts/gap-prospecting/run.ts",
+    "test:prospect": "node --import tsx --test scripts/gap-prospecting/*.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
     "@supabase/supabase-js": "^2.49.0",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
     "mammoth": "^1.12.0",
     "next": "16.2.0",
     "next-auth": "^4.24.0",
@@ -29,6 +33,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
