@@ -40,6 +40,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_prospect_researcher: 'prospect-researcher',
   invoke_outreach_drafter: 'outreach-drafter',
   invoke_risk_assessor: 'risk-assessor',
+  get_communications: 'get-communications',
   query_deals: 'query-deals',
   sync_account_content: 'sync-prospect-content',
   run_prospect_pipeline: 'run-prospect-pipeline',
@@ -154,13 +155,24 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'invoke_outreach_drafter',
-    description: 'Outreach Drafter specialist agent. Takes an ACCOUNT (company) and produces a diagnosis-first PIC (Prospect Intelligence Card) then a 3-touch sequence (LinkedIn + 2 emails) to a single target person AT that company, grounded in evidence and QA-checked. You do NOT need a contact/person id -- the drafter picks the best target from the account data.',
+    description: 'Outreach Drafter specialist agent. Takes an ACCOUNT (company) and produces a diagnosis-first PIC (Prospect Intelligence Card) then a 3-touch sequence (LinkedIn + 2 emails) to a single target person AT that company, grounded in evidence and QA-checked. You do NOT need a contact/person id -- the drafter picks the best target from the account data. The drafter auto-pulls prior outreach history from Notion so it avoids repeating angles.',
     input_schema: {
       type: 'object' as const,
       properties: {
         account_id: { type: 'string', description: 'Required -- company UUID from accounts table (NOT a contact/person id)' },
       },
       required: ['account_id'],
+    },
+  },
+  {
+    name: 'get_communications',
+    description: 'Pull prior outreach touches (email, LinkedIn, phone, meetings) logged in Notion for a company. Use when the user asks what has been sent, what was said, or when you need history to judge whether an account is warm. The outreach drafter already auto-pulls this internally -- do NOT call this before invoke_outreach_drafter.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        account_id: { type: 'string', description: 'Company UUID from accounts table' },
+        company_name: { type: 'string', description: 'Company name to look up if UUID unknown' },
+      },
     },
   },
   {
