@@ -7,6 +7,10 @@ import {
   type Outreach,
   type PICLite,
 } from "../_shared/qa-deterministic.ts";
+import {
+  fetchCommunicationsForAccount,
+  formatCommunicationsForPrompt,
+} from "../_shared/notion-communications.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -70,6 +74,20 @@ Hook selection logic (guidance, not rules):
 - Q3=MODERATE → RELATIONSHIP EXHAUSTION
 - Multiple pilots mentioned → FREE PILOT TRAP
 - Recently raised funding → urgency framing around runway
+
+=== PRIOR OUTREACH HISTORY ===
+The account context includes a "PRIOR OUTREACH HISTORY" section pulled live from Notion. Before drafting, read it. It tells you:
+- Who has already been contacted at this account and on which channel.
+- What angles, hooks, and subject lines have already been used.
+- What outcomes came back (if marked).
+
+Use the history to:
+- Pick a NEW angle if a hook was already tried — never repeat a subject line, an opener, or a specific framing that's already been sent.
+- Reference prior touches naturally if a thread is already open ("Following up on my April 2 note on X…") — but only if that prior touch was SENT.
+- Change the target person if the previous target went cold across multiple touches.
+- In messaging_strategy.personalization_notes, briefly state which prior touches informed the new angle (e.g. "Avoided pilot-purgatory hook — used in Feb 20 LinkedIn").
+
+If the history is empty or could not be loaded, proceed normally and say so in personalization_notes ("No prior outreach on record.").
 
 === TARGET SELECTION ===
 Pick ONE target contact — the highest-leverage person to land the chosen gap. Use their actual name from the prospect data; no "[First Name]" placeholders.
@@ -308,11 +326,21 @@ serve(async (req: Request) => {
 
     const learningsSection = await fetchLearnings(supabase);
 
+    // Prior outreach touches from Notion. Auto-pull so the drafter can
+    // reference what's already been said and avoid repeating angles.
+    const commsResult = account.notion_page_id
+      ? await fetchCommunicationsForAccount(account.notion_page_id, 50)
+      : { communications: [], error: "no notion_page_id on account" };
+    const commsSection = commsResult.error
+      ? `(Could not load prior outreach history: ${commsResult.error})`
+      : formatCommunicationsForPrompt(commsResult.communications, 10, 800);
+
     const accountContext = [
       `Company: ${account.company_name}`,
       account.website ? `Website: ${account.website}` : null,
       research?.research_data ? `Research Intelligence: ${JSON.stringify(research.research_data)}` : null,
       icpScore?.score_data ? `ICP Score Data: ${JSON.stringify(icpScore.score_data)}` : null,
+      `=== PRIOR OUTREACH HISTORY (most recent first) ===\n${commsSection}`,
     ].filter(Boolean).join("\n\n");
 
     const fullSystemPrompt = SYSTEM_PROMPT + learningsSection;

@@ -278,6 +278,10 @@ Use these tools. Do not guess or hallucinate data that can be retrieved.
 11. **sync_account_content** — Sync an account's Notion page into Supabase.
     Input: `account_id` (company UUID). Use when account data needs refreshing from Notion.
 
+12. **get_communications** — Pull prior outreach touches (email, LinkedIn, phone, meetings) from the Notion Outreach Touches DB for a company.
+    Input: `account_id` (company UUID) or `company_name`. Use when the user asks what has been sent, what was said, or when you need history to judge whether an account is warm.
+    Important: `invoke_outreach_drafter` already auto-pulls this internally. Do NOT call `get_communications` before `invoke_outreach_drafter` — the drafter will see the history automatically and you will just burn tokens.
+
 ---
 
 ## DRAFTER OUTPUT PRESENTATION
