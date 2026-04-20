@@ -28,6 +28,7 @@ export interface Communication {
 export interface FetchResult {
   communications: Communication[];
   error?: string;
+  raw_first_page?: any;
 }
 
 function extractText(prop: any): string {
@@ -155,7 +156,7 @@ export async function fetchCommunicationsForAccount(
     const communications = (data.results ?? [])
       .map(mapPageToCommunication)
       .slice(0, limit);
-    return { communications };
+    return { communications, raw_first_page: data.results?.[0] };
   } catch (err) {
     return {
       communications: [],

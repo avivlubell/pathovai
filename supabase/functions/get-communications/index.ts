@@ -67,7 +67,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { communications, error } = await fetchCommunicationsForAccount(
+    const debug = body?.debug === true;
+    const { communications, error, raw_first_page } = await fetchCommunicationsForAccount(
       account.notion_page_id,
       50,
     );
@@ -91,6 +92,7 @@ Deno.serve(async (req: Request) => {
         company_name: account.company_name,
         count: communications.length,
         communications,
+        ...(debug ? { raw_first_page } : {}),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
