@@ -74,6 +74,8 @@ function findProp(props: any, name: string): any {
   return null;
 }
 
+export const NOTION_COMMS_CODE_VERSION = "v2-findprop";
+
 function mapPageToCommunication(page: any): Communication {
   const props = page.properties ?? {};
   return {
