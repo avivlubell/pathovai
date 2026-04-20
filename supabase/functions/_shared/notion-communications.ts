@@ -1,7 +1,7 @@
 // Shared helpers for reading the Outreach Touches DB from Notion.
 // Reused by `get-communications` (standalone) and `outreach-drafter` (auto-pull).
 
-const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+const NOTION_INTEGRATION_TOKEN = Deno.env.get("NOTION_INTEGRATION_TOKEN");
 const NOTION_OUTREACH_DB_ID =
   Deno.env.get("NOTION_OUTREACH_DB_ID") ?? "bc4daa1322f24e46aadde4b6b0a25ab5";
 
@@ -74,8 +74,8 @@ export async function fetchCommunicationsForAccount(
   notionPageId: string,
   limit = 50,
 ): Promise<FetchResult> {
-  if (!NOTION_API_KEY) {
-    return { communications: [], error: "NOTION_API_KEY not configured" };
+  if (!NOTION_INTEGRATION_TOKEN) {
+    return { communications: [], error: "NOTION_INTEGRATION_TOKEN not configured" };
   }
   if (!notionPageId) {
     return { communications: [], error: "notion_page_id is empty" };
@@ -87,7 +87,7 @@ export async function fetchCommunicationsForAccount(
       {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${NOTION_API_KEY}`,
+          "Authorization": `Bearer ${NOTION_INTEGRATION_TOKEN}`,
           "Notion-Version": "2022-06-28",
           "Content-Type": "application/json",
         },
