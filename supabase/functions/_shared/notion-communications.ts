@@ -64,18 +64,28 @@ function extractCheckbox(prop: any): boolean {
   return !!prop.checkbox;
 }
 
+function findProp(props: any, name: string): any {
+  if (!props) return null;
+  if (props[name]) return props[name];
+  const target = name.trim().toLowerCase();
+  for (const key of Object.keys(props)) {
+    if (key.trim().toLowerCase() === target) return props[key];
+  }
+  return null;
+}
+
 function mapPageToCommunication(page: any): Communication {
   const props = page.properties ?? {};
   return {
     id: page.id,
     url: page.url ?? "",
-    title: extractText(props["Title"]) || extractText(props["Name"]),
-    date: extractDate(props["Touch Date"]),
-    channel: extractSelect(props["Channel"]),
-    outcome: extractSelect(props["Outcome"]),
-    top_challenges: extractMultiSelect(props["Top Challenges"]),
-    message: extractText(props["Message"]),
-    sent: extractCheckbox(props["Sent"]),
+    title: extractText(findProp(props, "Title")) || extractText(findProp(props, "Name")),
+    date: extractDate(findProp(props, "Touch Date")),
+    channel: extractSelect(findProp(props, "Channel")),
+    outcome: extractSelect(findProp(props, "Outcome")),
+    top_challenges: extractMultiSelect(findProp(props, "Top Challenges")),
+    message: extractText(findProp(props, "Message")),
+    sent: extractCheckbox(findProp(props, "Sent")),
   };
 }
 
