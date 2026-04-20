@@ -16,8 +16,8 @@ export default function MessageSources({ sources }: Props) {
   const [open, setOpen] = useState(false);
 
   const hasKbSources = Array.isArray(sources) && sources.length > 0;
-  // Count includes the generic fallback line when no KB records were used.
-  const count = hasKbSources ? sources!.length : 1;
+  if (!hasKbSources) return null;
+  const count = sources!.length;
 
   return (
     <div className="mt-1 text-xs">
@@ -43,21 +43,17 @@ export default function MessageSources({ sources }: Props) {
       </button>
       {open && (
         <ul className="mt-2 space-y-2 border-l border-border pl-3">
-          {hasKbSources &&
-            sources!.map((s) => (
-              <li key={s.id} className="space-y-0.5">
-                <p className="font-medium text-fg">{s.title}</p>
-                {s.snippet && (
-                  <p className="text-fg-muted">{s.snippet}</p>
-                )}
-                <p className="text-[10px] uppercase tracking-wide text-fg-subtle">
-                  KB · {s.id.slice(0, 8)}
-                </p>
-              </li>
-            ))}
-          {!hasKbSources && (
-            <li className="text-fg-subtle">General medtech industry knowledge</li>
-          )}
+          {sources!.map((s) => (
+            <li key={s.id} className="space-y-0.5">
+              <p className="font-medium text-fg">{s.title}</p>
+              {s.snippet && (
+                <p className="text-fg-muted">{s.snippet}</p>
+              )}
+              <p className="text-[10px] uppercase tracking-wide text-fg-subtle">
+                KB · {s.id.slice(0, 8)}
+              </p>
+            </li>
+          ))}
         </ul>
       )}
     </div>
