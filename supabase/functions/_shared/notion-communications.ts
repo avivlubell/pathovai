@@ -1,9 +1,17 @@
 // Shared helpers for reading the Outreach Touches DB from Notion.
 // Reused by `get-communications` (standalone) and `outreach-drafter` (auto-pull).
+//
+// Uses Notion API 2025-09-03 + the /data_sources endpoint because the
+// Outreach Touches DB has multiple data sources; the older /databases
+// query endpoint rejects multi-data-source DBs with a 400.
 
 const NOTION_INTEGRATION_TOKEN = Deno.env.get("NOTION_INTEGRATION_TOKEN");
 const NOTION_OUTREACH_DB_ID =
   Deno.env.get("NOTION_OUTREACH_DB_ID") ?? "bc4daa1322f24e46aadde4b6b0a25ab5";
+// Optional override: if set, skip the database metadata lookup and query
+// this data source id directly.
+const NOTION_OUTREACH_DATA_SOURCE_ID = Deno.env.get("NOTION_OUTREACH_DATA_SOURCE_ID");
+const NOTION_VERSION = "2025-09-03";
 
 export interface Communication {
   id: string;
@@ -20,6 +28,7 @@ export interface Communication {
 export interface FetchResult {
   communications: Communication[];
   error?: string;
+  raw_first_page?: any;
 }
 
 function extractText(prop: any): string {
@@ -55,19 +64,62 @@ function extractCheckbox(prop: any): boolean {
   return !!prop.checkbox;
 }
 
+function findProp(props: any, name: string): any {
+  if (!props) return null;
+  if (props[name]) return props[name];
+  const target = name.trim().toLowerCase();
+  for (const key of Object.keys(props)) {
+    if (key.trim().toLowerCase() === target) return props[key];
+  }
+  return null;
+}
+
+export const NOTION_COMMS_CODE_VERSION = "v2-findprop";
+
 function mapPageToCommunication(page: any): Communication {
   const props = page.properties ?? {};
   return {
     id: page.id,
     url: page.url ?? "",
-    title: extractText(props["Title"]) || extractText(props["Name"]),
-    date: extractDate(props["Touch Date"]),
-    channel: extractSelect(props["Channel"]),
-    outcome: extractSelect(props["Outcome"]),
-    top_challenges: extractMultiSelect(props["Top Challenges"]),
-    message: extractText(props["Message"]),
-    sent: extractCheckbox(props["Sent"]),
+    title: extractText(findProp(props, "Title")) || extractText(findProp(props, "Name")),
+    date: extractDate(findProp(props, "Touch Date")),
+    channel: extractSelect(findProp(props, "Channel")),
+    outcome: extractSelect(findProp(props, "Outcome")),
+    top_challenges: extractMultiSelect(findProp(props, "Top Challenges")),
+    message: extractText(findProp(props, "Message")),
+    sent: extractCheckbox(findProp(props, "Sent")),
   };
+}
+
+async function resolveDataSourceId(): Promise<string> {
+  if (NOTION_OUTREACH_DATA_SOURCE_ID) return NOTION_OUTREACH_DATA_SOURCE_ID;
+
+  const res = await fetch(
+    `https://api.notion.com/v1/databases/${NOTION_OUTREACH_DB_ID}`,
+    {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${NOTION_INTEGRATION_TOKEN}`,
+        "Notion-Version": NOTION_VERSION,
+      },
+    },
+  );
+
+  if (!res.ok) {
+    const details = await res.text();
+    throw new Error(
+      `Failed to load database metadata (${res.status}): ${details.slice(0, 300)}`,
+    );
+  }
+
+  const data = await res.json();
+  const dataSources = data.data_sources ?? [];
+  if (dataSources.length === 0) {
+    throw new Error(
+      "Database has no data_sources -- nothing to query. Check integration access.",
+    );
+  }
+  return dataSources[0].id;
 }
 
 export async function fetchCommunicationsForAccount(
@@ -82,13 +134,15 @@ export async function fetchCommunicationsForAccount(
   }
 
   try {
+    const dataSourceId = await resolveDataSourceId();
+
     const res = await fetch(
-      `https://api.notion.com/v1/databases/${NOTION_OUTREACH_DB_ID}/query`,
+      `https://api.notion.com/v1/data_sources/${dataSourceId}/query`,
       {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${NOTION_INTEGRATION_TOKEN}`,
-          "Notion-Version": "2022-06-28",
+          "Notion-Version": NOTION_VERSION,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -114,7 +168,7 @@ export async function fetchCommunicationsForAccount(
     const communications = (data.results ?? [])
       .map(mapPageToCommunication)
       .slice(0, limit);
-    return { communications };
+    return { communications, raw_first_page: data.results?.[0] };
   } catch (err) {
     return {
       communications: [],

@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { fetchCommunicationsForAccount } from "../_shared/notion-communications.ts";
+import { fetchCommunicationsForAccount, NOTION_COMMS_CODE_VERSION } from "../_shared/notion-communications.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -67,7 +67,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { communications, error } = await fetchCommunicationsForAccount(
+    const debug = body?.debug === true;
+    const { communications, error, raw_first_page } = await fetchCommunicationsForAccount(
       account.notion_page_id,
       50,
     );
@@ -91,6 +92,8 @@ Deno.serve(async (req: Request) => {
         company_name: account.company_name,
         count: communications.length,
         communications,
+        _code_version: NOTION_COMMS_CODE_VERSION,
+        ...(debug ? { raw_first_page } : {}),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
