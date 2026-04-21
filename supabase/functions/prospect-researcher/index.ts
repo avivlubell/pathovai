@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveAccountByName } from "../_shared/fuzzy-lookup.ts";
 
 const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -350,11 +351,16 @@ Deno.serve(async (req: Request) => {
       if (error) throw new Error(`Supabase update error: ${error.message}`);
       result = data;
     } else {
-      // If no notion_page_id, try by company_name
+      // If no notion_page_id, resolve company_name via fuzzy matching
+      // so "Medtronik" still lands on the Medtronic row.
+      const resolved = await resolveAccountByName(supabase, company_name);
+      if (!resolved) {
+        throw new Error(`No account matched company_name='${company_name}'`);
+      }
       const { data, error } = await supabase
         .from("accounts")
         .update(updateData)
-        .ilike("company_name", `%${company_name}%`)
+        .eq("id", resolved.id)
         .select()
         .single();
       if (error) throw new Error(`Supabase update error: ${error.message}`);

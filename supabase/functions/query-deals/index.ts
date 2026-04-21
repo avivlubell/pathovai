@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveAccountByName } from '../_shared/fuzzy-lookup.ts';
 
 Deno.serve(async (req: Request) => {
   const supabase = createClient(
@@ -22,8 +23,20 @@ Deno.serve(async (req: Request) => {
   if (filter?.motion_type) {
     query = query.ilike('motion_type', `%${filter.motion_type}%`);
   }
+
+  // Company filter: resolve typos via accounts table first so
+  // "Medtronik" -> canonical "Medtronic", then substring-match the
+  // deals table on that canonical name. If no account clears the
+  // threshold, fall back to raw substring on the user's input.
+  let companyMatchInfo: any = undefined;
   if (filter?.company) {
-    query = query.ilike('company_name', `%${filter.company}%`);
+    const resolved = await resolveAccountByName(supabase, String(filter.company));
+    if (resolved) {
+      query = query.ilike('company_name', `%${resolved.company_name}%`);
+      companyMatchInfo = resolved.match_info;
+    } else {
+      query = query.ilike('company_name', `%${filter.company}%`);
+    }
   }
 
   const { data, error } = await query;
@@ -38,6 +51,7 @@ Deno.serve(async (req: Request) => {
   return new Response(JSON.stringify({
     total: data.length,
     deals: data,
+    _match_info: companyMatchInfo,
     summary: {
       by_stage: data.reduce((acc: Record<string, number>, d: any) => {
         acc[d.stage || 'Unknown'] = (acc[d.stage || 'Unknown'] || 0) + 1;

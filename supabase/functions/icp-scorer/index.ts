@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveAccountByName } from "../_shared/fuzzy-lookup.ts";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -61,6 +62,7 @@ Deno.serve(async (req) => {
 
     // --- Lookup account ---
     let account: any = null;
+    let matchInfo: any = undefined;
 
     if (account_id) {
       const { data } = await supabase
@@ -70,17 +72,21 @@ Deno.serve(async (req) => {
         .single();
       account = data;
     } else if (inputName) {
-      const { data } = await supabase
-        .from("accounts")
-        .select("*")
-        .ilike("company_name", `%${inputName}%`)
-        .single();
-      account = data;
+      const resolved = await resolveAccountByName(supabase, inputName);
+      if (resolved) {
+        const { data } = await supabase
+          .from("accounts")
+          .select("*")
+          .eq("id", resolved.id)
+          .single();
+        account = data;
+        matchInfo = resolved.match_info;
+      }
     }
 
     if (!account) {
       return new Response(
-        JSON.stringify({ error: "Account not found" }),
+        JSON.stringify({ error: "Account not found", query: inputName ?? null }),
         { status: 404, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -216,6 +222,7 @@ Answer the 4 classification questions based ONLY on the above data.`;
       JSON.stringify({
         account_id: account.id,
         company_name: account.company_name,
+        _match_info: matchInfo,
         framework: "Pathova ICP v3.0 (4-Question Classification)",
         classification: {
           q1_right_industry: {
