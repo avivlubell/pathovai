@@ -19,6 +19,80 @@ type ChatMessage = {
   sources?: SourceRef[];
 };
 
+type TraceStep = {
+  id: string;
+  tool: string;
+  label: string;
+  status: 'running' | 'done';
+  durationMs?: number;
+};
+
+type StreamHandlers = {
+  onTrace: (step: TraceStep) => void;
+  onDone: (reply: string, sources: SourceRef[]) => void;
+  onError: (message: string) => void;
+};
+
+async function consumeChatStream(
+  res: Response,
+  handlers: StreamHandlers
+): Promise<void> {
+  if (!res.body) {
+    handlers.onError('Empty response body');
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let sepIdx: number;
+    while ((sepIdx = buffer.indexOf('\n\n')) !== -1) {
+      const rawEvent = buffer.slice(0, sepIdx);
+      buffer = buffer.slice(sepIdx + 2);
+      if (!rawEvent.trim()) continue;
+
+      let eventName = 'message';
+      const dataLines: string[] = [];
+      for (const line of rawEvent.split('\n')) {
+        if (line.startsWith('event:')) eventName = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+      }
+      if (dataLines.length === 0) continue;
+
+      let payload: any;
+      try {
+        payload = JSON.parse(dataLines.join('\n'));
+      } catch {
+        continue;
+      }
+
+      if (eventName === 'trace') {
+        handlers.onTrace({
+          id: payload.id,
+          tool: payload.tool,
+          label: payload.label ?? payload.tool,
+          status: payload.phase === 'end' ? 'done' : 'running',
+          durationMs: payload.durationMs,
+        });
+      } else if (eventName === 'done') {
+        handlers.onDone(
+          typeof payload.reply === 'string' ? payload.reply : '',
+          Array.isArray(payload.sources) ? payload.sources : []
+        );
+      } else if (eventName === 'error') {
+        handlers.onError(
+          payload.details || payload.error || 'Server error'
+        );
+      }
+    }
+  }
+}
+
 type ChatSession = {
   id: string;
   title: string;
@@ -55,6 +129,7 @@ export default function HomePage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [liveTrace, setLiveTrace] = useState<TraceStep[]>([]);
   const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -430,6 +505,7 @@ export default function HomePage() {
     setMessages(nextMessages);
     setInput('');
     setIsLoading(true);
+    setLiveTrace([]);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -462,11 +538,38 @@ export default function HomePage() {
         return;
       }
 
-      const data = await res.json();
-      const replyText = data.reply ?? '';
-      const replySources: SourceRef[] = Array.isArray(data.sources)
-        ? data.sources
-        : [];
+      let replyText = '';
+      let replySources: SourceRef[] = [];
+      let streamError: string | null = null;
+      await consumeChatStream(res, {
+        onTrace: (step) => {
+          setLiveTrace((prev) => {
+            const idx = prev.findIndex((s) => s.id === step.id);
+            if (idx === -1) return [...prev, step];
+            const next = prev.slice();
+            next[idx] = { ...next[idx], ...step };
+            return next;
+          });
+        },
+        onDone: (reply, sources) => {
+          replyText = reply;
+          replySources = sources;
+        },
+        onError: (msg) => {
+          streamError = msg;
+        },
+      });
+
+      if (streamError) {
+        const errorMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `Error: ${streamError}`,
+        };
+        setMessages([...nextMessages, errorMessage]);
+        return;
+      }
+
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -535,6 +638,7 @@ export default function HomePage() {
     const priorMessages = messages.slice(0, assistantIdx);
     setMessages(priorMessages);
     setIsLoading(true);
+    setLiveTrace([]);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -562,11 +666,38 @@ export default function HomePage() {
         setMessages([...priorMessages, errorMessage]);
         return;
       }
-      const data = await res.json();
-      const replyText = data.reply ?? '';
-      const replySources: SourceRef[] = Array.isArray(data.sources)
-        ? data.sources
-        : [];
+      let replyText = '';
+      let replySources: SourceRef[] = [];
+      let streamError: string | null = null;
+      await consumeChatStream(res, {
+        onTrace: (step) => {
+          setLiveTrace((prev) => {
+            const idx = prev.findIndex((s) => s.id === step.id);
+            if (idx === -1) return [...prev, step];
+            const next = prev.slice();
+            next[idx] = { ...next[idx], ...step };
+            return next;
+          });
+        },
+        onDone: (reply, sources) => {
+          replyText = reply;
+          replySources = sources;
+        },
+        onError: (msg) => {
+          streamError = msg;
+        },
+      });
+
+      if (streamError) {
+        const errorMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `Error: ${streamError}`,
+        };
+        setMessages([...priorMessages, errorMessage]);
+        return;
+      }
+
       const newAssistant: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -1088,7 +1219,7 @@ export default function HomePage() {
               />
             )
           )}
-          {isLoading && <PendingAssistantRow />}
+          {isLoading && <PendingAssistantRow trace={liveTrace} />}
           <div ref={messagesEndRef} />
         </div>
         {showJumpButton && (
@@ -1306,7 +1437,10 @@ function UserMessageRow({
   );
 }
 
-function PendingAssistantRow() {
+function PendingAssistantRow({ trace }: { trace: TraceStep[] }) {
+  const hasSteps = trace.length > 0;
+  const latestRunning = [...trace].reverse().find((s) => s.status === 'running');
+  const announce = latestRunning?.label ?? 'PathovAI is thinking';
   return (
     <div
       role="status"
@@ -1319,11 +1453,50 @@ function PendingAssistantRow() {
       >
         <Logo size={28} alt="" />
       </div>
-      <div className="flex items-center gap-1.5 pt-2">
-        <span className="sr-only">PathovAI is thinking</span>
-        <span className="h-2 w-2 animate-pulse rounded-full bg-fg-subtle [animation-delay:0ms]" />
-        <span className="h-2 w-2 animate-pulse rounded-full bg-fg-subtle [animation-delay:150ms]" />
-        <span className="h-2 w-2 animate-pulse rounded-full bg-fg-subtle [animation-delay:300ms]" />
+      <div className="min-w-0 flex-1 pt-1">
+        <span className="sr-only">{announce}</span>
+        {hasSteps && (
+          <ol className="flex flex-col gap-1 text-xs text-fg-muted">
+            {trace.map((step) => (
+              <li key={step.id} className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className={
+                    step.status === 'running'
+                      ? 'inline-block h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-accent'
+                      : 'inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-fg-subtle'
+                  }
+                />
+                <span
+                  className={
+                    step.status === 'running' ? 'text-fg' : 'text-fg-muted'
+                  }
+                >
+                  {step.label}
+                </span>
+                {step.status === 'done' && typeof step.durationMs === 'number' && (
+                  <span className="text-fg-subtle">
+                    {step.durationMs < 1000
+                      ? `${step.durationMs}ms`
+                      : `${(step.durationMs / 1000).toFixed(1)}s`}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+        <div
+          aria-hidden={hasSteps}
+          className={
+            hasSteps
+              ? 'mt-2 flex items-center gap-1.5'
+              : 'flex items-center gap-1.5'
+          }
+        >
+          <span className="h-2 w-2 animate-pulse rounded-full bg-fg-subtle [animation-delay:0ms]" />
+          <span className="h-2 w-2 animate-pulse rounded-full bg-fg-subtle [animation-delay:150ms]" />
+          <span className="h-2 w-2 animate-pulse rounded-full bg-fg-subtle [animation-delay:300ms]" />
+        </div>
       </div>
     </div>
   );

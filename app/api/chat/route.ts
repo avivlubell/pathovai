@@ -1,4 +1,5 @@
 export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getServerSession } from 'next-auth';
@@ -36,6 +37,86 @@ async function fetchLearnings(): Promise<string> {
     return '\n\n## Active Learnings & Corrections\n' + lines.join('\n');
   } catch {
     return '';
+  }
+}
+
+function humanizeToolCall(
+  toolName: string,
+  input: Record<string, unknown>
+): string {
+  const pickName = (): string | null => {
+    const v =
+      (input.company_name as string | undefined) ||
+      (input.account_name as string | undefined) ||
+      (input.name as string | undefined) ||
+      null;
+    return v && typeof v === 'string' && v.trim() ? v.trim() : null;
+  };
+  const pickQuery = (): string | null => {
+    const v = input.query;
+    if (typeof v !== 'string' || !v.trim()) return null;
+    const s = v.trim();
+    return s.length > 60 ? s.slice(0, 57) + '…' : s;
+  };
+
+  switch (toolName) {
+    case 'invoke_prospect_researcher':
+    case 'prospect_researcher_batch':
+      return pickName() ? `Researching ${pickName()}` : 'Researching the account';
+    case 'invoke_icp_scorer':
+    case 'score_icp':
+      return pickName() ? `Scoring ICP fit for ${pickName()}` : 'Scoring ICP fit';
+    case 'invoke_outreach_drafter':
+      return pickName() ? `Drafting outreach for ${pickName()}` : 'Drafting outreach';
+    case 'invoke_risk_assessor':
+      return pickName() ? `Assessing risk for ${pickName()}` : 'Assessing risk';
+    case 'get_communications':
+      return pickName()
+        ? `Pulling prior touches for ${pickName()}`
+        : 'Pulling prior outreach history';
+    case 'query_deals':
+      return 'Querying deals pipeline';
+    case 'sync_account_content':
+      return 'Syncing account content from Notion';
+    case 'run_prospect_pipeline':
+      return pickName() ? `Running pipeline on ${pickName()}` : 'Running prospect pipeline';
+    case 'search_references':
+      return pickQuery()
+        ? `Searching references for "${pickQuery()}"`
+        : 'Searching reference library';
+    case 'search_accounts_and_contacts':
+      return pickQuery()
+        ? `Searching accounts for "${pickQuery()}"`
+        : 'Searching accounts and contacts';
+    case 'get_account_detail':
+      return pickName() ? `Looking up ${pickName()}` : 'Looking up account details';
+    case 'log_agent_run':
+      return 'Logging action to audit trail';
+    case 'process_document':
+      return 'Processing document';
+    case 'ingest_to_kb': {
+      const title = typeof input.title === 'string' ? input.title : null;
+      return title ? `Saving "${title}" to knowledge base` : 'Saving to knowledge base';
+    }
+    case 'store_learning':
+      return 'Storing learning';
+    case 'gmail_send':
+    case 'send_email':
+      return 'Sending email via Gmail';
+    case 'gmail_search':
+    case 'search_email':
+      return 'Searching Gmail';
+    case 'gmail_read':
+    case 'read_email':
+      return 'Reading email';
+    case 'drive_search':
+      return pickQuery() ? `Searching Drive for "${pickQuery()}"` : 'Searching Drive';
+    case 'drive_read':
+      return 'Reading Drive file';
+    default: {
+      const pretty = toolName.replace(/^invoke_/, '').replace(/_/g, ' ');
+      return `Running ${pretty}`;
+    }
   }
 }
 
@@ -406,69 +487,122 @@ export async function POST(req: Request) {
       content: m.content,
     }));
 
-    const MAX_TOOL_ROUNDS = 25;
-    let round = 0;
-    const sources: Array<{ id: string; title: string; snippet: string }> = [];
-    const seenSourceIds = new Set<string>();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (event: string, data: unknown) => {
+          controller.enqueue(
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          );
+        };
 
-    while (round < MAX_TOOL_ROUNDS) {
-      round++;
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
-        system:
-          SYSTEM_PROMPT + (await fetchLearnings()) + conversationContext,
-        tools,
-        tool_choice: { type: 'auto' },
-        messages,
-      });
+        const MAX_TOOL_ROUNDS = 25;
+        let round = 0;
+        const sources: Array<{ id: string; title: string; snippet: string }> = [];
+        const seenSourceIds = new Set<string>();
+        let stepCounter = 0;
 
-      const toolUseBlocks = response.content.filter(
-        (b): b is Anthropic.ContentBlock & { type: 'tool_use' } =>
-        b.type === 'tool_use'
-      );
+        try {
+          while (round < MAX_TOOL_ROUNDS) {
+            round++;
+            const response = await anthropic.messages.create({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 4096,
+              system:
+                SYSTEM_PROMPT + (await fetchLearnings()) + conversationContext,
+              tools,
+              tool_choice: { type: 'auto' },
+              messages,
+            });
 
-      if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
-        const textBlocks = response.content.filter(
-          (b): b is Anthropic.ContentBlock & { type: 'text' } =>
-          b.type === 'text'
-        );
-        const finalText = textBlocks.map((b: any) => b.text).join('\n');
-        const reply = extractReply(finalText);
-        return NextResponse.json({ reply, sources });
-      }
+            const toolUseBlocks = response.content.filter(
+              (b): b is Anthropic.ContentBlock & { type: 'tool_use' } =>
+              b.type === 'tool_use'
+            );
 
-      messages.push({
-        role: 'assistant',
-        content: response.content as any,
-      });
+            if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
+              const textBlocks = response.content.filter(
+                (b): b is Anthropic.ContentBlock & { type: 'text' } =>
+                b.type === 'text'
+              );
+              const finalText = textBlocks.map((b: any) => b.text).join('\n');
+              const reply = extractReply(finalText);
+              send('done', { reply, sources });
+              controller.close();
+              return;
+            }
 
-      const toolResults: any[] = [];
-      for (const toolBlock of toolUseBlocks) {
-        const result = await executeTool(
-          toolBlock.name,
-          (toolBlock as any).input as Record<string, unknown>,
-          gmailAccessToken
-        );
-        if (toolBlock.name === 'search_references') {
-          collectSources(result, sources, seenSourceIds);
+            messages.push({
+              role: 'assistant',
+              content: response.content as any,
+            });
+
+            const toolResults: any[] = [];
+            for (const toolBlock of toolUseBlocks) {
+              const toolInput = (toolBlock as any).input as Record<string, unknown>;
+              const stepId = `s${++stepCounter}`;
+              const label = humanizeToolCall(toolBlock.name, toolInput);
+              const startedAt = Date.now();
+              send('trace', {
+                id: stepId,
+                phase: 'start',
+                tool: toolBlock.name,
+                label,
+              });
+
+              const result = await executeTool(
+                toolBlock.name,
+                toolInput,
+                gmailAccessToken
+              );
+              if (toolBlock.name === 'search_references') {
+                collectSources(result, sources, seenSourceIds);
+              }
+
+              send('trace', {
+                id: stepId,
+                phase: 'end',
+                tool: toolBlock.name,
+                durationMs: Date.now() - startedAt,
+              });
+
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: toolBlock.id,
+                content: result,
+              });
+            }
+
+            messages.push({
+              role: 'user',
+              content: toolResults,
+            });
+          }
+
+          send('done', {
+            reply:
+              '[Agent reached maximum tool-use rounds. Please try a simpler query.]',
+            sources,
+          });
+          controller.close();
+        } catch (err: any) {
+          console.error('Claude error', err);
+          send('error', {
+            error: 'Server error',
+            details: err?.message ?? String(err),
+          });
+          controller.close();
         }
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: toolBlock.id,
-          content: result,
-        });
-      }
+      },
+    });
 
-      messages.push({
-        role: 'user',
-        content: toolResults,
-      });
-    }
-
-    return NextResponse.json({
-      reply: '[Agent reached maximum tool-use rounds. Please try a simpler query.]',
-      sources,
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
     });
   } catch (err: any) {
     console.error('Claude error', err);
