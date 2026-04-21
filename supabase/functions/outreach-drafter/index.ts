@@ -86,16 +86,20 @@ Hook selection logic (guidance, not rules):
 - Recently raised funding → urgency framing around runway
 
 === PRIOR OUTREACH HISTORY ===
-The account context includes a "PRIOR OUTREACH HISTORY" section pulled live from Notion. Before drafting, read it. It tells you:
+The account context includes a "PRIOR OUTREACH HISTORY" section pulled live from Notion. Each touch is tagged with an \`angles_used\` line listing heuristically detected hooks (e.g. PILOT_PURGATORY, VAC_BUSINESS_CASE, EU_US_PROCUREMENT_GAP, PROVIDENCE_HOOK, FUNDING_TIMELINE_URGENCY, POST_FDA_CONVERSION_WALL). A summary line \`SEQUENCE-LEVEL ANGLES ALREADY USED\` aggregates them for the whole sequence.
+
+Before drafting, read it. It tells you:
 - Who has already been contacted at this account and on which channel.
-- What angles, hooks, and subject lines have already been used.
+- Which angles/hooks have already been sent (via the tags).
 - What outcomes came back (if marked).
 
-Use the history to:
-- Pick a NEW angle if a hook was already tried — never repeat a subject line, an opener, or a specific framing that's already been sent.
-- Reference prior touches naturally if a thread is already open ("Following up on my April 2 note on X…") — but only if that prior touch was SENT.
-- Change the target person if the previous target went cold across multiple touches.
-- In messaging_strategy.personalization_notes, briefly state which prior touches informed the new angle (e.g. "Avoided pilot-purgatory hook — used in Feb 20 LinkedIn").
+Rules for using the history:
+1. **Do not reuse any hook listed in SEQUENCE-LEVEL ANGLES ALREADY USED.** Pick a genuinely different hook from the MESSAGING HOOKS list, or a materially new angle. Rephrasing the same angle in new words counts as reuse — the prospect already saw that frame and chose not to respond.
+2. **Specific named anchors count as hooks.** If PROVIDENCE_HOOK is flagged, do not lead with Providence again. If POST_FDA_CONVERSION_WALL is flagged, do not open with "5-6 months post-FDA" framing again.
+3. **If the last 3+ touches used overlapping angles and got no response, the angle is exhausted.** Switch to a structurally different hook (e.g. from pattern-diagnosis hooks to VAC_BUSINESS_CASE or FREE_PILOT_TRAP).
+4. **Reference prior touches naturally only when opening a thread** ("Following up on my April 2 note…") — and only if that prior touch was SENT.
+5. **Change target person only after the primary target has gone cold across multiple touches.** Prefer sticking with the original target and diversifying angle first; pivot targets as a last resort, not a first move.
+6. **In \`messaging_strategy.personalization_notes\`:** list the used hooks you explicitly avoided and the new hook you selected, with one sentence on why the new one is a real pivot (not a rephrase).
 
 If the history is empty or could not be loaded, proceed normally and say so in personalization_notes ("No prior outreach on record.").
 

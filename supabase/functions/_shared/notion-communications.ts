@@ -200,15 +200,51 @@ export function formatCommunicationsForPrompt(
     const challenges = c.top_challenges.length > 0
       ? `challenges: ${c.top_challenges.join(", ")}`
       : null;
+    const hooks = detectAnglesUsed(`${c.title} ${c.message}`);
+    const hooksLine = hooks.length > 0 ? `angles_used: ${hooks.join(", ")}` : null;
     return [
       header,
       c.title ? `title: ${c.title}` : null,
       challenges,
+      hooksLine,
       msg ? `message: ${msg}` : null,
     ].filter(Boolean).join("\n");
   });
   const note = communications.length > recent.length
     ? `\n(${communications.length - recent.length} earlier touches omitted.)`
     : "";
-  return lines.join("\n---\n") + note;
+
+  const allHooks = new Set<string>();
+  for (const c of recent) {
+    for (const h of detectAnglesUsed(`${c.title} ${c.message}`)) {
+      allHooks.add(h);
+    }
+  }
+  const summary = allHooks.size > 0
+    ? `\n\nSEQUENCE-LEVEL ANGLES ALREADY USED: ${Array.from(allHooks).join(", ")}`
+    : "";
+
+  return lines.join("\n---\n") + note + summary;
+}
+
+const ANGLE_PATTERNS: Array<{ tag: string; regex: RegExp }> = [
+  { tag: "PILOT_PURGATORY", regex: /\bpilot[s]?\b[^.]{0,120}\b(conver(t|sion|ted)|stall|stuck|wall|zero|fail)/i },
+  { tag: "STORY_FRAGMENTATION", regex: /\b(story|narrative)\b[^.]{0,120}\b(fragment|binder|stakeholders|committees)/i },
+  { tag: "VAC_BUSINESS_CASE", regex: /\bVAC\b|value analysis|\bCFO\b|business case|economic (framework|value|case)|finance-ready/i },
+  { tag: "RELATIONSHIP_EXHAUSTION", regex: /\brelationship-based\b|first wins|personal connection|systematic (market access|infrastructure|conversion)/i },
+  { tag: "FREE_PILOT_TRAP", regex: /\bfree pilot[s]?\b|devalu(e|ing)|burn (resources|cash|capital)/i },
+  { tag: "FOUR_NARRATIVE_GAPS", regex: /\bfour (narrative )?gaps\b|\bgap (1|2|3|4)\b|ICP clarity/i },
+  { tag: "EU_US_PROCUREMENT_GAP", regex: /\b(EU|European)\b[^.]{0,120}\b(US|American|hospital)\b|procurement (psychology|requirements|committees)/i },
+  { tag: "FUNDING_TIMELINE_URGENCY", regex: /series [a-e]\b|funding timeline|fundrais(e|ing)|runway|next raise/i },
+  { tag: "REIMBURSEMENT_CATEGORY_III", regex: /category (iii|3)|reimbursement (strategy|psychology|codes)|CPT code/i },
+  { tag: "POST_FDA_CONVERSION_WALL", regex: /(\d+[-–]?\d*)\s*months?\s*post[- ]FDA|post[- ]FDA.{0,40}(wall|stall|conversion)/i },
+  { tag: "PROVIDENCE_HOOK", regex: /\bProvidence\b/i },
+];
+
+function detectAnglesUsed(text: string): string[] {
+  const out: string[] = [];
+  for (const { tag, regex } of ANGLE_PATTERNS) {
+    if (regex.test(text)) out.push(tag);
+  }
+  return out;
 }
