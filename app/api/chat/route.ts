@@ -1,9 +1,12 @@
 export const maxDuration = 300;
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { getServerSession } from 'next-auth';
 import { SYSTEM_PROMPT } from './system-prompt';
 import { createClient } from '@supabase/supabase-js';
 import { buildConversationContext } from '../../../lib/contextPrompt';
+import { authOptions } from '../../../lib/authOptions';
+import { gmailTool, executeGmailTool } from './gmail-tools';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -238,6 +241,7 @@ const tools: Anthropic.Tool[] = [
       required: ['feedback'],
     },
   },
+  gmailTool,
 ];
 
 async function callEdgeFunction(
@@ -279,8 +283,12 @@ async function callEdgeFunction(
 
 async function executeTool(
   toolName: string,
-  toolInput: Record<string, unknown>
+  toolInput: Record<string, unknown>,
+  gmailAccessToken?: string
 ): Promise<string> {
+  const gmailResult = await executeGmailTool(toolName, toolInput, gmailAccessToken);
+  if (gmailResult !== null) return gmailResult;
+
   const endpoint = TOOL_ENDPOINT_MAP[toolName];
   if (!endpoint) {
     return JSON.stringify({ error: `Unknown tool: ${toolName}` });
@@ -362,6 +370,12 @@ export async function POST(req: Request) {
       );
     }
 
+    const session = await getServerSession(authOptions).catch(() => null);
+    const gmailAccessToken =
+      typeof (session as any)?.accessToken === 'string'
+        ? ((session as any).accessToken as string)
+        : undefined;
+
     const conversationContext = chatId
       ? await buildConversationContext(chatId).catch(() => '')
       : '';
@@ -428,7 +442,8 @@ export async function POST(req: Request) {
       for (const toolBlock of toolUseBlocks) {
         const result = await executeTool(
           toolBlock.name,
-          (toolBlock as any).input as Record<string, unknown>
+          (toolBlock as any).input as Record<string, unknown>,
+          gmailAccessToken
         );
         if (toolBlock.name === 'search_references') {
           collectSources(result, sources, seenSourceIds);

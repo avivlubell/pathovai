@@ -9,6 +9,7 @@ import ContextDrawer from '../components/ContextDrawer';
 import KbFreshness from '../components/KbFreshness';
 import ShareChatModal from '../components/ShareChatModal';
 import Logo from '../components/Logo';
+import { openReconnectPopup } from '../lib/openReconnectPopup';
 
 type ChatMessage = {
   id: string;
@@ -25,7 +26,8 @@ type ChatSession = {
 };
 
 export default function HomePage() {
-  const { data: session } = useSession();
+  const { data: session, update: refreshSession } = useSession();
+  const gmailConnected = Boolean((session as any)?.accessToken);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -836,6 +838,53 @@ export default function HomePage() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                openReconnectPopup(
+                  () => {
+                    refreshSession?.();
+                  },
+                  (err) => {
+                    console.error('Gmail connect error', err);
+                  }
+                )
+              }
+              aria-label={
+                gmailConnected
+                  ? 'Gmail connected — click to reconnect'
+                  : 'Connect Gmail'
+              }
+              title={
+                gmailConnected
+                  ? 'Gmail connected. Click to reconnect if search stops working.'
+                  : 'Connect Gmail so the agent can verify sent and received email'
+              }
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-sm rounded-md border border-border-strong hover:bg-elevated text-fg-muted hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            >
+              <svg
+                aria-hidden="true"
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="2" y="5" width="20" height="14" rx="2" />
+                <path d="m2 7 10 7 10-7" />
+              </svg>
+              <span className="hidden sm:inline">
+                {gmailConnected ? 'Gmail' : 'Connect Gmail'}
+              </span>
+              {gmailConnected && (
+                <span
+                  aria-hidden="true"
+                  className="h-1.5 w-1.5 rounded-full bg-success"
+                />
+              )}
+            </button>
             <button
               type="button"
               onClick={() => setContextOpen(true)}
