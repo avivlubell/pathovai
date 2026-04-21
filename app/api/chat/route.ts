@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import { buildConversationContext } from '../../../lib/contextPrompt';
 import { authOptions } from '../../../lib/authOptions';
 import { gmailTool, executeGmailTool } from './gmail-tools';
+import { driveTools, executeDriveTool } from './drive-tools';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -242,6 +243,7 @@ const tools: Anthropic.Tool[] = [
     },
   },
   gmailTool,
+  ...driveTools,
 ];
 
 async function callEdgeFunction(
@@ -288,6 +290,9 @@ async function executeTool(
 ): Promise<string> {
   const gmailResult = await executeGmailTool(toolName, toolInput, gmailAccessToken);
   if (gmailResult !== null) return gmailResult;
+
+  const driveResult = await executeDriveTool(toolName, toolInput, gmailAccessToken);
+  if (driveResult !== null) return driveResult;
 
   const endpoint = TOOL_ENDPOINT_MAP[toolName];
   if (!endpoint) {
