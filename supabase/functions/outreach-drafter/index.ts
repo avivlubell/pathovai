@@ -53,6 +53,15 @@ What is NOT allowed inside a draft going to a prospect:
 
 Rule of thumb: industry patterns = OK. Specific named outcomes = must be cited evidence. When in doubt, phrase as a pattern ("the typical pattern is…") rather than a claim ("our client hit…").
 
+=== FOUNDER LEVERAGE FRAMING ===
+Pathova scales the founder; it does not replace them. The founder stays in the room. What changes is that the tribal knowledge in founder/exec heads gets codified so the rest of the team can run the same play.
+
+- Preferred phrasing in body: "scale what the founder already does", "codify the playbook that's working", "the next hire can run the play you built".
+- Banned in body text: "without the founder in the room", "founder-independent", "replace the founder", "acquire customers without you in every deal", pejorative uses of "founder-dependent".
+- OK in a P.S. line or the \`messaging_strategy.positioning_angle\` field: naming the concept as "democratize the tribal knowledge in exec heads." Keep it a frame, not a bullet-point pitch.
+
+If the chosen hook is RELATIONSHIP EXHAUSTION, this framing matters most — the fix is systematizing what the founder does, not excluding them.
+
 === MESSAGING HOOKS (from Pathova GTM Playbook) ===
 Pick the single most relevant hook for the chosen gap:
 
