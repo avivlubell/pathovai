@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveAccountByName } from '../_shared/fuzzy-lookup.ts';
 
 Deno.serve(async (req: Request) => {
   const supabase = createClient(
@@ -11,27 +12,37 @@ Deno.serve(async (req: Request) => {
   const account_id: string | undefined = body?.account_id ?? body?.prospect_id;
   const company_name: string | undefined = body?.company_name;
 
-  let data, error;
-
-  if (account_id) {
-    ({ data, error } = await supabase
-      .from('accounts')
-      .select('*')
-      .eq('id', account_id)
-      .single());
-  } else if (company_name) {
-    ({ data, error } = await supabase
-      .from('accounts')
-      .select('*')
-      .ilike('company_name', `%${company_name}%`)
-      .limit(1)
-      .single());
-  } else {
+  if (!account_id && !company_name) {
     return new Response(JSON.stringify({ error: 'Must provide account_id or company_name' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' }
     });
   }
+
+  let resolvedId: string | undefined = account_id;
+  let matchInfo: any = undefined;
+
+  if (!resolvedId && company_name) {
+    const resolved = await resolveAccountByName(supabase, company_name);
+    if (!resolved) {
+      return new Response(
+        JSON.stringify({
+          error: 'No account matched that name',
+          query: company_name,
+          hint: 'Try search_accounts_and_contacts to browse similar names.',
+        }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    resolvedId = resolved.id;
+    matchInfo = resolved.match_info;
+  }
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('*')
+    .eq('id', resolvedId)
+    .single();
 
   if (error) {
     return new Response(JSON.stringify({ error: error.message }), {
@@ -40,7 +51,9 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  return new Response(JSON.stringify(data), {
+  const payload = matchInfo ? { ...data, _match_info: matchInfo } : data;
+
+  return new Response(JSON.stringify(payload), {
     headers: { 'Content-Type': 'application/json' }
   });
 });

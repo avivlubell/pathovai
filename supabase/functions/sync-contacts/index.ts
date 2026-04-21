@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { fuzzyFindAccounts } from "../_shared/fuzzy-lookup.ts";
 
 const NOTION_TOKEN = Deno.env.get("NOTION_INTEGRATION_TOKEN");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -80,41 +81,44 @@ async function resolveCompanyName(companyRelationIds: string[]): Promise<string 
 }
 
 async function resolveAccountId(companyName: string | null, email?: string | null): Promise<string | null> {
-    if (!companyName && !email) return null;
-    if (companyName) {
-      // Try exact match first
-  var { data } = await supabase
-    .from("accounts")
-    .select("id")
-    .ilike("company_name", companyName)
-    .limit(1)
-    .maybeSingle();
-  if (data) return data.id;
-  // Try fuzzy match with first word
-  var firstWord = companyName.split(/[\s,|\-\/]+/)[0];
-  if (firstWord && firstWord.length > 2) {
-    var { data: fuzzy } = await supabase
+  if (!companyName && !email) return null;
+
+  // Sync uses a stricter threshold than chat lookups: wrong FK links
+  // silently during bulk sync are hard to notice.
+  const SYNC_MIN_SCORE = 0.5;
+
+  if (companyName) {
+    // Exact (case-insensitive) wins first.
+    var { data } = await supabase
       .from("accounts")
       .select("id")
-      .ilike("company_name", "%" + firstWord + "%")
+      .ilike("company_name", companyName)
       .limit(1)
       .maybeSingle();
-    if (fuzzy) return fuzzy.id;
+    if (data) return data.id;
+
+    // Trigram fuzzy match via shared helper. Handles typos, word
+    // order, and aliases in one call.
+    var matches = await fuzzyFindAccounts(supabase, companyName, {
+      minScore: SYNC_MIN_SCORE,
+      limit: 1,
+    });
+    if (matches.length > 0) return matches[0].id;
   }
+
+  // Email domain fallback: "alice@medtronic.com" -> fuzzy match on
+  // the domain root against company_name/aliases.
+  if (email) {
+    const domain = email.split("@")[1]?.split(".").slice(-2).join(".");
+    const root = domain?.split(".")[0];
+    if (root) {
+      var domainMatches = await fuzzyFindAccounts(supabase, root, {
+        minScore: SYNC_MIN_SCORE,
+        limit: 1,
+      });
+      if (domainMatches.length > 0) return domainMatches[0].id;
     }
-    // Try email domain match as final fallback
-    if (email) {
-          const domain = email.split("@")[1]?.split(".").slice(-2).join(".");
-          if (domain) {
-                  const { data: domainMatch } = await supabase
-                    .from("accounts")
-                    .select("id")
-                    .ilike("company_name", "%" + domain.split(".")[0] + "%")
-                    .limit(1)
-                    .maybeSingle();
-                  if (domainMatch) return domainMatch.id;
-          }
-    }
+  }
   return null;
 }
 

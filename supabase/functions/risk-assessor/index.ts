@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveAccountByName } from "../_shared/fuzzy-lookup.ts";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -65,13 +66,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    let accountQuery = supabase.from("accounts").select("*");
-    if (account_id) {
-      accountQuery = accountQuery.eq("id", account_id);
-    } else {
-      accountQuery = accountQuery.ilike("company_name", `%${company_name}%`);
+    let resolvedId: string | undefined = account_id;
+    let matchInfo: any = undefined;
+    if (!resolvedId && company_name) {
+      const resolved = await resolveAccountByName(supabase, company_name);
+      if (!resolved) {
+        return new Response(
+          JSON.stringify({ error: "Account not found", query: company_name }),
+          { status: 404, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      resolvedId = resolved.id;
+      matchInfo = resolved.match_info;
     }
-    const { data: account, error: accountError } = await accountQuery.single();
+
+    const { data: account, error: accountError } = await supabase
+      .from("accounts")
+      .select("*")
+      .eq("id", resolvedId)
+      .single();
 
     if (accountError || !account) {
       return new Response(
@@ -171,6 +184,7 @@ Assess all risks for this account. Return ONLY valid JSON.`;
       JSON.stringify({
         account_id: account.id,
         company_name: account.company_name,
+        _match_info: matchInfo,
         assessment,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }

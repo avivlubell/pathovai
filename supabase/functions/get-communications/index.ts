@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fetchCommunicationsForAccount, NOTION_COMMS_CODE_VERSION } from "../_shared/notion-communications.ts";
+import { resolveAccountByName } from "../_shared/fuzzy-lookup.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -30,6 +31,7 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     let account: any = null;
+    let matchInfo: any = undefined;
     if (account_id) {
       const { data } = await supabase
         .from("accounts")
@@ -38,18 +40,21 @@ Deno.serve(async (req: Request) => {
         .single();
       account = data;
     } else if (company_name) {
-      const { data } = await supabase
-        .from("accounts")
-        .select("id, company_name, notion_page_id")
-        .ilike("company_name", `%${company_name}%`)
-        .limit(1)
-        .single();
-      account = data;
+      const resolved = await resolveAccountByName(supabase, company_name);
+      if (resolved) {
+        const { data } = await supabase
+          .from("accounts")
+          .select("id, company_name, notion_page_id")
+          .eq("id", resolved.id)
+          .single();
+        account = data;
+        matchInfo = resolved.match_info;
+      }
     }
 
     if (!account) {
       return new Response(
-        JSON.stringify({ error: "Account not found" }),
+        JSON.stringify({ error: "Account not found", query: company_name ?? null }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -59,6 +64,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({
           account_id: account.id,
           company_name: account.company_name,
+          _match_info: matchInfo,
           count: 0,
           communications: [],
           note: "Account has no notion_page_id -- cannot filter communications by relation.",
@@ -78,6 +84,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({
           account_id: account.id,
           company_name: account.company_name,
+          _match_info: matchInfo,
           count: 0,
           communications: [],
           error,
@@ -90,6 +97,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         account_id: account.id,
         company_name: account.company_name,
+        _match_info: matchInfo,
         count: communications.length,
         communications,
         _code_version: NOTION_COMMS_CODE_VERSION,
