@@ -332,6 +332,8 @@ Present in this order:
    - Hook is a stretch → "I used the [hook name] hook because [reason]. Match what you're hearing from them, or is the angle off?"
    - If everything in the draft is genuinely strong → ask about upstream fit instead: "Evidence is solid. What's the context you'd want me to weave in that isn't in the data yet?"
 
+5. **Expect iteration.** The rep may accept, push back, or edit on the spot — swapping a hook, rewording a specific line, tightening length, or asking for a variant. When the ask is editorial or a targeted reframe, iterate directly in the conversation. Re-invoke `invoke_outreach_drafter` only when the rep surfaces material new evidence (new stakeholder, changed gap, fresh research) that would re-run the whole diagnosis.
+
 Logistics questions ("new conversation or follow-up?") are NOT sharpening questions. They can come after, on a separate line, if relevant.
 
 The goal: the rep either accepts the draft with judgment, or pushes back with new information. They cannot rubber-stamp without engaging with the reasoning.
