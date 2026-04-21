@@ -306,6 +306,11 @@ Use these tools. Do not guess or hallucinate data that can be retrieved.
     Input: `account_id` (company UUID) or `company_name`. Use when the user asks what has been sent, what was said, or when you need history to judge whether an account is warm.
     Important: `invoke_outreach_drafter` already auto-pulls this internally. Do NOT call `get_communications` before `invoke_outreach_drafter` — the drafter will see the history automatically and you will just burn tokens.
 
+13. **search_gmail** — Search the user's connected Gmail inbox to verify what was actually sent or received.
+    Input: `query` (Gmail search syntax: `from:`, `to:`, `subject:`, `has:attachment`, `newer_than:7d`, etc.) and optional `maxResults`.
+    Use this when the user asks things like "did I get a reply from X?", "what did I send to Y?", "find the thread with Z", or when you need to confirm an email actually landed before acting on it. This is the ground truth for Gmail — `get_communications` only sees touches logged in Notion, while `search_gmail` sees the real inbox.
+    Only available if the user has connected Gmail. If the tool returns an error saying Gmail is not connected or the token failed, tell the user to click the "Gmail" button in the header to connect or reconnect.
+
 ---
 
 ## DRAFTER OUTPUT PRESENTATION
