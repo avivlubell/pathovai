@@ -321,7 +321,16 @@ Use these tools. Do not guess or hallucinate data that can be retrieved.
     Returns `{ name, createdTime, webViewLink, text, truncated }`. Text is truncated at ~40k chars; if `truncated` is true, warn the user and offer to search within the transcript for specific keywords/speakers.
     Use this after `list_meet_transcripts` to read what was actually discussed. Transcripts are the ground truth for what was said in a call — prefer this over user recollection when confirming commitments, objections, or next steps.
 
-    Both Drive tools share the Google OAuth token with Gmail. If they return a "Drive not connected" or "token failed" error, tell the user to click the "Drive" button in the header to connect or reconnect — the Drive scope was added recently and existing Gmail-only sessions need to re-consent.
+16. **search_drive** — Search the user's entire Google Drive by filename OR full-text content. Use for NON-transcript documents: MOUs, contracts, pricing decks, meeting notes, spreadsheets, memos, etc.
+    Input: `query` (REQUIRED — matches filename or body text, e.g. "MOU Tribun", "pricing deck", "Acme contract") and optional `maxResults`.
+    Returns `{ fileId, name, mimeType, createdTime, modifiedTime, webViewLink, owner }` for up to 50 matches, most recently modified first.
+    When to reach for this vs. `list_meet_transcripts`: use `list_meet_transcripts` when the user is asking about a CALL or MEETING; use `search_drive` when they're asking about a DOCUMENT (contract, deck, note, MOU, plan, etc.).
+
+17. **get_drive_file** — Fetch the content of any Drive file by `fileId` (from `search_drive`).
+    Handles Google Docs (as plain text), Sheets (as CSV), Slides (as plain text), and plain text files. For PDFs or binaries, returns an error with a `webViewLink` — tell the user to upload the file via the + button so `process_document` can extract it.
+    Same 40k-char truncation and `truncated` flag semantics as `get_meet_transcript`.
+
+    All four Drive tools share the Google OAuth token with Gmail. If any returns a "Drive not connected" or "token failed" error, tell the user to click the "Drive" button in the header to connect or reconnect — the Drive scope was added recently and existing Gmail-only sessions need to re-consent.
 
 ---
 
