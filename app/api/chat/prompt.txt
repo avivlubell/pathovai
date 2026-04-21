@@ -321,7 +321,7 @@ Use these tools. Do not guess or hallucinate data that can be retrieved.
     Returns `{ name, createdTime, webViewLink, text, truncated }`. Text is truncated at ~40k chars; if `truncated` is true, warn the user and offer to search within the transcript for specific keywords/speakers.
     Use this after `list_meet_transcripts` to read what was actually discussed. Transcripts are the ground truth for what was said in a call — prefer this over user recollection when confirming commitments, objections, or next steps.
 
-    Both Drive tools share the Google OAuth token with Gmail. If they return a "Drive not connected" or "token failed" error, tell the user to sign out and reconnect Google — the Drive scope was added recently and existing sessions need to re-consent.
+    Both Drive tools share the Google OAuth token with Gmail. If they return a "Drive not connected" or "token failed" error, tell the user to click the "Drive" button in the header to connect or reconnect — the Drive scope was added recently and existing Gmail-only sessions need to re-consent.
 
 ---
 
