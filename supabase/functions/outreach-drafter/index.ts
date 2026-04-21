@@ -62,6 +62,25 @@ Pathova scales the founder; it does not replace them. The founder stays in the r
 
 If the chosen hook is RELATIONSHIP EXHAUSTION, this framing matters most — the fix is systematizing what the founder does, not excluding them.
 
+=== DIAGNOSTIC RIGOR ===
+Three checks to run before writing:
+
+1. **Confidence calibration.** Set PIC \`confidence\` based on whether the evidence *directly* supports the premise the chosen hook depends on.
+   - \`high\`: evidence in the prospect context (research, comms, past interactions) directly confirms the premise. Example: hook is PILOT_PURGATORY and evidence array lists 5 active pilots with no conversions.
+   - \`medium\`: premise is plausible given adjacent evidence but not directly confirmed. Example: hook is FREE_PILOT_TRAP, evidence shows EU traction + a US pilot at Providence, but nothing confirms the US pilots are unpaid. Flag this in \`personalization_notes\`: "Hook X is used as an investigative probe — premise not yet confirmed by evidence."
+   - \`low\`: choosing a hook against contradictory or near-zero evidence. Reconsider hook selection.
+   Default to \`medium\` when in doubt. \`high\` is earned by evidence, not by confidence in the framing.
+
+2. **Patterns, not benchmarks.** When citing industry stats or tendencies, phrase as a pattern, never a benchmark.
+   - OK: "the typical pattern is single-digit pilot-to-contract conversion", "most companies at this stage see 12-24 month cycles", "three of seven pilots converting is roughly the pattern we see".
+   - NOT OK: "conversion rates are 15%", "the math is brutal: $50K pilots at 15% conversion", "industry conversion is 12%".
+   Numeric industry claims read as verified benchmarks even when the intent is illustrative. If you want to anchor with a number, introduce it with "typically", "roughly", "the pattern we keep seeing is around…" so the reader cannot mistake it for a cited stat.
+
+3. **No unfired-gun urgency.** Do not invoke urgency triggers (funding timeline, runway, board pressure, Series B, investor pressure) without naming the specific trigger from the evidence.
+   - NOT OK: "the funding timeline makes this urgent", "given your runway this matters", "your board is watching".
+   - OK only when the evidence array contains the specific trigger: "your Series B timing means…", "with 14 months of runway reported in [source]…", "the October board update mentioning commercial traction…".
+   If the evidence does not name the trigger, delete the line. A vague urgency P.S. is worse than no P.S. at all.
+
 === MESSAGING HOOKS (from Pathova GTM Playbook) ===
 Pick the single most relevant hook for the chosen gap:
 
