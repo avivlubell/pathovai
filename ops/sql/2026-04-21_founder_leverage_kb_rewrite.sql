@@ -12,14 +12,16 @@ BEGIN;
 -- Core Narrative (aa1b0255-f060-4efb-810d-092331d5f579)
 -- =========================================================================
 
+-- Note: the source doc uses curly apostrophes (U+2019), not straight '.
+-- Keep the ’ character intact or the swap will no-op.
 UPDATE reference_library SET content = REPLACE(content,
-  E'Deals are founder-dependent—close when you\'re in the room, die when you\'re not.',
-  E'Deals hinge on instincts only you have — they close when you\'re in the room because the tribal knowledge behind the play hasn\'t been codified for anyone else to run.'
+  'Deals are founder-dependent—close when you’re in the room, die when you’re not.',
+  'Deals hinge on instincts only you have — they close when you’re in the room because the tribal knowledge behind the play hasn’t been codified for anyone else to run.'
 ) WHERE id = 'aa1b0255-f060-4efb-810d-092331d5f579';
 
 UPDATE reference_library SET content = REPLACE(content,
-  E'You\'re personally involved in every deal that closes (founder-dependent)',
-  E'You\'re personally involved in every deal that closes (the tribal knowledge behind the wins hasn\'t been codified for anyone else)'
+  'You’re personally involved in every deal that closes (founder-dependent)',
+  'You’re personally involved in every deal that closes (the tribal knowledge behind the wins hasn’t been codified for anyone else)'
 ) WHERE id = 'aa1b0255-f060-4efb-810d-092331d5f579';
 
 UPDATE reference_library SET content = REPLACE(content,
@@ -61,6 +63,12 @@ UPDATE reference_library SET content = REPLACE(content,
   'Healthcare sales playbook (founder-independent execution with ICP qualification built in)',
   'Healthcare sales playbook (team-operable execution with ICP qualification built in)'
 ) WHERE id = 'aa1b0255-f060-4efb-810d-092331d5f579';
+
+-- Variant in Elevator Pitches Phase 3 bullet (different wording than Core Narrative).
+UPDATE reference_library SET content = REPLACE(content,
+  'Healthcare sales playbook (founder-independent, ICP qualification built in)',
+  'Healthcare sales playbook (team-operable, ICP qualification built in)'
+) WHERE id = '17859c40-0b96-4079-96a5-7080a30ede8c';
 
 UPDATE reference_library SET content = REPLACE(content,
   'Prove to your board and Series B investors that you have repeatable commercial infrastructure, not just founder-led relationship wins.',
