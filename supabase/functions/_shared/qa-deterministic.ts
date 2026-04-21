@@ -51,6 +51,7 @@ export const BANNED_PHRASES: readonly string[] = [
   'move the needle',
   // Additions from the existing outreach-drafter voice rules:
   'worth a brief conversation',
+  'worth connecting',
   'would it make sense to connect',
   'happy to chat',
   "i'd love to learn more",
