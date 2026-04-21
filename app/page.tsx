@@ -100,6 +100,55 @@ type ChatSession = {
   createdAt: number;
 };
 
+async function fetchChatsFromServer(): Promise<ChatSession[] | null> {
+  try {
+    const res = await fetch('/api/chats', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data?.chats)) return null;
+    return data.chats.map((c: any) => ({
+      id: c.id,
+      title: typeof c.title === 'string' ? c.title : '',
+      messages: Array.isArray(c.messages) ? c.messages : [],
+      createdAt: typeof c.createdAt === 'number' ? c.createdAt : Date.now(),
+    }));
+  } catch {
+    return null;
+  }
+}
+
+function pushChatToServer(chat: ChatSession): void {
+  void fetch('/api/chats', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: chat.id,
+      title: chat.title,
+      messages: chat.messages,
+    }),
+  }).catch((err) => console.error('chat sync failed', err));
+}
+
+function patchChatTitleOnServer(id: string, title: string): void {
+  void fetch(`/api/chats/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  }).catch((err) => console.error('chat rename sync failed', err));
+}
+
+function deleteChatOnServer(id: string): void {
+  void fetch(`/api/chats/${id}`, { method: 'DELETE' }).catch((err) =>
+    console.error('chat delete sync failed', err)
+  );
+}
+
+function deleteAllChatsOnServer(): void {
+  void fetch('/api/chats', { method: 'DELETE' }).catch((err) =>
+    console.error('chat clear sync failed', err)
+  );
+}
+
 export default function HomePage() {
   const { data: session, update: refreshSession } = useSession();
   const gmailConnected = Boolean((session as any)?.accessToken);
@@ -183,6 +232,20 @@ export default function HomePage() {
     }
   }, []);
 
+  // Hydrate from the server once signed in -- localStorage is only a
+  // same-origin cache; Supabase is the cross-device source of truth.
+  useEffect(() => {
+    if (!session?.user?.email) return;
+    let cancelled = false;
+    fetchChatsFromServer().then((serverChats) => {
+      if (cancelled || !serverChats) return;
+      setChatHistory(serverChats);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.email]);
+
   useEffect(() => {
     localStorage.setItem('pathovai-history', JSON.stringify(chatHistory));
   }, [chatHistory]);
@@ -220,33 +283,36 @@ export default function HomePage() {
     (msgs: ChatMessage[]): string | null => {
       if (msgs.length < 2) return null;
       const id = activeChatId || crypto.randomUUID();
+      const existing = chatHistory.find((s) => s.id === id);
+      const chatSession: ChatSession = {
+        id,
+        title: existing?.title ?? msgs[0].content.slice(0, 40),
+        messages: msgs,
+        createdAt: existing?.createdAt ?? Date.now(),
+      };
       setChatHistory((prev) => {
-        const existing = prev.find((s) => s.id === id);
-        const chatSession: ChatSession = {
-          id,
-          title: existing?.title ?? msgs[0].content.slice(0, 40),
-          messages: msgs,
-          createdAt: existing?.createdAt ?? Date.now(),
-        };
         const filtered = prev.filter((s) => s.id !== id);
         return [chatSession, ...filtered];
       });
       if (!activeChatId) setActiveChatId(id);
+      pushChatToServer(chatSession);
       return id;
     },
-    [activeChatId]
+    [activeChatId, chatHistory]
   );
 
   function updateChatTitle(id: string, title: string) {
     setChatHistory((prev) =>
       prev.map((s) => (s.id === id ? { ...s, title } : s))
     );
+    patchChatTitleOnServer(id, title);
   }
 
   function deleteChat(id: string) {
     setChatHistory((prev) => prev.filter((s) => s.id !== id));
     setDeletingId(null);
     setOpenMenuForId(null);
+    deleteChatOnServer(id);
     if (activeChatId === id) {
       handleNewChat();
     }
@@ -348,6 +414,7 @@ export default function HomePage() {
     if (!ok) return;
     setChatHistory([]);
     localStorage.removeItem('pathovai-history');
+    deleteAllChatsOnServer();
     handleNewChat();
   }
 
