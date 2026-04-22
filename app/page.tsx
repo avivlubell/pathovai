@@ -1339,7 +1339,7 @@ export default function HomePage() {
                     if (!isLoading && input.trim()) handleSubmit(e);
                   }
                 }}
-                placeholder="Let's make some money. What's on tap..."
+                placeholder="What's on tap?"
               />
               {isLoading ? (
                 <button
