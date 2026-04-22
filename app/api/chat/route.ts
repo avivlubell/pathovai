@@ -391,15 +391,15 @@ interface ToolCallRecord {
 }
 
 // Deterministic claim verifier. Runs against the final assistant text
-// before it's sent to the UI. Any sentence that contains a "specific
-// claim" token (quoted string, dollar amount, multi-digit number, or
-// year) must have that token appear verbatim somewhere in the combined
-// tool-result corpus for this turn. Sentences that fail are stripped.
+// before it's sent to the UI. Any LINE that contains a "specific claim"
+// token (quoted string, dollar amount, multi-digit number, K-number,
+// Month+Year, low-integer + count noun, titled role, named third-party
+// org) must have each extracted token appear in the combined
+// tool-result corpus for this turn. Lines that fail are stripped.
 //
-// This is intentionally strict on narrow patterns rather than clever on
-// broad ones -- the goal is to catch the high-impact hallucinations
-// (fake quotes, invented funding rounds, fabricated headcounts, stale
-// years) without stripping general framing.
+// v2 operates line-by-line (not sentence-by-sentence) so each bullet,
+// list item, and table row is its own verification unit -- a
+// fabricated bullet can't hitch a ride on real siblings.
 function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
   if (!text || toolCalls.length === 0) return text;
   const corpusRaw = toolCalls.map(tc => tc.result).join('\n');
@@ -407,59 +407,103 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
   const corpusStripped = corpus.replace(/[,\s]/g, '');
 
   const inCorpus = (needle: string): boolean => {
-    const n = needle.toLowerCase();
+    const n = needle.toLowerCase().trim();
+    if (!n) return true;
     if (corpus.includes(n)) return true;
-    // Tolerate different thousands separators / spacing between digits and
-    // units (e.g. quarterback says "$10M", tool has "$10 million").
+    // Tolerate "$10M" vs "$10 million", "10,000" vs "10000", etc.
     const nStripped = n.replace(/[,\s]/g, '');
     return nStripped.length > 1 && corpusStripped.includes(nStripped);
   };
 
+  // Pattern sources stored as strings so we compile a fresh RegExp per use
+  // (global RegExp.lastIndex state breaks when shared across .test() and
+  // .matchAll()).
+  const P = {
+    QUOTE_DBL: '["“][^"”]{10,}["”]',
+    QUOTE_SGL: "['‘][^'’]{10,}['’]",
+    DOLLAR: '\\$\\s*\\d[\\d,.]*\\s*(?:M|B|K|million|billion|thousand)?\\b',
+    BIG_NUMBER: '\\b\\d{3,}\\b',
+    BARE_YEAR: '\\b(?:19|20)\\d{2}\\b',
+    MONTH_YEAR: '\\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+(?:19|20)\\d{2}\\b',
+    K_NUMBER: '\\b[A-Z]\\d{3,}[A-Z0-9]*\\b',
+    LOW_INT_NOUN: '\\b(\\d{1,2})\\s+(clinic|site|customer|rep|employee|pilot|patient|session|partnership|hospital|AMC|deployment|investor|round|hire)s?\\b',
+    TITLE: '\\b(?:Director of|VP of|Vice President of|Head of|Chief [A-Z][a-z]+ Officer|Chief [A-Z][a-z]+)\\s+[A-Z][A-Za-z ]+?(?=[,.\\n]|\\s+(?:at|for|of)\\s|$)',
+    ORG_SUFFIX: '\\b[A-Z][a-zA-Z]+(?:\\s+[A-Z][a-zA-Z]+)?\\s+(?:Surgical|Pharmaceutical|Pharma|Therapeutics|Medical|Health|Healthcare|Hospital|Labs|Laboratories|Bio|Biosciences|Pharmacy|Clinic|Diagnostics|Robotics)\\b',
+  };
+
   const hasSpecificClaim = (s: string): boolean =>
-    /["“][^"”]{10,}["”]/u.test(s) ||
-    /['‘][^'’]{10,}['’]/u.test(s) ||
-    /\$\s*\d[\d,.]*\s*(M|B|K|million|billion|thousand)?\b/i.test(s) ||
-    /\b\d{3,}\b/.test(s) ||
-    /\b(19|20)\d{2}\b/.test(s);
+    Object.values(P).some(src => new RegExp(src).test(s));
 
   const extractClaimTokens = (s: string): string[] => {
     const tokens: string[] = [];
-    for (const m of s.matchAll(/["“]([^"”]{10,})["”]/gu)) tokens.push(m[1].slice(0, 60));
-    for (const m of s.matchAll(/['‘]([^'’]{10,})['’]/gu)) tokens.push(m[1].slice(0, 60));
-    for (const m of s.matchAll(/\$\s*\d[\d,.]*\s*(?:M|B|K|million|billion|thousand)?/gi)) tokens.push(m[0]);
-    for (const m of s.matchAll(/\b\d{3,}\b/g)) tokens.push(m[0]);
-    for (const m of s.matchAll(/\b(?:19|20)\d{2}\b/g)) tokens.push(m[0]);
+    for (const m of s.matchAll(new RegExp(P.QUOTE_DBL, 'gu'))) {
+      tokens.push(m[0].slice(1, -1).slice(0, 60));
+    }
+    for (const m of s.matchAll(new RegExp(P.QUOTE_SGL, 'gu'))) {
+      tokens.push(m[0].slice(1, -1).slice(0, 60));
+    }
+    for (const m of s.matchAll(new RegExp(P.DOLLAR, 'gi'))) {
+      tokens.push(m[0]);
+    }
+    // Month+year before bare year -- "Feb 2026" is a stricter token than "2026".
+    const phrasedYears = new Set<string>();
+    for (const m of s.matchAll(new RegExp(P.MONTH_YEAR, 'gi'))) {
+      tokens.push(m[0]);
+      const y = m[0].match(/\d{4}/);
+      if (y) phrasedYears.add(y[0]);
+    }
+    for (const m of s.matchAll(new RegExp(P.K_NUMBER, 'g'))) {
+      tokens.push(m[0]);
+    }
+    for (const m of s.matchAll(new RegExp(P.LOW_INT_NOUN, 'gi'))) {
+      tokens.push(`${m[1]} ${m[2].toLowerCase()}`);
+    }
+    for (const m of s.matchAll(new RegExp(P.TITLE, 'g'))) {
+      tokens.push(m[0].trim());
+    }
+    for (const m of s.matchAll(new RegExp(P.ORG_SUFFIX, 'g'))) {
+      tokens.push(m[0]);
+    }
+    for (const m of s.matchAll(new RegExp(P.BIG_NUMBER, 'g'))) {
+      tokens.push(m[0]);
+    }
+    for (const m of s.matchAll(new RegExp(P.BARE_YEAR, 'g'))) {
+      if (!phrasedYears.has(m[0])) tokens.push(m[0]);
+    }
     return tokens;
   };
 
-  // Sentence split that keeps trailing whitespace and respects newlines.
-  const sentences = text.split(/(?<=[.!?])(\s+)/);
+  // Split on line breaks so each bullet / list item is verified independently.
+  const lines = text.split(/(\r?\n)/);
   const kept: string[] = [];
   let strippedCount = 0;
 
-  for (let i = 0; i < sentences.length; i++) {
-    const s = sentences[i];
-    // Whitespace separators from the split -- always keep.
-    if (i % 2 === 1) {
-      kept.push(s);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\r?\n$/.test(line) || line === '') {
+      kept.push(line);
       continue;
     }
-    if (!hasSpecificClaim(s)) {
-      kept.push(s);
+    // Strip leading bullet/list markers when checking, keep original in output.
+    const content = line
+      .replace(/^\s*[-*•]\s+/, '')
+      .replace(/^\s*\d+\.\s+/, '');
+    if (!hasSpecificClaim(content)) {
+      kept.push(line);
       continue;
     }
-    const tokens = extractClaimTokens(s);
+    const tokens = extractClaimTokens(content);
     const allPresent = tokens.every(t => inCorpus(t));
     if (allPresent) {
-      kept.push(s);
+      kept.push(line);
     } else {
       strippedCount++;
       const missing = tokens.filter(t => !inCorpus(t));
       console.warn(
-        `[verifyClaims] stripped unsupported sentence. missing tokens: ${JSON.stringify(missing)}. sentence: ${s.slice(0, 160)}`
+        `[verifyClaims] stripped unsupported line. missing: ${JSON.stringify(missing)}. line: ${line.slice(0, 160)}`
       );
-      // Remove the following whitespace separator too, if present.
-      if (i + 1 < sentences.length && (i + 1) % 2 === 1) i++;
+      // Swallow following newline to avoid a dangling blank gap.
+      if (i + 1 < lines.length && /^\r?\n$/.test(lines[i + 1])) i++;
     }
   }
 
@@ -594,7 +638,7 @@ export async function POST(req: Request) {
           while (round < MAX_TOOL_ROUNDS) {
             round++;
             const response = await anthropic.messages.create({
-              model: 'claude-sonnet-4-20250514',
+              model: 'claude-sonnet-4-6',
               max_tokens: 4096,
               system:
                 SYSTEM_PROMPT + (await fetchLearnings()) + conversationContext,
