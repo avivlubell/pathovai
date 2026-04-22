@@ -383,6 +383,93 @@ async function executeTool(
   return typeof result === 'string' ? result : JSON.stringify(result);
 }
 
+// Records every tool call + result in a turn so the claim verifier can
+// match the Quarterback's specific claims against real tool output.
+interface ToolCallRecord {
+  name: string;
+  result: string;
+}
+
+// Deterministic claim verifier. Runs against the final assistant text
+// before it's sent to the UI. Any sentence that contains a "specific
+// claim" token (quoted string, dollar amount, multi-digit number, or
+// year) must have that token appear verbatim somewhere in the combined
+// tool-result corpus for this turn. Sentences that fail are stripped.
+//
+// This is intentionally strict on narrow patterns rather than clever on
+// broad ones -- the goal is to catch the high-impact hallucinations
+// (fake quotes, invented funding rounds, fabricated headcounts, stale
+// years) without stripping general framing.
+function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
+  if (!text || toolCalls.length === 0) return text;
+  const corpusRaw = toolCalls.map(tc => tc.result).join('\n');
+  const corpus = corpusRaw.toLowerCase();
+  const corpusStripped = corpus.replace(/[,\s]/g, '');
+
+  const inCorpus = (needle: string): boolean => {
+    const n = needle.toLowerCase();
+    if (corpus.includes(n)) return true;
+    // Tolerate different thousands separators / spacing between digits and
+    // units (e.g. quarterback says "$10M", tool has "$10 million").
+    const nStripped = n.replace(/[,\s]/g, '');
+    return nStripped.length > 1 && corpusStripped.includes(nStripped);
+  };
+
+  const hasSpecificClaim = (s: string): boolean =>
+    /["“][^"”]{10,}["”]/u.test(s) ||
+    /['‘][^'’]{10,}['’]/u.test(s) ||
+    /\$\s*\d[\d,.]*\s*(M|B|K|million|billion|thousand)?\b/i.test(s) ||
+    /\b\d{3,}\b/.test(s) ||
+    /\b(19|20)\d{2}\b/.test(s);
+
+  const extractClaimTokens = (s: string): string[] => {
+    const tokens: string[] = [];
+    for (const m of s.matchAll(/["“]([^"”]{10,})["”]/gu)) tokens.push(m[1].slice(0, 60));
+    for (const m of s.matchAll(/['‘]([^'’]{10,})['’]/gu)) tokens.push(m[1].slice(0, 60));
+    for (const m of s.matchAll(/\$\s*\d[\d,.]*\s*(?:M|B|K|million|billion|thousand)?/gi)) tokens.push(m[0]);
+    for (const m of s.matchAll(/\b\d{3,}\b/g)) tokens.push(m[0]);
+    for (const m of s.matchAll(/\b(?:19|20)\d{2}\b/g)) tokens.push(m[0]);
+    return tokens;
+  };
+
+  // Sentence split that keeps trailing whitespace and respects newlines.
+  const sentences = text.split(/(?<=[.!?])(\s+)/);
+  const kept: string[] = [];
+  let strippedCount = 0;
+
+  for (let i = 0; i < sentences.length; i++) {
+    const s = sentences[i];
+    // Whitespace separators from the split -- always keep.
+    if (i % 2 === 1) {
+      kept.push(s);
+      continue;
+    }
+    if (!hasSpecificClaim(s)) {
+      kept.push(s);
+      continue;
+    }
+    const tokens = extractClaimTokens(s);
+    const allPresent = tokens.every(t => inCorpus(t));
+    if (allPresent) {
+      kept.push(s);
+    } else {
+      strippedCount++;
+      const missing = tokens.filter(t => !inCorpus(t));
+      console.warn(
+        `[verifyClaims] stripped unsupported sentence. missing tokens: ${JSON.stringify(missing)}. sentence: ${s.slice(0, 160)}`
+      );
+      // Remove the following whitespace separator too, if present.
+      if (i + 1 < sentences.length && (i + 1) % 2 === 1) i++;
+    }
+  }
+
+  let verified = kept.join('').trim();
+  if (strippedCount > 0) {
+    verified += `\n\n_${strippedCount} unsupported claim${strippedCount === 1 ? '' : 's'} removed (not found in tool output)._`;
+  }
+  return verified;
+}
+
 function collectSources(
   rawResult: string,
   acc: Array<{ id: string; title: string; snippet: string }>,
@@ -500,6 +587,7 @@ export async function POST(req: Request) {
         let round = 0;
         const sources: Array<{ id: string; title: string; snippet: string }> = [];
         const seenSourceIds = new Set<string>();
+        const turnToolCalls: ToolCallRecord[] = [];
         let stepCounter = 0;
 
         try {
@@ -527,7 +615,8 @@ export async function POST(req: Request) {
               );
               const finalText = textBlocks.map((b: any) => b.text).join('\n');
               const reply = extractReply(finalText);
-              send('done', { reply, sources });
+              const verifiedReply = verifyClaims(reply, turnToolCalls);
+              send('done', { reply: verifiedReply, sources });
               controller.close();
               return;
             }
@@ -571,6 +660,7 @@ export async function POST(req: Request) {
                 tool_use_id: toolBlock.id,
                 content: result,
               });
+              turnToolCalls.push({ name: toolBlock.name, result });
             }
 
             messages.push({
