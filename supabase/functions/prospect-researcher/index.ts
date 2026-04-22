@@ -25,6 +25,8 @@ INSTRUCTIONS: Extract every data point listed below. For each:
 - If not found after searching: Emit a GAP block (see GAP BLOCK FORMAT below) so the human can fetch it manually via their Perplexity Comet browser. Do NOT just write "NOT FOUND" and move on.
 - Do not infer. Do not guess. Do not fill gaps with assumptions.
 
+HARD RULE: The literal string "NOT FOUND" is banned from your output. If a field is not found, you MUST emit a <<<GAP>>> block for it. Field definitions below may list "NOT FOUND" as a legacy option — ignore it; use GAP blocks instead.
+
 GAP BLOCK FORMAT — use this exact shape for every data point you could not find:
 
 <<<GAP>>>
@@ -49,12 +51,12 @@ Source URL for each.
 
 ---
 SECTION 2: REGULATORY STATUS
-2.1 FDA clearance/approval: YES / NO / PENDING / NOT FOUND
+2.1 FDA clearance/approval: YES / NO / PENDING (or GAP block)
 2.2 If YES: Clearance type (510(k) / De Novo / PMA / EUA)
 2.3 If YES: FDA clearance date (exact date)
 2.4 If YES: 510(k) number or approval number
 2.5 If YES: Device classification and product code
-2.6 CE marking status: YES / NO / NOT FOUND
+2.6 CE marking status: YES / NO (or GAP block)
 2.7 Other regulatory approvals (Health Canada, TGA, PMDA, etc.)
 2.8 Months since most recent regulatory clearance
 Source URL for each.
@@ -141,12 +143,7 @@ SECTION 9: RED FLAGS & DISQUALIFIERS
 9.9 Any leadership departures in last 6 months? YES/NO
 
 ---
-SECTION 10: SEARCH LIMITATIONS
-10.1 Gated/restricted pages
-10.2 Private LinkedIn profiles
-10.3 Data points not found
-10.4 Timeframe limitations
-10.5 Single-source data points
+SECTION 10: RESERVED (search limitations now captured via <<<GAP>>> blocks above)
 
 ---
 SECTION 11: SIGNAL FLAGS
@@ -189,7 +186,7 @@ Search for specific 510(k) clearance number and details.
 Report: Clearance type, 510(k) number, Clearance date, Device classification, Predicate device, Source URL.
 
 ## AREA 3: CE MARKING STATUS
-Report: YES / NO / NOT FOUND with source URL.
+Report: YES / NO with source URL, or a <<<GAP>>> block if you cannot determine it.
 
 OUTPUT RULES:
 - Return RAW FACTS only
@@ -258,6 +255,114 @@ async function callPerplexityDeepDive(companyName: string, website: string, prod
   }
   const data = await resp.json();
   return data?.choices?.[0]?.message?.content ?? JSON.stringify(data);
+}
+
+// Deterministic post-processor. Perplexity frequently returns "NOT FOUND"
+// despite prompt instructions to emit GAP blocks. We rewrite every such
+// line into a proper <<<GAP>>> block so the Quarterback can always hand the
+// user a Comet-ready prompt regardless of model compliance.
+function buildGapBlock(fieldLabel: string, account: Record<string, any>): string {
+  const linkedin: string = (account?.linkedin_url as string) || "";
+  const website: string = (account?.website_url as string) || "";
+  const ceoName: string = (account?.ceo_name as string) || "";
+  const name: string = (account?.company_name as string) || "";
+  const encodedName = encodeURIComponent(name);
+  const linkedinPeople = linkedin ? linkedin.replace(/\/+$/, "") + "/people/" : "";
+  const linkedinPosts = linkedin ? linkedin.replace(/\/+$/, "") + "/posts/" : "";
+  const crunchbaseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  const f = fieldLabel.toLowerCase();
+  let goToUrl = "";
+  let cometPrompt = "";
+  let why = "Not found via Perplexity web search";
+
+  if (/ce marking|ce mark/.test(f)) {
+    goToUrl = `https://ec.europa.eu/tools/eudamed/#/screen/search-device?deviceManufacturer=${encodedName}`;
+    cometPrompt = `Search EUDAMED for ${name}. Return any listed medical devices, their UDI-DI, risk class, and CE certificate number. If nothing is listed, state "no CE registration found" verbatim.`;
+    why = "CE / EUDAMED database requires direct query";
+  } else if (/fda|510\(?k\)?|device classification|product code|predicate/.test(f)) {
+    goToUrl = `https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfpmn/pmn.cfm?start_search=1&applicant=${encodedName}`;
+    cometPrompt = `Search the FDA 510(k) database for ${name}. Return: K-number, clearance date, product code, device classification, predicate device, and indications-for-use statement (verbatim).`;
+    why = "FDA database requires direct query";
+  } else if (/linkedin about|linkedin.*description|linkedin.*headline/.test(f)) {
+    goToUrl = linkedin || `https://www.linkedin.com/search/results/companies/?keywords=${encodedName}`;
+    cometPrompt = `Open the company's LinkedIn About section and paste the verbatim text. Also paste the tagline/subheadline under the company name.`;
+    why = "LinkedIn company page blocked to crawler";
+  } else if (/linkedin employee count|linkedin headcount/.test(f) || /all employees|employees with|commercial\/sales titles|marketing titles|sales titles/.test(f)) {
+    goToUrl = linkedinPeople || `https://www.linkedin.com/search/results/companies/?keywords=${encodedName}`;
+    cometPrompt = `On this LinkedIn People tab: (1) total employee count shown; (2) list every person with Sales, Commercial, BD, Growth, Marketing, or Revenue in their title, with full title, start date, and location; (3) flag anyone whose tenure is <3 months.`;
+    why = "LinkedIn employee list gated to authenticated browser";
+  } else if (/ceo.*linkedin url|ceo linkedin profile|founder.*linkedin/.test(f)) {
+    goToUrl = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent((ceoName || "CEO") + " " + name)}`;
+    cometPrompt = `Find the LinkedIn profile of ${ceoName || "the CEO of " + name}. Return the canonical profile URL and the headline text under their name.`;
+    why = "Individual LinkedIn profile not indexed by Perplexity";
+  } else if (/ceo background|founder background|ceo.*experience/.test(f)) {
+    goToUrl = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent((ceoName || "CEO") + " " + name)}`;
+    cometPrompt = `Open ${ceoName || "the CEO's"} LinkedIn profile. Return: current role, prior 3 roles (company, title, years), education, and any notable exits or prior-company outcomes.`;
+    why = "LinkedIn profile experience section gated";
+  } else if (/ceo.*activity|ceo.*post|pain_quotes|posting frequency|engagement|ceo.*sales/.test(f)) {
+    goToUrl = linkedinPosts || `https://www.linkedin.com/search/results/content/?keywords=${encodeURIComponent((ceoName || "CEO") + " " + name)}`;
+    cometPrompt = `From ${ceoName || "the CEO's"} last 6 months of LinkedIn posts, return: (1) total post count; (2) every post that mentions sales, commercial, pipeline, customers, pilots, stalls, or messaging challenges — give date + verbatim opening line; (3) average likes/comments across the window.`;
+    why = "LinkedIn posts feed gated to authenticated browser";
+  } else if (/funding|round|investor|capital raised|total raised|months since.*funding/.test(f)) {
+    goToUrl = `https://www.crunchbase.com/organization/${crunchbaseSlug}/company_financials`;
+    cometPrompt = `On Crunchbase for ${name}, return every funding round: type (Seed / A / B / etc.), amount, date announced, lead investor, other investors, and cumulative total raised. If a field is not shown, say "not listed".`;
+    why = "Funding history behind Crunchbase login";
+  } else if (/year founded|founded/.test(f)) {
+    goToUrl = `https://www.crunchbase.com/organization/${crunchbaseSlug}`;
+    cometPrompt = `Return the founding year of ${name} as shown on Crunchbase, plus the founders listed.`;
+    why = "Founding year not in public search results";
+  } else if (/homepage|about page|case studies|careers|jobs|target customer.*website|website.*target/.test(f)) {
+    goToUrl = website || `https://www.google.com/search?q=${encodedName}`;
+    cometPrompt = `On ${name}'s website, find and paste the verbatim text for: ${fieldLabel}. Also give the exact page URL you pulled it from.`;
+    why = "Website section not fully indexed by Perplexity";
+  } else if (/competitor|competitive/.test(f)) {
+    goToUrl = `https://www.google.com/search?q=${encodeURIComponent(name + " competitors alternatives")}`;
+    cometPrompt = `Identify 3-5 direct competitors to ${name}. For each: company name, flagship product + category, last funding round + amount, LinkedIn employee count, named customers, and one-line differentiator vs ${name}. Prefer sources newer than 12 months.`;
+    why = "Competitive landscape requires manual synthesis";
+  } else if (/pilot|customer_count|customer count|deployment|named customers|hospital/.test(f)) {
+    goToUrl = website ? (website.replace(/\/+$/, "") + "/news-events") : `https://www.google.com/search?q=${encodeURIComponent(name + " customer hospital pilot announcement")}`;
+    cometPrompt = `Scan press releases and news for ${name}. List every named hospital, clinic, health-system, or AMC mentioned as a customer, pilot site, or partner. For each: organization name, relationship type, date announced, exact quote.`;
+    why = "Specific customer names rarely in search snippets";
+  } else if (/revenue|arr|booking/.test(f)) {
+    goToUrl = `https://www.google.com/search?q=${encodeURIComponent(name + " revenue 2025 ARR")}`;
+    cometPrompt = `Find any publicly disclosed revenue, ARR, or booking figures for ${name}. If none found, state "no public revenue disclosures" verbatim. Do not estimate.`;
+    why = "Private-company revenue rarely disclosed";
+  } else if (/months since|timeframe/.test(f)) {
+    goToUrl = "";
+    cometPrompt = `Once the related date is captured (FDA clearance date, funding date, etc.), compute months-since from today's date. No web fetch required.`;
+    why = "Derived field — compute once upstream value is known";
+  } else if (/layoff|leadership departure|social media inactive|acquired|pivoted|publicly traded|pure services|sales org/.test(f)) {
+    goToUrl = `https://www.google.com/search?q=${encodeURIComponent(name + " " + fieldLabel)}`;
+    cometPrompt = `Answer YES or NO for: ${fieldLabel}. Cite the source URL(s) you used. If no evidence either way, say "no evidence" verbatim.`;
+    why = "Red-flag signal needs targeted web check";
+  } else {
+    goToUrl = `https://www.google.com/search?q=${encodeURIComponent(name + " " + fieldLabel)}`;
+    cometPrompt = `Find and extract: ${fieldLabel} for ${name}. Quote source URLs.`;
+  }
+
+  return [
+    "<<<GAP>>>",
+    `field: ${fieldLabel}`,
+    `why_not_found: ${why}`,
+    `go_to_url: ${goToUrl}`,
+    `comet_prompt: ${cometPrompt}`,
+    "<<<END GAP>>>",
+  ].join("\n");
+}
+
+function transformNotFoundToGaps(text: string, account: Record<string, any>): string {
+  if (!text) return text;
+  // Matches lines like:
+  //   "4.1 LinkedIn employee count: NOT FOUND (searched ...)"
+  //   "2.6 CE marking status: NOT FOUND. Searched all results"
+  //   "3.1.2 Amount raised: NOT FOUND"
+  // Field label = everything between the leading whitespace and the final colon
+  // before "NOT FOUND".
+  const lineRegex = /^([ \t]*)([^\n:]+?):\s*NOT FOUND[^\n]*$/gim;
+  return text.replace(lineRegex, (_full, indent: string, fieldLabel: string) => {
+    return indent + buildGapBlock(fieldLabel.trim(), account);
+  });
 }
 
 function extractFields(research: string, deepDive: string) {
@@ -380,13 +485,22 @@ Deno.serve(async (req: Request) => {
       console.error(`Deep-dive failed for ${company_name}:`, ddErr);
     }
 
-    // Extract structured fields
+    // Extract structured fields from the RAW research text (before gap
+    // transformation) so the existing "skip if NOT FOUND" regex paths
+    // keep working unchanged.
     const fields = extractFields(research, deepDive);
+
+    // Transform every remaining "NOT FOUND" line into a proper <<<GAP>>>
+    // block with a per-field-type URL and Comet prompt. Done in code so
+    // the output is deterministic regardless of whether Perplexity
+    // followed the prompt's GAP instructions.
+    const researchWithGaps = transformNotFoundToGaps(research, account);
+    const deepDiveWithGaps = deepDive ? transformNotFoundToGaps(deepDive, account) : "";
 
     // Build update object
     const updateData: Record<string, any> = {
-      research_output: research,
-      deepdive_output: deepDive || null,
+      research_output: researchWithGaps,
+      deepdive_output: deepDiveWithGaps || null,
       research_status: "Complete",
       last_researched: new Date().toISOString(),
       research_version: 2,
