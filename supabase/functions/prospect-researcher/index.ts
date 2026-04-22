@@ -284,7 +284,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { company_name, website_url, linkedin_url, ceo_name, notion_page_id } = body;
+    const { company_name, website_url, linkedin_url, ceo_name, notion_page_id, account_id } = body;
 
     if (!company_name) {
       return new Response(
@@ -293,14 +293,60 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    console.info(`Researching: ${company_name}`);
+    // Resolve the account row up front. This gives us the row id for the
+    // later update AND lets us hydrate website_url/linkedin_url/ceo_name
+    // from the DB when the caller didn't pass them -- otherwise Perplexity
+    // gets an empty [LINKEDIN_URL] in its prompt and can't anchor its
+    // LinkedIn searches.
+    let account: Record<string, any> | null = null;
+    if (notion_page_id) {
+      const { data } = await supabase
+        .from("accounts")
+        .select("*")
+        .eq("notion_page_id", notion_page_id)
+        .maybeSingle();
+      account = data;
+    } else if (account_id) {
+      const { data } = await supabase
+        .from("accounts")
+        .select("*")
+        .eq("id", account_id)
+        .maybeSingle();
+      account = data;
+    } else {
+      // Fuzzy-resolve by name so "Medtronik" still lands on Medtronic.
+      const resolved = await resolveAccountByName(supabase, company_name);
+      if (resolved) {
+        const { data } = await supabase
+          .from("accounts")
+          .select("*")
+          .eq("id", resolved.id)
+          .maybeSingle();
+        account = data;
+      }
+    }
+
+    if (!account) {
+      throw new Error(
+        `No account matched (company_name='${company_name}', notion_page_id='${notion_page_id ?? ""}', account_id='${account_id ?? ""}')`
+      );
+    }
+
+    // Caller-supplied values win; DB fields fill the gaps.
+    const effectiveWebsite = website_url || account.website_url || "";
+    const effectiveLinkedin = linkedin_url || account.linkedin_url || "";
+    const effectiveCeo = ceo_name || account.ceo_name || "";
+
+    console.info(
+      `Researching: ${company_name} (website=${effectiveWebsite || "MISSING"}, linkedin=${effectiveLinkedin || "MISSING"}, ceo=${effectiveCeo || "MISSING"})`
+    );
 
     // Call 1: Main research
     const research = await callPerplexity(
       company_name,
-      website_url || "",
-      linkedin_url || "",
-      ceo_name || ""
+      effectiveWebsite,
+      effectiveLinkedin,
+      effectiveCeo
     );
     console.info(`Main research complete for ${company_name}`);
 
@@ -313,7 +359,7 @@ Deno.serve(async (req: Request) => {
     // Call 2: Deep-dive for competitors, FDA, CE
     let deepDive = "";
     try {
-      deepDive = await callPerplexityDeepDive(company_name, website_url || "", products, productCat);
+      deepDive = await callPerplexityDeepDive(company_name, effectiveWebsite, products, productCat);
       console.info(`Deep-dive complete for ${company_name}`);
     } catch (ddErr) {
       console.error(`Deep-dive failed for ${company_name}:`, ddErr);
@@ -339,33 +385,13 @@ Deno.serve(async (req: Request) => {
     if (fields.fdaStatus) updateData.fda_status = fields.fdaStatus;
     if (fields.competitors) updateData.competitors = fields.competitors;
 
-    // Upsert to Supabase
-    let result;
-    if (notion_page_id) {
-      const { data, error } = await supabase
-        .from("accounts")
-        .update(updateData)
-        .eq("notion_page_id", notion_page_id)
-        .select()
-        .single();
-      if (error) throw new Error(`Supabase update error: ${error.message}`);
-      result = data;
-    } else {
-      // If no notion_page_id, resolve company_name via fuzzy matching
-      // so "Medtronik" still lands on the Medtronic row.
-      const resolved = await resolveAccountByName(supabase, company_name);
-      if (!resolved) {
-        throw new Error(`No account matched company_name='${company_name}'`);
-      }
-      const { data, error } = await supabase
-        .from("accounts")
-        .update(updateData)
-        .eq("id", resolved.id)
-        .select()
-        .single();
-      if (error) throw new Error(`Supabase update error: ${error.message}`);
-      result = data;
-    }
+    const { data: result, error: updateErr } = await supabase
+      .from("accounts")
+      .update(updateData)
+      .eq("id", account.id)
+      .select()
+      .single();
+    if (updateErr) throw new Error(`Supabase update error: ${updateErr.message}`);
 
     console.info(`Research saved for ${company_name}`);
 
