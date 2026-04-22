@@ -373,10 +373,10 @@ export default function HomePage() {
   }, [activeChatId]);
 
   const STARTER_PROMPTS = [
-    'Is Account an ICP fit?',
-    'Who at Account should I reach out to and why?',
-    'Draft an outreach email to Contact at Account.',
-    'How do I move the Account opportunity forward?',
+    'Is this account an ICP fit?',
+    'Who at this account should I reach out to, and why?',
+    'Draft an outreach email to this contact.',
+    'How do I move this opportunity forward?',
   ];
 
   function prefillFromStarter(prompt: string) {
@@ -1347,7 +1347,7 @@ export default function HomePage() {
                   onClick={handleStop}
                   aria-label="Stop generating"
                   title="Stop generating"
-                  className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-border-strong text-fg hover:bg-elevated focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+                  className="absolute right-2 bottom-2 inline-flex h-10 w-10 sm:h-8 sm:w-8 items-center justify-center rounded-md bg-border-strong text-fg hover:bg-elevated focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                 >
                   <span className="sr-only">Stop generating</span>
                   <svg
@@ -1365,7 +1365,7 @@ export default function HomePage() {
                   disabled={!input.trim()}
                   aria-label="Send message"
                   title="Send message"
-                  className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-fg hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-border-strong disabled:text-fg-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+                  className="absolute right-2 bottom-2 inline-flex h-10 w-10 sm:h-8 sm:w-8 items-center justify-center rounded-md bg-accent text-accent-fg hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-border-strong disabled:text-fg-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                 >
                   <span className="sr-only">Send message</span>
                   <svg
@@ -1384,7 +1384,7 @@ export default function HomePage() {
                 </button>
               )}
             </div>
-            <p className="mx-auto mt-2 w-full max-w-[min(768px,100%)] text-center text-xs text-fg-subtle">
+            <p className="mx-auto mt-2 hidden w-full max-w-[min(768px,100%)] text-center text-xs text-fg-subtle sm:block">
               Enter to send · Shift+Enter for newline
             </p>
           </form>
