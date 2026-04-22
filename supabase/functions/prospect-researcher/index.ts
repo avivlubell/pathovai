@@ -435,8 +435,22 @@ Deno.serve(async (req: Request) => {
       account = data;
     } else {
       // Fuzzy-resolve by name so "Medtronik" still lands on Medtronic.
+      // Guard: only proceed when the match is confident — an ambiguous or
+      // low-score match risks overwriting the wrong company's research row,
+      // which is a silent destructive write we can never undo.
       const resolved = await resolveAccountByName(supabase, company_name);
       if (resolved) {
+        if (!resolved.match_info.confident) {
+          const candidates = resolved.match_info.candidates
+            .map(c => `"${c.company_name}" (score ${c.score.toFixed(2)})`)
+            .join(", ");
+          throw new Error(
+            `Fuzzy match for "${company_name}" resolved to "${resolved.company_name}" with low confidence ` +
+            `(score ${resolved.match_info.top?.score?.toFixed(2) ?? "?"}). ` +
+            `Candidates: ${candidates || "none"}. ` +
+            `Pass account_id explicitly or create the account first.`
+          );
+        }
         const { data } = await supabase
           .from("accounts")
           .select("*")
