@@ -373,10 +373,10 @@ export default function HomePage() {
   }, [activeChatId]);
 
   const STARTER_PROMPTS = [
-    'Is [Account] an ICP fit?',
-    'Who at [Account] should I reach out to and why?',
-    'Draft an outreach email to [Contact] at [Account].',
-    'How do I move the [Account] opportunity forward?',
+    'Is Account an ICP fit?',
+    'Who at Account should I reach out to and why?',
+    'Draft an outreach email to Contact at Account.',
+    'How do I move the Account opportunity forward?',
   ];
 
   function prefillFromStarter(prompt: string) {
