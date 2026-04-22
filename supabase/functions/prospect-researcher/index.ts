@@ -22,8 +22,17 @@ CEO/FOUNDER: [CEO_NAME]
 
 INSTRUCTIONS: Extract every data point listed below. For each:
 - If found: State the fact + source URL + date retrieved or published
-- If not found after searching: State "NOT FOUND" and list where you searched
+- If not found after searching: Emit a GAP block (see GAP BLOCK FORMAT below) so the human can fetch it manually via their Perplexity Comet browser. Do NOT just write "NOT FOUND" and move on.
 - Do not infer. Do not guess. Do not fill gaps with assumptions.
+
+GAP BLOCK FORMAT — use this exact shape for every data point you could not find:
+
+<<<GAP>>>
+field: <section number and field name, e.g. "4.1 LinkedIn employee count">
+why_not_found: <one line — e.g. "LinkedIn company page blocked to crawler", "not published publicly", "pre-IPO private company">
+go_to_url: <the single most useful URL the user should open in Comet — e.g. the company LinkedIn People page, the careers page, the CEO's LinkedIn posts tab>
+comet_prompt: <a ready-to-paste instruction for Comet on that page — concrete, specific, extracts the field above. Do not be generic. Example: "List every person shown here with 'Sales', 'Commercial', 'BD', or 'Marketing' in their title, plus their start date and location.">
+<<<END GAP>>>
 
 ---
 SECTION 1: COMPANY BASICS
@@ -151,10 +160,10 @@ SECTION 11: SIGNAL FLAGS
 
 OUTPUT RULES:
 - Return data in the exact section/numbering format above
-- Every data point must have a source URL or state NOT FOUND
+- Every data point must have either a source URL OR a <<<GAP>>> block pointing the user to where they can fetch it manually in Comet
 - Copy exact language from sources - do not paraphrase
 - Do not score, rate, rank, recommend, or analyze
-- If you cannot find something, say so. Do not fill gaps.`;
+- If you cannot find something, emit a GAP block. Never fill gaps with guesses or inferences.`;
 
 const DEEPDIVE_PROMPT = `You are a competitive intelligence researcher. Your ONLY job is to find COMPETITORS, FDA CLEARANCE DETAILS, and CE MARKING STATUS for this company.
 COMPANY: [COMPANY_NAME]
@@ -184,8 +193,14 @@ Report: YES / NO / NOT FOUND with source URL.
 
 OUTPUT RULES:
 - Return RAW FACTS only
-- Every data point must have a source URL
-- If NOT FOUND after exhaustive search, state NOT FOUND and list all searches attempted
+- Every data point must have a source URL, OR a <<<GAP>>> block so the user can fetch it manually in Comet
+- GAP BLOCK FORMAT:
+  <<<GAP>>>
+  field: <what you were looking for>
+  why_not_found: <one line>
+  go_to_url: <single best URL to open in Comet>
+  comet_prompt: <ready-to-paste, specific extraction instruction>
+  <<<END GAP>>>
 - Do not infer or guess`;
 
 async function callPerplexity(companyName: string, website: string, linkedinUrl: string, ceoName: string): Promise<string> {
