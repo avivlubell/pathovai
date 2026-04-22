@@ -25,6 +25,8 @@ INSTRUCTIONS: Extract every data point listed below. For each:
 - If not found after searching: Emit a GAP block (see GAP BLOCK FORMAT below) so the human can fetch it manually via their Perplexity Comet browser. Do NOT just write "NOT FOUND" and move on.
 - Do not infer. Do not guess. Do not fill gaps with assumptions.
 
+HARD RULE: The literal string "NOT FOUND" is banned from your output. If a field is not found, you MUST emit a <<<GAP>>> block for it. Field definitions below may list "NOT FOUND" as a legacy option — ignore it; use GAP blocks instead.
+
 GAP BLOCK FORMAT — use this exact shape for every data point you could not find:
 
 <<<GAP>>>
@@ -49,12 +51,12 @@ Source URL for each.
 
 ---
 SECTION 2: REGULATORY STATUS
-2.1 FDA clearance/approval: YES / NO / PENDING / NOT FOUND
+2.1 FDA clearance/approval: YES / NO / PENDING (or GAP block)
 2.2 If YES: Clearance type (510(k) / De Novo / PMA / EUA)
 2.3 If YES: FDA clearance date (exact date)
 2.4 If YES: 510(k) number or approval number
 2.5 If YES: Device classification and product code
-2.6 CE marking status: YES / NO / NOT FOUND
+2.6 CE marking status: YES / NO (or GAP block)
 2.7 Other regulatory approvals (Health Canada, TGA, PMDA, etc.)
 2.8 Months since most recent regulatory clearance
 Source URL for each.
@@ -141,12 +143,7 @@ SECTION 9: RED FLAGS & DISQUALIFIERS
 9.9 Any leadership departures in last 6 months? YES/NO
 
 ---
-SECTION 10: SEARCH LIMITATIONS
-10.1 Gated/restricted pages
-10.2 Private LinkedIn profiles
-10.3 Data points not found
-10.4 Timeframe limitations
-10.5 Single-source data points
+SECTION 10: RESERVED (search limitations now captured via <<<GAP>>> blocks above)
 
 ---
 SECTION 11: SIGNAL FLAGS
@@ -189,7 +186,7 @@ Search for specific 510(k) clearance number and details.
 Report: Clearance type, 510(k) number, Clearance date, Device classification, Predicate device, Source URL.
 
 ## AREA 3: CE MARKING STATUS
-Report: YES / NO / NOT FOUND with source URL.
+Report: YES / NO with source URL, or a <<<GAP>>> block if you cannot determine it.
 
 OUTPUT RULES:
 - Return RAW FACTS only
