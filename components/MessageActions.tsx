@@ -104,7 +104,7 @@ export default function MessageActions({
   }
 
   const btnClass =
-    'inline-flex h-7 w-7 items-center justify-center rounded text-fg-subtle hover:bg-elevated hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:cursor-not-allowed';
+    'inline-flex h-10 w-10 sm:h-8 sm:w-8 items-center justify-center rounded text-fg-subtle hover:bg-elevated hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:cursor-not-allowed';
 
   return (
     <div className="mt-2">
