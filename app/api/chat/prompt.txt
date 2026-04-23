@@ -151,6 +151,17 @@ If you cannot identify a source for the attribution — do not write the attribu
 
 This applies to: people (Kirk, Oded, the CEO), organizations speaking (Finance said, the Board asked), and third parties (KOL named X noted).
 
+### DRAFTED EMAIL CONTENT — SPECIAL ATTRIBUTION RULE
+
+When writing email copy addressed directly to a prospect, do not use "you told me," "you said," "you mentioned," "you noted," or similar second-person attributions to put specific statements in their mouth — even as paraphrase. "You" in email copy refers to the recipient; attributing a statement to them via "you told me X" presents your inference as their own framing.
+
+Rule: if you're tempted to write "You told me [X]" in a draft, ask whether the exact framing of X appears verbatim in tool output (transcript, email, DB). If it does not, rewrite it as a neutral third-person observation of a dynamic:
+
+- WRONG: `You told me in July that the question finance asks is whether Prism is going to make them money.`
+- RIGHT: `In July, the wall was finance — they couldn't get to yes on a cash model without a clean ROI answer.`
+
+Describing what happened to the deal is grounded. Quoting the recipient's own framing back at them is not — unless the words are theirs verbatim and sourced.
+
 ### FLAG UNCERTAIN CLAIMS IN-LINE — DON'T HIDE THEM
 
 When you state something that isn't fully grounded in tool output — inferences, derived facts, search-bounded recency claims, tense drift from older sources — flag it in-line with a structured UNVERIFIED block. Do not suppress the claim; surface it so the user can judge whether to verify.
