@@ -262,12 +262,32 @@ interface QaReport {
   failures: string[];
 }
 
-function runQaOnDraft(draft: any): QaReport {
+function companyNamesMatch(expected: string, actual: string): boolean {
+  const tokenize = (s: string) =>
+    s.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !["inc", "llc", "ltd", "corp", "the", "and", "for"].includes(w));
+  const a = tokenize(expected);
+  const b = tokenize(actual);
+  if (a.length === 0 || b.length === 0) return true; // can't check, don't block
+  const bSet = new Set(b);
+  return a.some((t) => bSet.has(t));
+}
+
+function runQaOnDraft(draft: any, expectedCompanyName: string): QaReport {
   const picLite: PICLite = {
     evidence: Array.isArray(draft?.pic?.evidence) ? draft.pic.evidence : [],
   };
   const per_touch: QaReport["per_touch"] = {};
   const failures: string[] = [];
+
+  const draftedCompany: string = draft?.pic?.account?.name ?? "";
+  if (draftedCompany && !companyNamesMatch(expectedCompanyName, draftedCompany)) {
+    failures.push(
+      `company_mismatch: draft is for "${draftedCompany}" but account is "${expectedCompanyName}" — discard this output, do not show to user`,
+    );
+  }
 
   for (const name of TOUCH_NAMES) {
     const touch = draft?.sequence?.[name];
@@ -393,13 +413,14 @@ serve(async (req: Request) => {
     const first = await callClaude(fullSystemPrompt, firstUserMessage, anthropicKey);
     let draft = parseDraftJson(first.text);
     let qa: QaReport = draft
-      ? runQaOnDraft(draft)
+      ? runQaOnDraft(draft, account.company_name)
       : { passed: false, per_touch: {}, failures: ["LLM returned invalid JSON"] };
     let retried = false;
     const usage = { first: first.usage, retry: null as unknown };
 
-    // One retry on QA failure.
-    if (!qa.passed) {
+    // One retry on QA failure — but not for company mismatch, which retrying won't fix.
+    const hasCompanyMismatch = qa.failures.some((f) => f.startsWith("company_mismatch:"));
+    if (!qa.passed && !hasCompanyMismatch) {
       retried = true;
       const retryMessage = buildRetryMessage(accountContext, draft ?? { raw: first.text }, qa);
       const second = await callClaude(fullSystemPrompt, retryMessage, anthropicKey);
@@ -407,7 +428,7 @@ serve(async (req: Request) => {
       usage.retry = second.usage;
       if (retryDraft) {
         draft = retryDraft;
-        qa = runQaOnDraft(retryDraft);
+        qa = runQaOnDraft(retryDraft, account.company_name);
       } else {
         qa.failures.push("retry: LLM returned invalid JSON");
       }
