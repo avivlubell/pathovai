@@ -465,7 +465,7 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
   // Words that look like proper nouns but aren't attributable people.
   // Pronouns, first-person references, and common sentence-leads.
   const NON_ATTRIBUTABLE = new Set([
-    'we', 'he', 'she', 'they', 'you', 'the', 'it', 'i', 'our',
+    'we', 'he', 'she', 'they', 'the', 'it', 'i', 'our',
     'this', 'that', 'these', 'those', 'there', 'here',
     'research', 'transcript', 'email', 'note', 'notes', 'data',
   ]);
