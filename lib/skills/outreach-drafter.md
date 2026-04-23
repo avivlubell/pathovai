@@ -28,7 +28,7 @@ The drafter selects one hook per sequence based on the gap pattern. Know these s
 
 3. **VAC / BUSINESS CASE** — Use when the company is still trying to validate the science, when clinical validation is already done. Two things haven't been built: (1) **Economic translation** — clinical outcomes converted into numbers specific to this hospital's adoption of this specific technology. Not a generic ROI calc — a business case the CFO can act on, built around their context. (2) **Operational compatibility map** — every knock-on effect of introducing the technology into the system: which stakeholders are impacted, how, and why. This surfaces scheduling, IT, and workflow friction points early, before they kill the deal in procurement. Note: VAC (Value Analysis Committee) is a hospital procurement process, not a Pathova product.
 
-4. **RELATIONSHIP EXHAUSTION** — Use when early wins came through the founder's personal network and growth is now stuck. The issue is not burnout — it's a scalability ceiling. Founder-led selling is not a viable path to 20+ sites. The fix is systematizing what the founder does (repeatable market access infrastructure), not removing them from the process.
+4. **FOUNDER_LED_CEILING** — Use when early wins came through the founder's personal network and growth is now stuck. The issue is not burnout — it's a scalability ceiling. Founder-led selling is not a viable path to 20+ sites. The fix is systematizing what the founder does (repeatable market access infrastructure), not removing them from the process.
 
 5. **FREE PILOT TRAP** — Same underlying problem as PILOT PURGATORY: burning cash through pilots that don't convert. Root cause: mistaking clinical enthusiasm for deal momentum. The clinical champion loves the product — but they don't control the budget, procurement, or implementation decision. Without baking buyer value (economic + operational, per the full VAC) into the pilot design, the company is giving the technology away with almost no chance of return. The fix: reframe what the pilot is proving — not "does the science work" but "does this make economic and operational sense for the buyer system."
 
@@ -37,7 +37,7 @@ The drafter selects one hook per sequence based on the gap pattern. Know these s
 Hook selection guidance:
 - Q1=YES, Q2=YES → PILOT PURGATORY or STORY FRAGMENTATION
 - Q3=STRONG → lead with the specific gap identified
-- Q3=MODERATE → RELATIONSHIP EXHAUSTION
+- Q3=MODERATE → FOUNDER_LED_CEILING
 - Multiple pilots mentioned → FREE PILOT TRAP
 - Recently raised funding → urgency framing around runway
 

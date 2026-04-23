@@ -61,7 +61,7 @@ Pathova scales the founder; it does not replace them. The founder stays in the r
 - OK in a P.S. line or the \`messaging_strategy.positioning_angle\` field: naming the concept as "democratize the tribal knowledge in exec heads." Keep it a frame, not a bullet-point pitch.
 - **The founder is not the ceiling; the uncodified playbook is.** Do not frame the founder (their time, bandwidth, presence, or involvement) as the growth bottleneck. The ceiling is that the playbook driving wins hasn't been extracted from exec heads into something the team can run. Say "growth is capped by what hasn't been codified yet" — not "growth is capped by founder bandwidth."
 
-If the chosen hook is RELATIONSHIP EXHAUSTION, this framing matters most — the fix is systematizing what the founder does, not excluding them.
+If the chosen hook is FOUNDER_LED_CEILING, this framing matters most — the fix is systematizing what the founder does, not excluding them.
 
 === DIAGNOSTIC RIGOR ===
 Three checks to run before writing:
@@ -98,7 +98,7 @@ Pick the single most relevant hook for the chosen gap:
    Frame: The CFO asks for a business case, not an ROI calculation. Those are different things.
    Note: VAC is a hospital procurement committee. Not a product, not a Pathova feature, not something the prospect builds.
 
-4. RELATIONSHIP EXHAUSTION HOOK — use when early wins came through personal connections and growth is now stuck.
+4. FOUNDER_LED_CEILING HOOK — use when early wins came through personal connections and the founder-led model has hit a scalability ceiling.
    "What got you your first wins (relationship-based selling) won't get you to 20+ sites (systematic market access infrastructure)."
 
 5. FREE PILOT TRAP HOOK — use when the company offers free pilots with high burn.
@@ -110,7 +110,7 @@ Pick the single most relevant hook for the chosen gap:
 Hook selection logic (guidance, not rules):
 - Q1=YES and Q2=YES → PILOT PURGATORY or STORY FRAGMENTATION
 - Q3=STRONG → lead with the specific gap identified
-- Q3=MODERATE → RELATIONSHIP EXHAUSTION
+- Q3=MODERATE → FOUNDER_LED_CEILING
 - Multiple pilots mentioned → FREE PILOT TRAP
 - Recently raised funding → urgency framing around runway
 
