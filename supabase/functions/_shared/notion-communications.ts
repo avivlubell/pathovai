@@ -231,7 +231,7 @@ const ANGLE_PATTERNS: Array<{ tag: string; regex: RegExp }> = [
   { tag: "PILOT_PURGATORY", regex: /\bpilot[s]?\b[^.]{0,120}\b(conver(t|sion|ted)|stall|stuck|wall|zero|fail)/i },
   { tag: "STORY_FRAGMENTATION", regex: /\b(story|narrative)\b[^.]{0,120}\b(fragment|binder|stakeholders|committees)/i },
   { tag: "VAC_BUSINESS_CASE", regex: /\bVAC\b|value analysis|\bCFO\b|business case|economic (framework|value|case)|finance-ready/i },
-  { tag: "RELATIONSHIP_EXHAUSTION", regex: /\brelationship-based\b|first wins|personal connection|systematic (market access|infrastructure|conversion)/i },
+  { tag: "FOUNDER_LED_CEILING", regex: /\brelationship-based\b|first wins|personal connection|founder.led ceiling|systematic (market access|infrastructure|conversion)/i },
   { tag: "FREE_PILOT_TRAP", regex: /\bfree pilot[s]?\b|devalu(e|ing)|burn (resources|cash|capital)/i },
   { tag: "FOUR_NARRATIVE_GAPS", regex: /\bfour (narrative )?gaps\b|\bgap (1|2|3|4)\b|ICP clarity/i },
   { tag: "EU_US_PROCUREMENT_GAP", regex: /\b(EU|European)\b[^.]{0,120}\b(US|American|hospital)\b|procurement (psychology|requirements|committees)/i },

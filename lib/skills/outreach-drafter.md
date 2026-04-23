@@ -22,22 +22,22 @@ You should always be able to tell the user what gap the outreach is diagnosing a
 ## The 6 messaging hooks
 The drafter selects one hook per sequence based on the gap pattern. Know these so you can explain the choice:
 
-1. **PILOT PURGATORY** — Use when the company has multiple pilots, long cycles, and low conversion. Frame: the problem isn't the technology — the story fragments across the buying process. "Most medtech companies with FDA clearance get stuck running 3-7 pilots with strong clinical outcomes but zero conversions after 12+ months."
+1. **PILOT PURGATORY** — Use when the company has multiple pilots, long cycles, and low conversion. Frame: the problem isn't the technology — the story fragments across the buying process. "Most medtech companies with FDA clearance get stuck running 3-7 pilots with strong clinical outcomes but zero conversions after 12+ months." Note: PILOT PURGATORY and FREE PILOT TRAP describe the same underlying cash-burn problem. PURGATORY emphasizes being stuck; FREE PILOT TRAP emphasizes giving the technology away without the right value framing. Use whichever is better supported by the evidence.
 
-2. **STORY FRAGMENTATION** — Use when there's clinical validation but procurement stalls. Frame: your story isn't what you say — it's what the hospital hears after five different stakeholders touch it. "Your story becomes a binder of tabs with no plot."
+2. **STORY FRAGMENTATION** — Use when the company's story hasn't been designed to travel across all hospital evaluators. The internal stakeholders who typically evaluate: clinical champion, IT, scheduling, CFO, procurement/VAC. Without a unified narrative, each evaluator evaluates in a vacuum and writes their own version of what the product is. You lose the plot. You lose control of how value is defined across the buying process. The fix: a single coherent story that holds up when any of these stakeholders picks it up independently.
 
-3. **VAC / BUSINESS CASE** — Use when deals die at committee stage or CFO involvement stalls. VAC = Value Analysis Committee, the hospital procurement committee that evaluates cost per outcome, budget implications, implementation risk, and alternatives. Frame: the CFO asks for a business case, not an ROI calculation — those are different things. Note: VAC is a hospital process, not a Pathova feature.
+3. **VAC / BUSINESS CASE** — Use when the company is still trying to validate the science, when clinical validation is already done. Two things haven't been built: (1) **Economic translation** — clinical outcomes converted into numbers specific to this hospital's adoption of this specific technology. Not a generic ROI calc — a business case the CFO can act on, built around their context. (2) **Operational compatibility map** — every knock-on effect of introducing the technology into the system: which stakeholders are impacted, how, and why. This surfaces scheduling, IT, and workflow friction points early, before they kill the deal in procurement. Note: VAC (Value Analysis Committee) is a hospital procurement process, not a Pathova product.
 
-4. **RELATIONSHIP EXHAUSTION** — Use when early wins came through personal connections and growth is now stuck. Frame: what got them their first wins (relationship-based selling) won't get them to 20+ sites (systematic market access infrastructure). If this hook is selected, the fix is systematizing what the founder does — not excluding them.
+4. **FOUNDER_LED_CEILING** — Use when early wins came through the founder's personal network and growth is now stuck. The issue is not burnout — it's a scalability ceiling. Founder-led selling is not a viable path to 20+ sites. The fix is systematizing what the founder does (repeatable market access infrastructure), not removing them from the process.
 
-5. **FREE PILOT TRAP** — Use when the company offers free pilots with high burn. Frame: free pilots devalue the product and burn resources on hospitals unlikely to convert.
+5. **FREE PILOT TRAP** — Same underlying problem as PILOT PURGATORY: burning cash through pilots that don't convert. Root cause: mistaking clinical enthusiasm for deal momentum. The clinical champion loves the product — but they don't control the budget, procurement, or implementation decision. Without baking buyer value (economic + operational, per the full VAC) into the pilot design, the company is giving the technology away with almost no chance of return. The fix: reframe what the pilot is proving — not "does the science work" but "does this make economic and operational sense for the buyer system."
 
 6. **FOUR NARRATIVE GAPS** — Use when ICP scoring shows multiple gaps across the board. Frame: four specific gaps compound each other. Gap 1: ICP clarity. Gap 2: No VAC navigation system. Gap 3: Economic value props that don't survive CFO scrutiny. Gap 4: Pilots designed for clinical validation, not commercial conversion.
 
 Hook selection guidance:
 - Q1=YES, Q2=YES → PILOT PURGATORY or STORY FRAGMENTATION
 - Q3=STRONG → lead with the specific gap identified
-- Q3=MODERATE → RELATIONSHIP EXHAUSTION
+- Q3=MODERATE → FOUNDER_LED_CEILING
 - Multiple pilots mentioned → FREE PILOT TRAP
 - Recently raised funding → urgency framing around runway
 
