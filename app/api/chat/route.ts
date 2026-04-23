@@ -9,6 +9,7 @@ import { buildConversationContext } from '../../../lib/contextPrompt';
 import { authOptions } from '../../../lib/authOptions';
 import { gmailTool, executeGmailTool } from './gmail-tools';
 import { driveTools, executeDriveTool } from './drive-tools';
+import { loadSkill, SKILL_INDEX } from '../../../lib/skills';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -323,6 +324,20 @@ const tools: Anthropic.Tool[] = [
       required: ['feedback'],
     },
   },
+  {
+    name: 'load_skill',
+    description: `Load the full procedure brief for a specialist tool. Call this before invoking a specialist when you need to understand what it does, interpret its output, enforce prerequisites, or coach the user on results. Available skills: ${Object.keys(SKILL_INDEX).join(', ')}.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        skill: {
+          type: 'string',
+          description: 'Skill name: prospect-researcher | icp-scorer | risk-assessor | outreach-drafter',
+        },
+      },
+      required: ['skill'],
+    },
+  },
   gmailTool,
   ...driveTools,
 ];
@@ -374,6 +389,10 @@ async function executeTool(
 
   const driveResult = await executeDriveTool(toolName, toolInput, gmailAccessToken);
   if (driveResult !== null) return driveResult;
+
+  if (toolName === 'load_skill') {
+    return loadSkill(toolInput.skill as string);
+  }
 
   const endpoint = TOOL_ENDPOINT_MAP[toolName];
   if (!endpoint) {

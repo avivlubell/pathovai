@@ -1,0 +1,65 @@
+# Outreach Drafter — QB Procedure Brief
+
+## What it does
+Produces a diagnosis-first Prospect Intelligence Card (PIC) then a 3-touch outreach sequence (LinkedIn + 2 emails) grounded in evidence. Auto-pulls prior outreach history from Notion. Runs deterministic QA checks before finalizing. Loads learnings from `agent_learnings` tagged `outreach-drafter` or `all`.
+
+## Hard prerequisites — enforce these before calling
+1. **Research must be on file.** The drafter needs evidence to ground claims. No research = generic outreach = wasted call.
+2. **ICP tier must be Tier 1 or Tier 2.** Don't draft outreach for Non-ICP or Tier 3 accounts without explicit user override.
+3. **Only one account_id required** — the drafter picks the best target contact internally from account data. You do not need to supply a contact.
+
+## The PIC (Prospect Intelligence Card)
+Before drafting any message, the drafter builds a PIC — structured diagnosis of the account:
+- **Gap**: the specific commercial problem observable from evidence
+- **Symptom**: what's visible externally (pilots stalling, no commercial team, CEO doing BD manually)
+- **Root cause hypothesis**: why the symptom exists
+- **Cost of inaction**: what happens if the problem isn't solved
+- **Why now**: the time-bound trigger (FDA clearance age, funding runway, competitive pressure)
+- **Evidence**: specific citations from research data that support the above
+
+You should always be able to tell the user what gap the outreach is diagnosing and why.
+
+## The 6 messaging hooks
+The drafter selects one hook per sequence based on the gap pattern. Know these so you can explain the choice:
+
+1. **PILOT PURGATORY** — Company has multiple pilots but no paid conversions. Hook: name the stall pattern and offer a specific fix.
+2. **STORY FRAGMENTATION** — Company can't explain what they do consistently across channels (website, LinkedIn, sales pitches all say different things). Hook: name the coherence gap.
+3. **VAC (Validation-Access-Conversion)** — Company is stuck in validation loops with no path to contract. Hook: name where they're stuck in the VAC cycle.
+4. **RELATIONSHIP EXHAUSTION** — CEO has burned through their personal network and is now cold. Hook: name the transition from warm to cold motion.
+5. **FREE PILOT TRAP** — Company is giving away evaluations to prove value but can't price or convert them. Hook: name the pricing/conversion gap.
+6. **FOUR NARRATIVE GAPS** — Company has evidence but no narrative connecting it to buyer outcomes. Hook: name what's missing in the story.
+
+## Banned phrases — catch these in every draft
+If any of these appear in the output, flag it before presenting:
+`just checking in`, `circle back`, `synergy`, `quick question`, `hope this finds you well`, `leverage`, `game-changer`, `reach out`, `touch base`, `following up`, `per my last email`, `as per`, `I wanted to`, `I hope`, `revolutionary`, `cutting-edge`, `innovative solution`, `best-in-class`, `state-of-the-art`, `paradigm shift`, `holistic approach`, `thought leader`
+
+## Voice requirements
+- Founder-to-founder tone, not consultant tone
+- Direct and specific, not warm and vague
+- Every claim must cite a specific piece of evidence from the PIC
+- No feature pitching — lead with the gap, not the product
+- Confidence calibrated to evidence: HIGH (named customer + specific outcome), MEDIUM (named pilot + general signal), LOW (inferred from signals only)
+
+## Channel constraints
+- **LinkedIn**: ≤300 characters, no external links in first message, one CTA
+- **Email**: subject ≤8 words, body ≤120 words, one CTA
+- **Phone/voicemail**: ≤60 words (~25 seconds spoken), one callback hook
+
+## QA checks the drafter runs automatically
+The drafter runs deterministic checks before finalizing:
+- No banned phrases present
+- No generic opener (e.g. "I hope this finds you well")
+- Channel constraints met (length, link rules)
+- Evidence cited: every claim in the body maps to a PIC evidence_id in the references array
+
+## How to present output to the user
+1. Name the hook used and why ("PILOT PURGATORY — they have 4 named pilots and 0 conversions")
+2. State the confidence level and what it's based on ("MEDIUM — Mayo Clinic pilot named but no conversion data")
+3. Show the 3-touch sequence
+4. Note any QA flags if the drafter returned warnings
+5. Ask the user if the gap diagnosis feels right before they review the copy — a wrong diagnosis produces good-sounding but wrong outreach
+
+## After presenting — iteration rules
+- If the user wants to swap a word or tighten a line: do it inline in conversation, don't re-invoke the drafter
+- If the user surfaces new evidence (new stakeholder, changed gap, fresh research): re-invoke the drafter with the full context
+- If the draft fails QA: tell the user which check failed and what the specific fix is before re-invoking
