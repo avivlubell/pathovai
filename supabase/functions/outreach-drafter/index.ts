@@ -11,6 +11,7 @@ import {
   fetchCommunicationsForAccount,
   formatCommunicationsForPrompt,
 } from "../_shared/notion-communications.ts";
+import { resolveAccountByName } from "../_shared/fuzzy-lookup.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -349,10 +350,16 @@ serve(async (req: Request) => {
   try {
     const body = await req.json();
     // Accept account_id (canonical) and prospect_id (legacy) for back-compat.
+    // Also accept company_name so the Quarterback can hand us a name
+    // when it doesn't have a trusted UUID -- matches the icp-scorer /
+    // prospect-researcher / get-communications pattern. Without this
+    // fallback, a stale/wrong UUID in context silently produces a
+    // draft for the wrong company.
     const account_id: string | undefined = body?.account_id ?? body?.prospect_id;
-    if (!account_id) {
+    const inputName: string | undefined = body?.company_name;
+    if (!account_id && !inputName) {
       return new Response(
-        JSON.stringify({ error: "account_id is required" }),
+        JSON.stringify({ error: "account_id or company_name is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -362,19 +369,66 @@ serve(async (req: Request) => {
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: account, error: accountError } = await supabase
-      .from("accounts")
-      .select("*")
-      .eq("id", account_id)
-      .single();
-    if (accountError || !account) {
-      throw new Error(`Account not found: ${accountError?.message}`);
+    let account: any = null;
+    let matchInfo: any = undefined;
+
+    if (account_id) {
+      const { data } = await supabase
+        .from("accounts")
+        .select("*")
+        .eq("id", account_id)
+        .single();
+      account = data;
+      // If a name was also supplied and it disagrees with the UUID's
+      // record, treat the name as authoritative and re-resolve. The
+      // Quarterback passing both means it's uncertain about the UUID.
+      if (account && inputName) {
+        const nameTokens = inputName.toLowerCase().split(/\s+/).filter(Boolean);
+        const dbName = (account.company_name || "").toLowerCase();
+        const overlap = nameTokens.some((t) => dbName.includes(t));
+        if (!overlap) {
+          const resolved = await resolveAccountByName(supabase, inputName);
+          if (resolved) {
+            const { data: reData } = await supabase
+              .from("accounts")
+              .select("*")
+              .eq("id", resolved.id)
+              .single();
+            if (reData) {
+              account = reData;
+              matchInfo = resolved.match_info;
+            }
+          }
+        }
+      }
+    } else if (inputName) {
+      const resolved = await resolveAccountByName(supabase, inputName);
+      if (resolved) {
+        const { data } = await supabase
+          .from("accounts")
+          .select("*")
+          .eq("id", resolved.id)
+          .single();
+        account = data;
+        matchInfo = resolved.match_info;
+      }
     }
+
+    if (!account) {
+      return new Response(
+        JSON.stringify({ error: "Account not found", query: inputName ?? account_id ?? null }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Use the resolved account's UUID for all downstream lookups and
+    // writes, not whatever was passed in.
+    const resolvedAccountId: string = account.id;
 
     const { data: research } = await supabase
       .from("research_results")
       .select("*")
-      .eq("prospect_id", account_id)
+      .eq("prospect_id", resolvedAccountId)
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
@@ -382,7 +436,7 @@ serve(async (req: Request) => {
     const { data: icpScore } = await supabase
       .from("icp_scores")
       .select("*")
-      .eq("prospect_id", account_id)
+      .eq("prospect_id", resolvedAccountId)
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
@@ -443,7 +497,7 @@ serve(async (req: Request) => {
     const { error: insertError } = await supabase
       .from("outreach_drafts")
       .insert({
-        prospect_id: account_id,
+        prospect_id: resolvedAccountId,
         draft_data: payload,
         model_used: MODEL,
         created_at: new Date().toISOString(),
@@ -452,10 +506,11 @@ serve(async (req: Request) => {
 
     await supabase.from("accounts")
       .update({ status: "outreach_drafted" })
-      .eq("id", account_id);
+      .eq("id", resolvedAccountId);
 
     console.info("[outreach-drafter] done", {
-      account_id,
+      account_id: resolvedAccountId,
+      resolved_from: account_id && account_id !== resolvedAccountId ? `uuid_overridden_by_name:${inputName}` : (inputName ? `name:${inputName}` : "uuid"),
       qa_passed: qa.passed,
       retried,
       failures: qa.failures,
@@ -463,7 +518,14 @@ serve(async (req: Request) => {
     });
 
     return new Response(
-      JSON.stringify({ success: true, account_id, data: payload, qa_passed: qa.passed, retried }),
+      JSON.stringify({
+        success: true,
+        account_id: resolvedAccountId,
+        data: payload,
+        qa_passed: qa.passed,
+        retried,
+        match_info: matchInfo,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
