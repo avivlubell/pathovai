@@ -1,10 +1,42 @@
 'use client';
 
+import { useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
 
 type Props = { content: string };
+
+function CopyableCodeBlock({ children }: { children: React.ReactNode }) {
+  const preRef = useRef<HTMLPreElement>(null);
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    const text = preRef.current?.innerText ?? '';
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="relative my-3 group/codeblock">
+      <pre
+        ref={preRef}
+        className="overflow-x-auto rounded-md bg-surface border border-border p-3 text-sm font-mono text-fg whitespace-pre-wrap"
+      >
+        {children}
+      </pre>
+      <button
+        onClick={handleCopy}
+        className="absolute top-2 right-2 opacity-0 group-hover/codeblock:opacity-100 transition-opacity px-2 py-1 text-xs rounded bg-elevated text-fg-muted hover:text-fg border border-border"
+        aria-label="Copy code"
+      >
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+    </div>
+  );
+}
 
 export default function MessageContent({ content }: Props) {
   return (
@@ -42,11 +74,15 @@ export default function MessageContent({ content }: Props) {
             />
           ),
           code: ({ className, children, ...props }) => {
-            const isBlock = className?.includes('language-');
+            // fenced code blocks (with or without a language specifier) always
+            // have their content end with \n; backtick inline code does not
+            const isBlock =
+              className?.includes('language-') ||
+              (typeof children === 'string' && children.endsWith('\n'));
             if (isBlock) {
               return (
                 <code
-                  className={`${className ?? ''} block`}
+                  className={`${className ?? ''} block whitespace-pre-wrap`}
                   {...props}
                 >
                   {children}
@@ -62,11 +98,10 @@ export default function MessageContent({ content }: Props) {
               </code>
             );
           },
-          pre: (props) => (
-            <pre
-              className="my-3 overflow-x-auto rounded-md bg-surface border border-border p-3 text-sm font-mono text-fg whitespace-pre-wrap"
-              {...props}
-            />
+          pre: ({ node: _node, ...props }) => (
+            <CopyableCodeBlock>
+              {props.children}
+            </CopyableCodeBlock>
           ),
           a: ({ href, children, ...props }) => (
             <a
