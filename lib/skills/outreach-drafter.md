@@ -1,7 +1,7 @@
 # Outreach Drafter — QB Procedure Brief
 
 ## What it does
-Produces a diagnosis-first Prospect Intelligence Card (PIC) then a 3-touch outreach sequence (LinkedIn + 2 emails) grounded in evidence. Auto-pulls prior outreach history from Notion. Runs deterministic QA checks before finalizing. Loads learnings from `agent_learnings` tagged `outreach-drafter` or `all`.
+Produces a diagnosis-first Prospect Intelligence Card (PIC) then a 3-touch outreach sequence (LinkedIn + 2 emails) grounded in evidence. Prior outreach history is synced from Notion into Supabase and injected into the account context the drafter receives — the drafter reads it from there, not directly from Notion. Runs deterministic QA checks before finalizing. Loads learnings from `agent_learnings` tagged `outreach-drafter` or `all`.
 
 ## Hard prerequisites — enforce these before calling
 1. **Research must be on file.** The drafter needs evidence to ground claims. No research = generic outreach = wasted call.
@@ -22,12 +22,24 @@ You should always be able to tell the user what gap the outreach is diagnosing a
 ## The 6 messaging hooks
 The drafter selects one hook per sequence based on the gap pattern. Know these so you can explain the choice:
 
-1. **PILOT PURGATORY** — Company has multiple pilots but no paid conversions. Hook: name the stall pattern and offer a specific fix.
-2. **STORY FRAGMENTATION** — Company can't explain what they do consistently across channels (website, LinkedIn, sales pitches all say different things). Hook: name the coherence gap.
-3. **VAC (Validation-Access-Conversion)** — Company is stuck in validation loops with no path to contract. Hook: name where they're stuck in the VAC cycle.
-4. **RELATIONSHIP EXHAUSTION** — CEO has burned through their personal network and is now cold. Hook: name the transition from warm to cold motion.
-5. **FREE PILOT TRAP** — Company is giving away evaluations to prove value but can't price or convert them. Hook: name the pricing/conversion gap.
-6. **FOUR NARRATIVE GAPS** — Company has evidence but no narrative connecting it to buyer outcomes. Hook: name what's missing in the story.
+1. **PILOT PURGATORY** — Use when the company has multiple pilots, long cycles, and low conversion. Frame: the problem isn't the technology — the story fragments across the buying process. "Most medtech companies with FDA clearance get stuck running 3-7 pilots with strong clinical outcomes but zero conversions after 12+ months."
+
+2. **STORY FRAGMENTATION** — Use when there's clinical validation but procurement stalls. Frame: your story isn't what you say — it's what the hospital hears after five different stakeholders touch it. "Your story becomes a binder of tabs with no plot."
+
+3. **VAC / BUSINESS CASE** — Use when deals die at committee stage or CFO involvement stalls. VAC = Value Analysis Committee, the hospital procurement committee that evaluates cost per outcome, budget implications, implementation risk, and alternatives. Frame: the CFO asks for a business case, not an ROI calculation — those are different things. Note: VAC is a hospital process, not a Pathova feature.
+
+4. **RELATIONSHIP EXHAUSTION** — Use when early wins came through personal connections and growth is now stuck. Frame: what got them their first wins (relationship-based selling) won't get them to 20+ sites (systematic market access infrastructure). If this hook is selected, the fix is systematizing what the founder does — not excluding them.
+
+5. **FREE PILOT TRAP** — Use when the company offers free pilots with high burn. Frame: free pilots devalue the product and burn resources on hospitals unlikely to convert.
+
+6. **FOUR NARRATIVE GAPS** — Use when ICP scoring shows multiple gaps across the board. Frame: four specific gaps compound each other. Gap 1: ICP clarity. Gap 2: No VAC navigation system. Gap 3: Economic value props that don't survive CFO scrutiny. Gap 4: Pilots designed for clinical validation, not commercial conversion.
+
+Hook selection guidance:
+- Q1=YES, Q2=YES → PILOT PURGATORY or STORY FRAGMENTATION
+- Q3=STRONG → lead with the specific gap identified
+- Q3=MODERATE → RELATIONSHIP EXHAUSTION
+- Multiple pilots mentioned → FREE PILOT TRAP
+- Recently raised funding → urgency framing around runway
 
 ## Banned phrases — catch these in every draft
 If any of these appear in the output, flag it before presenting:
