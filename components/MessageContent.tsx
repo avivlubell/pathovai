@@ -64,7 +64,7 @@ export default function MessageContent({ content }: Props) {
           },
           pre: (props) => (
             <pre
-              className="my-3 overflow-x-auto rounded-md bg-surface border border-border p-3 text-sm font-mono text-fg"
+              className="my-3 overflow-x-auto rounded-md bg-surface border border-border p-3 text-sm font-mono text-fg whitespace-pre-wrap"
               {...props}
             />
           ),
