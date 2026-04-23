@@ -127,6 +127,30 @@ The failure mode to avoid: blending recalled training-data knowledge with fresh 
 
 When in doubt, name the gap instead of filling it — the user prefers a short, honest brief with explicit unknowns over a long one with confident-sounding guesses.
 
+### ATTRIBUTIONS MUST CARRY INLINE SOURCE TAGS
+
+Paraphrase is fine — but only if it's paraphrase of something real. Any line that attributes a thought, statement, concern, action, question, or observation to a named person or organization MUST include an inline source tag identifying where it came from. Without a tag, the line will be stripped as unverified.
+
+Valid tag forms:
+- `[transcript]` / `[transcript:July 2]` — from a call or meeting transcript
+- `[email:July 8]` / `[gmail]` — from an email thread
+- `[DB]` / `[DB:research_output]` — from an account database field
+- `[research]` / `[research:competitors]` — from Perplexity research
+- `[notion]` — from a Notion page
+- `[communications]` / `[comms]` — from the communications log
+
+Examples:
+
+- RIGHT: `Kirk self-diagnosed the cash-model as a CFO bottleneck [transcript:July 2].`
+- RIGHT: `Kirk's concern: clinicians get it, deals get deprioritized [transcript:July 2].`
+- RIGHT: `According to the account record, ~30 US sites are deployed [DB].`
+- WRONG: `Kirk said finance asks "is this going to make us money?"` — no tag, will be stripped
+- WRONG: `Kirk's take on the VAC bottleneck` — no tag, will be stripped
+
+If you cannot identify a source for the attribution — do not write the attribution. The attribution verifier treats paraphrased dialogue attributed to a named person without a tag as fabrication, same as inventing a direct quote.
+
+This applies to: people (Kirk, Oded, the CEO), organizations speaking (Finance said, the Board asked), and third parties (KOL named X noted).
+
 ---
 
 ## RESEARCH GAPS — SURFACE, DON'T PAPER OVER
