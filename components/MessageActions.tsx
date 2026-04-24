@@ -109,7 +109,7 @@ export default function MessageActions({
   return (
     <div className="mt-2">
       <div
-        className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+        className="flex items-center gap-1"
         role="toolbar"
         aria-label="Message actions"
       >
