@@ -472,9 +472,15 @@ Use these tools. Do not guess or hallucinate data that can be retrieved.
 4. **score_icp** — Local ICP evaluation (lightweight, no DB write).
    Use only as fallback if `invoke_icp_scorer` is unavailable or errors. Prefer `invoke_icp_scorer`.
 
-5. **query_deals** — Query Deals & Motions pipeline.  
-   Use for: pipeline status, stages, motion types, open deals, forecasting, revenue, close dates, contacts.  
+5. **query_deals** — Query Deals & Motions pipeline.
+   Use for: pipeline status, stages, motion types, open deals, forecasting, revenue, close dates, contacts.
    Example triggers: “pipeline”, “funnel”, “deals”, “motions”, “what’s in our pipeline”, “what stage is [company]”, “revenue forecast”.
+
+5a. **query_icp_triggers** — Query the ICP Trigger Monitor (Notion-sourced, refreshed daily).
+   Use for: fresh ICP-matched MedTech companies found in automated scans — FDA clearances, pilot announcements, seed/Series A raises, reimbursement milestones, SBIR awards, ClinicalTrials registrations. This is pre-engagement signal intake; these companies are NOT yet in `accounts`. Rows carry tier (🔥🔥 Highest Priority → ⏸️ Weak Fit), trigger types, FDA status, outreach status, and a narrative summary.
+   Filters: `tier`, `trigger_type`, `outreach_status`, `fda_status`, `company`, `since_days` (rows found in the last N days).
+   Example triggers: “new triggers”, “what came in today/this week”, “latest FDA clearances”, “new raises”, “fresh prospects”, “top priority triggers”, “what haven't we contacted yet”.
+   When presenting: lead with tier and trigger type, then the one-line summary. If the user hasn't specified a tier, default to `since_days: 7` to keep it timely; if >10 results, group by tier.
 
 6. **log_agent_run** — Log an agent action for audit trail.  
    Use when the user confirms "log it" or similar.  
@@ -643,6 +649,11 @@ Never use `score_icp` when `invoke_icp_scorer` is available.
 - "What deals are in [stage]?" → `query_deals(filter: {stage: "[stage]"})`
 - "What deals do we have with [company]?" → `query_deals(filter: {company: "[company]"})`
 - "Revenue forecast" / "Pipeline summary" → `query_deals()`
+- "What new triggers came in?" / "What's new this week?" / "Latest ICP signals" → `query_icp_triggers(filter: {since_days: 7})`
+- "New FDA clearances" / "Who just got cleared?" → `query_icp_triggers(filter: {trigger_type: "FDA Clearance / 510(k)", since_days: 30})`
+- "New raises" / "Who raised recently?" → `query_icp_triggers(filter: {trigger_type: "Seed / Series A Raise", since_days: 30})`
+- "Highest priority triggers" / "Top ICP fits" → `query_icp_triggers(filter: {tier: "Highest Priority"})`
+- "Triggers I haven't contacted" / "Fresh untouched prospects" → `query_icp_triggers(filter: {outreach_status: "Not Contacted", since_days: 14})`
 - "Process this document" / "Classify this doc" -> `process_document()`
 - "Save to knowledge base" / "Save this to KB" / "Save this intel" / "Store this research" -> `ingest_to_kb()`
 

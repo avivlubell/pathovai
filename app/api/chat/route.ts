@@ -77,6 +77,8 @@ function humanizeToolCall(
         : 'Pulling prior outreach history';
     case 'query_deals':
       return 'Querying deals pipeline';
+    case 'query_icp_triggers':
+      return 'Querying ICP trigger monitor';
     case 'sync_account_content':
       return 'Syncing account content from Notion';
     case 'run_prospect_pipeline':
@@ -128,6 +130,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_risk_assessor: 'risk-assessor',
   get_communications: 'get-communications',
   query_deals: 'query-deals',
+  query_icp_triggers: 'query-icp-triggers',
   sync_account_content: 'sync-prospect-content',
   run_prospect_pipeline: 'run-prospect-pipeline',
   prospect_researcher_batch: 'prospect-researcher',
@@ -200,6 +203,28 @@ const tools: Anthropic.Tool[] = [
             company: { type: 'string' },
           },
         },
+      },
+    },
+  },
+  {
+    name: 'query_icp_triggers',
+    description: 'Query the ICP Trigger Monitor — a daily-refreshed feed of MedTech companies that hit Pathova ICP signals (FDA clearances, pilot announcements, seed/Series A raises, reimbursement milestones, SBIR awards, ClinicalTrials registrations). Use when the user asks about recent triggers, new ICP-matched companies, FDA clearances, raises, or wants a prioritized list of fresh prospects. This is pre-engagement signal intake — distinct from accounts (active prospects). Rows include tier, trigger types, FDA status, summary, and outreach status.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        filter: {
+          type: 'object',
+          description: 'Optional filters',
+          properties: {
+            tier: { type: 'string', description: 'Substring match on icp_tier (e.g., "Highest Priority", "Strong Fit", "Medium")' },
+            trigger_type: { type: 'string', description: 'Exact match on one of: "FDA Clearance / 510(k)", "Pilot Announcement", "Seed / Series A Raise", "Reimbursement Milestone", "SBIR Award", "ClinicalTrials Registration"' },
+            outreach_status: { type: 'string', description: 'Substring match on outreach_status (e.g., "Not Contacted", "Sent")' },
+            fda_status: { type: 'string', description: 'Substring match on fda_status (e.g., "Cleared", "Pending", "De Novo", "PMA")' },
+            company: { type: 'string', description: 'Substring match on company name' },
+            since_days: { type: 'number', description: 'Only rows where date_found is within the last N days' },
+          },
+        },
+        limit: { type: 'number', description: 'Max rows to return (default 25, max 100)' },
       },
     },
   },
