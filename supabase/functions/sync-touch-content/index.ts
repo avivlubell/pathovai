@@ -95,6 +95,24 @@ serve(async (req) => {
     }
 
     const page = await fetchPage(notion_page_id);
+
+    // If the page has been trashed/archived in Notion, mirror that by
+    // deleting the row in Supabase. Without this, trashed pages leave orphan
+    // rows that show up in queries and confuse account-linking cleanup.
+    if (page.in_trash || page.archived) {
+      const pageIdStripped = stripDashes(page.id);
+      await supabase.from("touches").delete().eq("notion_page_id", pageIdStripped);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          deleted: true,
+          notion_page_id: pageIdStripped,
+          reason: "page is in Notion trash",
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    }
+
     const props = page.properties || {};
 
     // The Notion property is literally "Message " with a trailing space —
