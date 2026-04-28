@@ -595,44 +595,88 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
     return out;
   };
 
-  // Wrap an unverified line in a flag block. Used when the verifier
-  // catches something the QB did not self-flag. Preserves the original
-  // claim so the user sees what was flagged and why.
-  const flagInPlace = (line: string, reason: string): string => {
+  // Auto-generate a Perplexity-quality verify prompt for verifier-caught
+  // lines (the QB didn't write one). Follows the rubric in prompt.txt:
+  // scope to primary sources, demand structured output, bound the answer.
+  const autoVerifyPrompt = (claim: string): string => {
+    const c = claim
+      .replace(/^\s*[-*•]\s+/, '')
+      .replace(/^\s*\d+\.\s+/, '')
+      .replace(/[*_`]/g, '')
+      .trim()
+      .slice(0, 240);
     return (
-      `\n⚠ UNVERIFIED (verifier-caught): ${line.trim()}\n` +
-      `criticality: unassessed — manual review required\n` +
-      `why_unverified: ${reason}\n`
+      `Verify whether this statement is currently true: "${c}". ` +
+      `Source from primary materials only (the company's website, press releases, ` +
+      `SEC/FDA filings, LinkedIn). ` +
+      `Return: (1) supporting URL, (2) verbatim excerpt from the source that confirms or refutes, ` +
+      `(3) publication date. ` +
+      `If the statement cannot be confirmed from primary sources, return "not found" — do not infer.`
     );
   };
 
-  let flaggedCount = 0;
+  // Wrap an unverified line in a prose flag + hidden meta block. Used when
+  // the verifier catches something the QB did not self-flag. Preserves the
+  // original claim so the user sees what was flagged and why.
+  const flagInPlace = (line: string, reason: string): string => {
+    const claim = line.trim().replace(/^\s*[-*•]\s+/, '').replace(/^\s*\d+\.\s+/, '');
+    const prose =
+      `\n⚠ This claim isn't directly grounded in tool output and needs manual ` +
+      `verification: ${claim} *(Manual review — see checklist.)*\n`;
+    const meta =
+      `\n<!--verify-meta\n` +
+      `criticality: unassessed\n` +
+      `why_unverified: ${reason}\n` +
+      `go_to_url: N/A\n` +
+      `verify_prompt: ${autoVerifyPrompt(claim)}\n` +
+      `-->\n`;
+    return prose + meta;
+  };
 
+  let flaggedCount = 0;
+  const strippedClaims: string[] = [];
+
+  let inMetaBlock = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (/^\r?\n$/.test(line) || line === '') {
       kept.push(line);
       continue;
     }
+
+    // Track verify-meta block boundaries — preserve content for the
+    // post-pass that builds the bottom checklist, then strips them.
+    if (/<!--verify-meta\b/.test(line)) {
+      kept.push(line);
+      inMetaBlock = true;
+      if (/-->/.test(line)) inMetaBlock = false;
+      continue;
+    }
+    if (inMetaBlock) {
+      kept.push(line);
+      if (/-->/.test(line)) inMetaBlock = false;
+      continue;
+    }
+
     // Strip leading bullet/list markers when checking, keep original in output.
     const content = line
       .replace(/^\s*[-*•]\s+/, '')
       .replace(/^\s*\d+\.\s+/, '');
 
-    // Skip lines the QB has already self-flagged — don't double-flag.
-    if (/^\s*⚠\s*UNVERIFIED/i.test(content) || /^\s*criticality:/i.test(content) ||
-        /^\s*why_unverified:/i.test(content) || /^\s*go_to_url:/i.test(content) ||
-        /^\s*verify_prompt:/i.test(content)) {
+    // Skip prose ⚠ flag lines (already self-flagged or verifier-caught).
+    if (/^\s*⚠/.test(content)) {
       kept.push(line);
       continue;
     }
 
     // HARD FABRICATION CHECK: a quoted string whose content is not in
-    // the corpus is invention, not inference. Strip outright.
+    // the corpus is invention, not inference. Strip outright but keep
+    // the line text so we can surface what was removed in the checklist.
     const quoteTokens = extractQuoteTokens(content);
     const missingQuote = quoteTokens.find(t => !inCorpus(t));
     if (missingQuote) {
       strippedCount++;
+      strippedClaims.push(line.trim());
       console.warn(
         `[verifyClaims] HARD FABRICATION stripped. quoted content not in corpus: ${JSON.stringify(missingQuote)}. line: ${line.slice(0, 160)}`
       );
@@ -684,17 +728,130 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
   }
 
   let verified = kept.join('').trim();
-  const notes: string[] = [];
-  if (flaggedCount > 0) {
-    notes.push(`${flaggedCount} claim${flaggedCount === 1 ? '' : 's'} flagged as unverified`);
+
+  // Parse <!--verify-meta ... --> blocks. Each block is paired with the
+  // nearest preceding ⚠ prose line, which becomes the human-readable
+  // claim in the checklist. The meta block itself is then stripped from
+  // inline output so the user sees only the prose flag plus the
+  // checklist at the bottom.
+  type ChecklistItem = {
+    claim: string;
+    criticality: string;
+    why: string;
+    url: string;
+    prompt: string;
+  };
+  const items: ChecklistItem[] = [];
+
+  const META_RE = /<!--verify-meta\s*\n([\s\S]*?)\n\s*-->/g;
+  const FIELD_RE = /^\s*(criticality|why_unverified|go_to_url|verify_prompt)\s*:\s*(.*)$/i;
+
+  const parseMeta = (raw: string): Omit<ChecklistItem, 'claim'> => {
+    const out: Record<string, string> = { criticality: '', why_unverified: '', go_to_url: '', verify_prompt: '' };
+    let last: string | null = null;
+    for (const ln of raw.split('\n')) {
+      const m = ln.match(FIELD_RE);
+      if (m) {
+        last = m[1].toLowerCase();
+        out[last] = m[2].trim();
+      } else if (last && ln.trim()) {
+        out[last] += ' ' + ln.trim();
+      }
+    }
+    return {
+      criticality: out.criticality || 'unassessed',
+      why: out.why_unverified || '',
+      url: out.go_to_url || '',
+      prompt: out.verify_prompt || '',
+    };
+  };
+
+  const cleanProseToClaim = (prose: string): string =>
+    prose
+      .replace(/^⚠\s*/, '')
+      .replace(/\s*\*?\(\s*(?:HIGH|MEDIUM|LOW|Manual review|unassessed)\b[^)]*\)\*?\s*$/i, '')
+      .trim();
+
+  // Walk meta blocks in order; for each, look back into the unmodified
+  // text for the most recent ⚠ prose line.
+  let m: RegExpExecArray | null;
+  const consumed: { start: number; end: number }[] = [];
+  while ((m = META_RE.exec(verified)) !== null) {
+    const before = verified.slice(0, m.index);
+    const warnIdx = before.lastIndexOf('⚠');
+    let claim = '';
+    if (warnIdx !== -1) {
+      const nl = before.indexOf('\n', warnIdx);
+      const proseLine = nl === -1 ? before.slice(warnIdx) : before.slice(warnIdx, nl);
+      claim = cleanProseToClaim(proseLine);
+    }
+    const meta = parseMeta(m[1]);
+    items.push({ claim: claim || '(claim text unavailable)', ...meta });
+    consumed.push({ start: m.index, end: m.index + m[0].length });
   }
-  if (strippedCount > 0) {
-    notes.push(`${strippedCount} hard-fabricated claim${strippedCount === 1 ? '' : 's'} stripped (quoted content not in tool output)`);
+
+  // Strip meta blocks from inline output (back-to-front to preserve indices).
+  // Surrounding whitespace is normalized by the \n{3,} collapse below — that
+  // keeps the blank line between the prose ⚠ and the next paragraph intact.
+  for (let k = consumed.length - 1; k >= 0; k--) {
+    const { start, end } = consumed[k];
+    verified = verified.slice(0, start) + verified.slice(end);
   }
-  if (notes.length > 0) {
-    verified += `\n\n_${notes.join(' · ')}._`;
+  verified = verified.replace(/\n{3,}/g, '\n\n').trim();
+
+  if (items.length === 0 && strippedClaims.length === 0) {
+    return verified;
   }
-  return verified;
+
+  // Build the verification checklist.
+  const sevRank = (s: string): number => {
+    const u = s.toUpperCase();
+    if (u.startsWith('HIGH')) return 0;
+    if (u.startsWith('MEDIUM')) return 1;
+    if (u.startsWith('LOW')) return 2;
+    return 3;
+  };
+  items.sort((a, b) => sevRank(a.criticality) - sevRank(b.criticality));
+
+  const totalCount = items.length + strippedClaims.length;
+  const out: string[] = [
+    '',
+    '---',
+    '',
+    `### Verification checklist (${totalCount} item${totalCount === 1 ? '' : 's'})`,
+    '',
+    'Each unverified claim below is flagged inline above with a `⚠`. ' +
+    'Paste the Perplexity prompt to verify, or open the source URL directly.',
+    '',
+  ];
+
+  items.forEach((item, idx) => {
+    const sev = (item.criticality.match(/^(HIGH|MEDIUM|LOW|unassessed)/i)?.[1] ?? 'review').toUpperCase();
+    out.push(`**${idx + 1}. ${item.claim}** · ${sev}`);
+    if (item.why) out.push(`Why unverified: ${item.why}`);
+    if (item.url && item.url.toUpperCase() !== 'N/A') {
+      out.push(`Source: ${item.url}`);
+    }
+    if (item.prompt) {
+      out.push('');
+      out.push('Perplexity / Comet prompt:');
+      out.push('```');
+      out.push(item.prompt);
+      out.push('```');
+    }
+    out.push('');
+  });
+
+  if (strippedClaims.length > 0) {
+    out.push(`**Stripped as hard fabrication** (${strippedClaims.length}) — quoted content not found in any tool output. The original line${strippedClaims.length === 1 ? ' is' : 's are'} listed below for your awareness; treat as suspect:`);
+    out.push('');
+    for (const claim of strippedClaims) {
+      out.push(`- ~~${claim}~~`);
+    }
+    out.push('');
+  }
+
+  return verified + '\n' + out.join('\n').trimEnd();
 }
 
 function collectSources(
