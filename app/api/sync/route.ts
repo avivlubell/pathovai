@@ -2,6 +2,70 @@ import { NextResponse } from 'next/server';
 
 const SUPABASE_FUNCTIONS_BASE = 'https://urmgbmfvjuozvhigflqt.supabase.co/functions/v1';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const NOTION_INTEGRATION_TOKEN = process.env.NOTION_INTEGRATION_TOKEN || '';
+const NOTION_HEADERS = {
+  Authorization: `Bearer ${NOTION_INTEGRATION_TOKEN}`,
+  'Notion-Version': '2022-06-28',
+};
+
+type RouteDecision =
+  | { kind: 'accounts'; dbTitle: string }
+  | { kind: 'touches'; dbTitle: string }
+  | { kind: 'unknown'; dbTitle: string }
+  | { kind: 'error'; reason: string };
+
+// Look up the page's parent database and decide which sync to run.
+// Routing prevents Outreach Touches pages from polluting the accounts
+// table via the legacy single-endpoint sync. Touches sync ships in Phase 3.
+async function resolveRoute(pageId: string): Promise<RouteDecision> {
+  const pageRes = await fetch(`https://api.notion.com/v1/pages/${pageId}`, { headers: NOTION_HEADERS });
+  if (!pageRes.ok) {
+    return { kind: 'error', reason: `Notion page lookup failed: ${pageRes.status}` };
+  }
+  const page = await pageRes.json();
+  const parentDbId = page?.parent?.database_id;
+  if (!parentDbId) {
+    return { kind: 'error', reason: 'Page is not inside a Notion database' };
+  }
+
+  const dbRes = await fetch(`https://api.notion.com/v1/databases/${parentDbId}`, { headers: NOTION_HEADERS });
+  if (!dbRes.ok) {
+    return { kind: 'error', reason: `Notion database lookup failed: ${dbRes.status}` };
+  }
+  const db = await dbRes.json();
+  const dbTitle = ((db?.title || []) as Array<{ plain_text?: string }>)
+    .map(t => t.plain_text || '')
+    .join('');
+  const t = dbTitle.toLowerCase();
+
+  if (t.includes('outreach intelligence') || t.includes('account')) {
+    return { kind: 'accounts', dbTitle };
+  }
+  if (t.includes('touches') || t.includes('touch')) {
+    return { kind: 'touches', dbTitle };
+  }
+  return { kind: 'unknown', dbTitle };
+}
+
+async function syncAccount(pageId: string) {
+  const res = await fetch(`${SUPABASE_FUNCTIONS_BASE}/sync-prospect-content`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'apikey': SUPABASE_SERVICE_ROLE_KEY,
+    },
+    body: JSON.stringify({ notion_page_id: pageId }),
+  });
+  return { res, data: await res.json() };
+}
+
+const htmlPage = (title: string, body: string, color = 'green'): string =>
+  `<html><body style="font-family:sans-serif;padding:40px;text-align:center;max-width:600px;margin:auto">
+    <h2 style="color:${color}">${title}</h2>
+    ${body}
+    <p style="color:#888;margin-top:24px">You can close this tab.</p>
+  </body></html>`;
 
 // GET handler - triggered by Notion Sync URL formula clicks
 export async function GET(req: Request) {
@@ -13,29 +77,49 @@ export async function GET(req: Request) {
   }
 
   try {
-    const res = await fetch(`${SUPABASE_FUNCTIONS_BASE}/sync-prospect-content`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        'apikey': SUPABASE_SERVICE_ROLE_KEY,
-      },
-      body: JSON.stringify({ notion_page_id: page_id }),
-    });
+    const route = await resolveRoute(page_id);
 
-    const data = await res.json();
+    if (route.kind === 'error') {
+      return new NextResponse(
+        htmlPage('Sync failed', `<p>${route.reason}</p><p><code>${page_id}</code></p>`, '#c00'),
+        { status: 400, headers: { 'Content-Type': 'text/html' } }
+      );
+    }
 
+    if (route.kind === 'unknown') {
+      return new NextResponse(
+        htmlPage(
+          'Unknown source database',
+          `<p>This page is in a database we don't have a sync handler for: <code>${route.dbTitle}</code>.</p>
+           <p>Expected "Outreach Intelligence" or "Outreach Touches".</p>`,
+          '#c00'
+        ),
+        { status: 400, headers: { 'Content-Type': 'text/html' } }
+      );
+    }
+
+    if (route.kind === 'touches') {
+      return new NextResponse(
+        htmlPage(
+          'Touches sync coming in Phase 3',
+          `<p>This page is in <code>${route.dbTitle}</code>. The sync rails are wired in Notion but the Supabase + Quarterback integration ships in Phase 3.</p>
+           <p>No data was written.</p>`,
+          '#b85c00'
+        ),
+        { status: 501, headers: { 'Content-Type': 'text/html' } }
+      );
+    }
+
+    const { res, data } = await syncAccount(page_id);
     if (!res.ok) {
       return NextResponse.json({ error: 'Sync failed', details: data }, { status: res.status });
     }
 
-    // Return a simple HTML success page so the Notion click feels responsive
     return new NextResponse(
-      `<html><body style="font-family:sans-serif;padding:40px;text-align:center">
-        <h2>Sync triggered successfully</h2>
-        <p>Prospect with page ID <code>${page_id}</code> is syncing to Supabase.</p>
-        <p style="color:green">You can close this tab.</p>
-      </body></html>`,
+      htmlPage(
+        'Sync triggered successfully',
+        `<p>Account <code>${data.company || page_id}</code> is syncing to Supabase.</p>`
+      ),
       { status: 200, headers: { 'Content-Type': 'text/html' } }
     );
   } catch (err) {
@@ -47,24 +131,31 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    // Notion webhook sends page data - extract the page ID
     const page_id = body?.data?.id || body?.page_id || body?.id;
 
     if (!page_id) {
       return NextResponse.json({ error: 'Could not extract page_id from webhook payload' }, { status: 400 });
     }
 
-    const res = await fetch(`${SUPABASE_FUNCTIONS_BASE}/sync-prospect-content`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        'apikey': SUPABASE_SERVICE_ROLE_KEY,
-      },
-      body: JSON.stringify({ notion_page_id: page_id }),
-    });
+    const route = await resolveRoute(page_id);
 
-    const data = await res.json();
+    if (route.kind === 'error') {
+      return NextResponse.json({ success: false, error: route.reason }, { status: 400 });
+    }
+    if (route.kind === 'unknown') {
+      return NextResponse.json(
+        { success: false, error: 'Unknown source database', db: route.dbTitle },
+        { status: 400 }
+      );
+    }
+    if (route.kind === 'touches') {
+      return NextResponse.json(
+        { success: false, skipped: true, reason: 'Touches sync not yet implemented (Phase 3)', db: route.dbTitle },
+        { status: 501 }
+      );
+    }
+
+    const { res, data } = await syncAccount(page_id);
     return NextResponse.json({ success: res.ok, data }, { status: res.status });
   } catch (err) {
     return NextResponse.json({ error: 'Webhook handler failed', details: String(err) }, { status: 500 });
