@@ -548,11 +548,20 @@ Use these tools. Do not guess or hallucinate data that can be retrieved.
     Inputs: `filter` (optional: account_id, account_name, sent, channel, outcome, due_within_days, since_days, before_date, after_date) and `limit`.
     Returns rows + a summary block (sent/unsent counts, by_channel, by_outcome). Each row carries notion_url so you can deep-link.
 
-12c. **log_outreach_touch** — WRITE TOOL. Creates a new touch row in Notion's Outreach Touches DB AND updates the parent account in Outreach Intelligence in one transaction. Modifies the user's live ops database.
-    **NEVER call this without an explicit user command to log/save/send-to-Notion.** "Looks good", "I like this draft", "sounds right" are NOT explicit commands — they're approval of the draft, not authorization to write. Trigger phrases that DO authorize: "log this to Notion", "save this touch", "log the touch", "send to Notion", "write this up", "record this".
-    When `sent: true`: also writes parent's Last Touch and advances Status from "To Do" → "Working" (if currently To Do; otherwise leaves Status alone). When `sent: false`: writes the draft row only — parent Status, Last Touch unchanged.
-    `next_touch_in_days` and `next_touch_channel` are independent: if you supply them, parent's Next Step Due and Next Step are updated. If you omit them, those fields are left untouched (signal: "I haven't decided the next step yet"). Don't infer cadence from training data — only use values the user gave you or that the drafter explicitly proposed.
-    Required: `channel` (Email | LinkedIn | Phone | Intro | Meeting), `message` (full body), `sent` (boolean), and one of `account_id` / `company_name`.
+12c. **log_outreach_sequence** — WRITE TOOL (canonical). Atomically writes 1–10 touches to Notion's Outreach Touches DB and updates the parent OI account in one operation. Use this even for a single touch (`touches: [{...}]`). Idempotent on (account_id, channel, touch_date) for unsent rows — safe on retry.
+    **NEVER call without an explicit user command to log/save/queue/send-to-Notion.** "Looks good", "I like this draft", "sounds right" are NOT explicit commands — they're draft approval, not write authorization. Trigger phrases that DO authorize: "log this", "queue these drafts", "save to Notion", "write up the sequence", "record these touches".
+    Behavior when ALL touches are `sent: false` (queued future drafts): only OI's Next Step Due / Next Step are updated to point at the earliest unsent touch. Status stays put — drafted ≠ sent. When ANY touch is `sent: true`: Last Touch is updated to the latest sent date; Status: To Do → Working (only if currently To Do).
+    When you draft a 3-touch sequence in chat (LinkedIn DM today + email in 4d + breakup in 11d) and the user says "log all three", you make ONE call with all 3 touches in `touches[]`, not three separate calls.
+    Required per-touch: `channel` (Email | LinkedIn | Phone | Intro | Meeting), `message`. Optional: `sent` (default false), `touch_date` (default today; for future drafts pass a future ISO date), `title`, `outcome`, `top_challenges`.
+
+12d. **mark_touch_sent** — WRITE TOOL. Flips an existing queued touch to Sent=true. Use when the user reports they sent (or already sent) a touch you previously drafted.
+    Re-pulls the body from Notion before logging so any post-draft edits are preserved as the source of truth — your original draft is NOT what went out if the user polished it in Notion.
+    Updates the parent OI atomically: Last Touch = sent_date, Status: To Do → Working (if currently To Do), Next Step Due / Next Step rolled forward to the next remaining unsent touch on the account (or cleared if no more remain — sequence complete).
+    If `outcome: "Meeting Booked"` is passed, the response includes `queued_to_cancel`: any other unsent touches on the account that are now moot. **Do NOT auto-cancel.** Surface them to the user in chat and ask whether to cancel — only call cancel_queued_touches after explicit confirmation.
+    Required: `touch_id` (the Notion page ID — get from query_touches.touches[i].notion_page_id). Optional: `outcome`, `sent_date` (defaults to the touch's existing Touch Date).
+
+12e. **cancel_queued_touches** — WRITE TOOL. Moves unsent touches to Notion trash (restorable) and removes them from Supabase. Used as the explicit confirmation step after mark_touch_sent flagged queued siblings, OR when the user explicitly says "cancel the queued touches for X / disqualify and clear the queue".
+    Prefer `touch_ids: [...]` (whitelist, safest). Use account-level cancellation (`account_id` or `company_name` without `touch_ids`) only on explicit user instruction; capped at 25 per call.
 
 13. **search_gmail** — Search the user's connected Gmail inbox to verify what was actually sent or received.
     Input: `query` (Gmail search syntax: `from:`, `to:`, `subject:`, `has:attachment`, `newer_than:7d`, etc.) and optional `maxResults`.

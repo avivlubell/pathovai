@@ -83,6 +83,12 @@ function humanizeToolCall(
       return pickName() ? `Pulling touches for ${pickName()}` : 'Pulling outreach touches';
     case 'log_outreach_touch':
       return pickName() ? `Logging touch to Notion for ${pickName()}` : 'Logging touch to Notion';
+    case 'log_outreach_sequence':
+      return pickName() ? `Logging sequence to Notion for ${pickName()}` : 'Logging sequence to Notion';
+    case 'mark_touch_sent':
+      return 'Marking touch as sent in Notion';
+    case 'cancel_queued_touches':
+      return pickName() ? `Cancelling queued touches for ${pickName()}` : 'Cancelling queued touches';
     case 'sync_account_content':
       return 'Syncing account content from Notion';
     case 'run_prospect_pipeline':
@@ -137,6 +143,9 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   query_icp_triggers: 'query-icp-triggers',
   query_touches: 'query-touches',
   log_outreach_touch: 'log-outreach-touch',
+  log_outreach_sequence: 'log-outreach-sequence',
+  mark_touch_sent: 'mark-touch-sent',
+  cancel_queued_touches: 'cancel-queued-touches',
   sync_account_content: 'sync-prospect-content',
   sync_touch_content: 'sync-touch-content',
   run_prospect_pipeline: 'run-prospect-pipeline',
@@ -262,9 +271,67 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'log_outreach_sequence',
+    description:
+      'Write one OR a sequence of touches to Notion (Outreach Touches DB) and update the parent account in Outreach Intelligence in a single atomic operation. THIS IS A WRITE TOOL: it modifies the user\'s live ops database. Only call after the user has explicitly told you to log/save/queue the sequence ("log this", "queue these drafts", "save to Notion") — never on a draft/preview turn, never as a follow-up to "looks good". This is the canonical way to log touches; prefer it over log_outreach_touch even for a single touch.\n\nBehavior:\n- Each entry in `touches[]` becomes a row in Outreach Touches with the parent account linked via Related Outreach.\n- Idempotent on (account_id, channel, touch_date) for unsent rows: re-running the same call will skip duplicates instead of creating them, so it\'s safe on retry. Already-sent rows are never treated as duplicates.\n- Parent OI Next Step Due is set to the EARLIEST unsent touch_date across the whole account (existing + just-created), and Next Step is mapped from that touch\'s channel.\n- Parent OI Status only advances from "To Do" → "Working" if AT LEAST ONE touch in this call has sent=true. Drafted ≠ sent — queueing 3 future drafts does not flip Status.\n- Last Touch is updated only if at least one touch in the call has sent=true (set to the latest sent date in the batch).\n\nUse cases:\n- Single immediate send: `touches: [{channel, message, sent: true, touch_date: today}]`\n- Future draft for the next step: `touches: [{channel, message, sent: false, touch_date: future}]`\n- Full 3-touch sequence: `touches: [{...today, sent: true OR false}, {...+4d, sent: false}, {...+11d, sent: false}]`\n\nMax 10 touches per call. For larger batches, split into multiple calls (idempotency makes this safe).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        account_id: { type: 'string', description: 'Company UUID from accounts table. Optional if company_name is provided.' },
+        company_name: { type: 'string', description: 'Company name — used to resolve account when UUID unknown.' },
+        touches: {
+          type: 'array',
+          description: 'Array of 1-10 touches to log. Order does not matter; idempotency is on (channel, touch_date).',
+          items: {
+            type: 'object',
+            properties: {
+              channel: { type: 'string', description: 'Required. One of: Email, LinkedIn, Phone, Intro, Meeting.' },
+              message: { type: 'string', description: 'Required. Full message body.' },
+              sent: { type: 'boolean', description: 'Default false. true only if this touch went out.' },
+              touch_date: { type: 'string', description: 'ISO date YYYY-MM-DD. Defaults to today. For future drafts use a future date.' },
+              title: { type: 'string', description: 'Optional. Defaults to "{Company} - {Channel} - {Date}".' },
+              outcome: { type: 'string', description: 'Optional. Meeting Booked, No Response, Disqualified, Warm Follow-up, Referred, Nurture, Connection Request Pending, Connected on LinkedIn.' },
+              top_challenges: { type: 'array', items: { type: 'string' }, description: 'Optional discussion topics from Top Challenges multi_select.' },
+            },
+            required: ['channel', 'message'],
+          },
+        },
+        next_step_override: { type: 'string', description: 'Optional override for OI\'s Next Step value when the channel-to-Next-Step heuristic is ambiguous (LinkedIn maps to Linkedin DM by default; pass "LinkedIn Inmail" / "LinkedIn Connection Request" / etc. to override). Must be one of: LinkedIn Inmail, eMail, Linkedin DM, LinkedIn Connection Request, Schedule meeting, LinkedIn Interaction.' },
+      },
+      required: ['touches'],
+    },
+  },
+  {
+    name: 'mark_touch_sent',
+    description:
+      'Mark a previously-drafted touch as sent. THIS IS A WRITE TOOL: it modifies Notion. Only call after explicit user instruction to mark the touch sent (e.g. "I sent touch #2", "mark the LinkedIn DM sent", "log it as sent with outcome X"). The tool:\n- Re-pulls the touch from Notion to capture any body edits the user made before sending (Notion is source of truth for the body).\n- Sets Sent=true on the touch (and Outcome if provided).\n- Updates the parent OI: Last Touch = the sent date, Status: To Do → Working (if currently To Do), and rolls Next Step Due / Next Step forward to the next remaining unsent touch on the account. If no touches remain unsent, clears those pointers (sequence done).\n- If outcome is "Meeting Booked", does NOT auto-cancel the queued siblings — instead returns them in `queued_to_cancel` so you can ask the user whether to cancel and call cancel_queued_touches on confirmation. Never auto-cancel.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        touch_id: { type: 'string', description: 'Notion page ID of the touch to mark sent (with or without dashes). You can get this from query_touches → notion_page_id.' },
+        outcome: { type: 'string', description: 'Optional outcome at send-time: Meeting Booked, No Response, Disqualified, Warm Follow-up, Referred, Nurture, Connection Request Pending, Connected on LinkedIn. Sets Outcome on the touch.' },
+        sent_date: { type: 'string', description: 'ISO date YYYY-MM-DD when the touch actually went out. Defaults to the touch\'s existing Touch Date if omitted. Updates Touch Date if provided (use when the touch was sent on a different day than originally drafted).' },
+      },
+      required: ['touch_id'],
+    },
+  },
+  {
+    name: 'cancel_queued_touches',
+    description:
+      'Move queued (unsent) touches to Notion trash and remove them from Supabase. THIS IS A WRITE TOOL. Only call after explicit user confirmation, typically as the second step after mark_touch_sent surfaced queued siblings (e.g. when a meeting was booked and the rest of the sequence is moot). Notion trash is restorable — this is not a hard delete on the Notion side.\n\nTwo modes:\n- `touch_ids: [...]`: cancel ONLY the specified touches (whitelist; safest). Use this whenever you have a known list, especially right after mark_touch_sent.\n- `account_id` or `company_name` (no touch_ids): cancel ALL unsent touches on that account. Use only when the user has explicitly said "cancel everything queued for X" or similar. Capped at 25 per call.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        touch_ids: { type: 'array', items: { type: 'string' }, description: 'Notion page IDs to cancel. Preferred mode.' },
+        account_id: { type: 'string', description: 'Cancel ALL unsent touches on this account. Use only with explicit user instruction.' },
+        company_name: { type: 'string', description: 'Same as account_id but resolved by name.' },
+      },
+    },
+  },
+  {
     name: 'log_outreach_touch',
     description:
-      'Write a new touch to Notion (Outreach Touches DB) AND update the parent account in Outreach Intelligence. THIS IS A WRITE TOOL: it modifies the user\'s live ops database. Only call after the user has explicitly told you to log/save the touch ("log this", "save to Notion", "send to Notion") — never on a draft/preview turn, never as a follow-up to "looks good". When sent=true: also writes Last Touch on the parent and advances Status from "To Do" → "Working" if applicable. If next_touch_in_days/next_touch_channel are provided, updates the parent\'s Next Step Due and Next Step. Always pass either account_id OR company_name.',
+      'DEPRECATED — prefer log_outreach_sequence (which handles single touches as `touches: [{...}]`). Kept for backward compatibility. Same write semantics as the single-touch path of log_outreach_sequence, including the explicit-user-command rule.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -275,10 +342,10 @@ const tools: Anthropic.Tool[] = [
         sent: { type: 'boolean', description: 'true if this touch went out, false if it is a draft.' },
         touch_date: { type: 'string', description: 'ISO date (YYYY-MM-DD) of the touch. Defaults to today.' },
         title: { type: 'string', description: 'Notion page title for the touch row. Defaults to "{Company} - {Channel} - {Date}".' },
-        outcome: { type: 'string', description: 'Optional outcome: Meeting Booked, No Response, Disqualified, Warm Follow-up, Referred, Nurture, Connection Request Pending, Connected on LinkedIn.' },
-        top_challenges: { type: 'array', items: { type: 'string' }, description: 'Optional discussion topics — multi_select values from the Top Challenges property.' },
-        next_touch_in_days: { type: 'number', description: 'If set, updates parent OI Next Step Due to today + N days. Omit if no next touch is scheduled.' },
-        next_touch_channel: { type: 'string', description: 'If set, updates parent OI Next Step. Must be one of: LinkedIn Inmail, eMail, Linkedin DM, LinkedIn Connection Request, Schedule meeting, LinkedIn Interaction.' },
+        outcome: { type: 'string', description: 'Optional outcome.' },
+        top_challenges: { type: 'array', items: { type: 'string' }, description: 'Optional discussion topics.' },
+        next_touch_in_days: { type: 'number', description: 'If set, updates parent OI Next Step Due to today + N days.' },
+        next_touch_channel: { type: 'string', description: 'If set, updates parent OI Next Step.' },
       },
       required: ['channel', 'message', 'sent'],
     },
