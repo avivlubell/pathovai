@@ -190,14 +190,21 @@ Criticality rubric:
 - **MEDIUM** — refines or strengthens the message but doesn't redirect it. Verify if easy.
 - **LOW** — background color. Would not change the message or strategy. Safe to drop if verification is expensive.
 
-#### Writing a strong `verify_prompt` (Perplexity / Comet)
+#### Writing a strong `verify_prompt`
 
-The verify_prompt is pasted directly into Perplexity or Comet. It must produce a citable answer, not opinion. Follow these rules:
+The verify_prompt is pasted into the venue that *can actually answer*. Pick the venue based on where the claim's data lives:
 
-1. **Scope to ONE source.** Name it: `Source from <domain> only` or `From this LinkedIn page`. Don't ask Perplexity to "search the web" generically.
-2. **Ask for evidence, not opinion.** Use `List…`, `Quote the exact phrase…`, `Return the date…` — not `Is X true?`.
-3. **Demand structured output.** Numbered list, named fields, ISO dates, verbatim excerpts when possible.
-4. **Bound the answer.** End with `If not stated, return "not found" — do not infer.` Without this, Perplexity will fabricate plausible-sounding answers.
+- **Notion AI** — for claims about your CRM data: touches, accounts, contacts, ICP triggers, deals, next-step status, outreach history. Notion AI is the only venue with read access to those databases. Lead the prompt with `Open the {Outreach Touches | Outreach Intelligence | ICP Trigger Monitor | Motions & Deals} database in Notion AI…` and ask for matching row IDs, exact property values, and counts.
+- **Perplexity / Comet** — for public-web claims: company funding, FDA status, press releases, leadership, public quotes, hiring activity. Scope to a single domain.
+- **Gmail** — for claims about whether something was sent or received. The prompt is a Gmail search syntax string the user can paste into the Gmail search bar.
+- **Drive** — for claims about a document, contract, deck, or transcript.
+
+Then, regardless of venue, follow these rules:
+
+1. **Scope to ONE source.** Name it explicitly. Don't ask the venue to "search everywhere" generically.
+2. **Ask for evidence, not opinion.** Use `List…`, `Quote the exact phrase…`, `Return the date…`, `Return matching rows…` — not `Is X true?`.
+3. **Demand structured output.** Numbered list, named fields, ISO dates, verbatim excerpts, row IDs.
+4. **Bound the answer.** End with `If no match, return "not found" — do not infer.` Without this, the venue will fabricate plausible-sounding answers.
 5. **Avoid yes/no questions.** Ask for the supporting fact instead — that way you get something useful even if the answer is partial.
 
 When to flag vs drop vs omit:

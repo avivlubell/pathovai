@@ -650,24 +650,74 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
     return out;
   };
 
-  // Auto-generate a Perplexity-quality verify prompt for verifier-caught
-  // lines (the QB didn't write one). Follows the rubric in prompt.txt:
-  // scope to primary sources, demand structured output, bound the answer.
-  const autoVerifyPrompt = (claim: string): string => {
-    const c = claim
+  // Map each data-pulling tool to the Notion database it ultimately mirrors.
+  // Used to route auto-generated verify prompts at Notion AI when the corpus
+  // is internal CRM data, instead of pointing the user at Perplexity (which
+  // has no access to the user's Notion).
+  const NOTION_DB_BY_TOOL: Record<string, string> = {
+    query_touches: 'Outreach Touches',
+    get_communications: 'Outreach Touches',
+    get_account_detail: 'Outreach Intelligence',
+    search_accounts_and_contacts: 'Outreach Intelligence (and Contacts)',
+    query_icp_triggers: 'ICP Trigger Monitor',
+    query_deals: 'Motions & Deals',
+    sync_account_content: 'Outreach Intelligence',
+  };
+  const WEB_RESEARCH_TOOLS = new Set(['invoke_prospect_researcher']);
+
+  const usedToolNames = new Set(toolCalls.map(tc => tc.name));
+  const notionDbs = new Set<string>();
+  for (const t of usedToolNames) {
+    if (NOTION_DB_BY_TOOL[t]) notionDbs.add(NOTION_DB_BY_TOOL[t]);
+  }
+  const usedNotion = notionDbs.size > 0;
+  const usedWeb = Array.from(usedToolNames).some(t => WEB_RESEARCH_TOOLS.has(t));
+
+  const cleanClaimText = (raw: string): string => {
+    let c = raw
       .replace(/^\s*[-*•]\s+/, '')
       .replace(/^\s*\d+\.\s+/, '')
       .replace(/[*_`]/g, '')
-      .trim()
-      .slice(0, 240);
-    return (
+      .trim();
+    // Markdown table rows wrapped in quotes look ridiculous —
+    // "| Identifeye Health | 1 | Email |". Convert pipes to slashes and
+    // drop the outer pipes so the prompt reads as a sentence.
+    if (c.startsWith('|') || /\s\|\s/.test(c)) {
+      c = c.replace(/^\s*\|\s*/, '').replace(/\s*\|\s*$/, '').replace(/\s*\|\s*/g, ' / ');
+    }
+    return c.slice(0, 240);
+  };
+
+  // Build a verification prompt routed to the right venue. Notion-resident
+  // claims (touches, accounts, triggers, deals) point at Notion AI against
+  // the specific database. External/research claims point at Perplexity.
+  // Mixed sessions get both prompts so the user can pick.
+  const autoVerifyPrompt = (claim: string): string => {
+    const c = cleanClaimText(claim);
+
+    const notionPrompt = (): string => {
+      const dbList = Array.from(notionDbs).join(' or ');
+      return (
+        `[Notion AI — open the ${dbList} database${notionDbs.size > 1 ? 's' : ''}]\n` +
+        `Verify whether this is accurate against the current data: "${c}". ` +
+        `Return: (1) the matching row(s), (2) the exact property values that confirm or refute, ` +
+        `(3) the count of matching rows. ` +
+        `If no rows match, reply "not found" — do not infer.`
+      );
+    };
+
+    const webPrompt = (): string =>
+      `[Perplexity / Comet — public web]\n` +
       `Verify whether this statement is currently true: "${c}". ` +
       `Source from primary materials only (the company's website, press releases, ` +
       `SEC/FDA filings, LinkedIn). ` +
       `Return: (1) supporting URL, (2) verbatim excerpt from the source that confirms or refutes, ` +
       `(3) publication date. ` +
-      `If the statement cannot be confirmed from primary sources, return "not found" — do not infer.`
-    );
+      `If the statement cannot be confirmed from primary sources, return "not found" — do not infer.`;
+
+    if (usedNotion && usedWeb) return `${notionPrompt()}\n\n${webPrompt()}`;
+    if (usedNotion) return notionPrompt();
+    return webPrompt();
   };
 
   // Wrap an unverified line in a prose flag + hidden meta block. Used when
@@ -889,7 +939,7 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
     }
     if (item.prompt) {
       out.push('');
-      out.push('Perplexity / Comet prompt:');
+      out.push('Verify prompt:');
       out.push('```');
       out.push(item.prompt);
       out.push('```');
