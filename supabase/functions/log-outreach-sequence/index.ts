@@ -83,6 +83,26 @@ async function syncTouch(touchPageId: string): Promise<void> {
   }
 }
 
+// After we PATCH the parent OI page in Notion (Last Touch, Status, Next Step,
+// Next Step Due), the Supabase accounts row is stale until we re-sync.
+// Without this, get_account_detail / search_accounts_and_contacts would
+// return stale Status/Next Step/Last Touch to the QB.
+async function syncAccount(oiPageId: string): Promise<void> {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/sync-prospect-content`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        apikey: SUPABASE_KEY,
+      },
+      body: JSON.stringify({ notion_page_id: stripDashes(oiPageId) }),
+    });
+  } catch (err) {
+    console.warn('[log-outreach-sequence] post-update OI sync failed:', err);
+  }
+}
+
 type TouchInput = {
   channel: string;
   message: string;
@@ -269,6 +289,7 @@ serve(async (req) => {
         method: 'PATCH',
         body: JSON.stringify({ properties: oiUpdates }),
       });
+      await syncAccount(oiPageId);
     }
 
     return new Response(

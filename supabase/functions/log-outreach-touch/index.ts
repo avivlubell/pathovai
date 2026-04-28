@@ -185,6 +185,22 @@ serve(async (req) => {
         method: 'PATCH',
         body: JSON.stringify({ properties: oiUpdates }),
       });
+      // Re-sync the parent account so Supabase reflects Last Touch / Status
+      // / Next Step / Next Step Due. Without this, get_account_detail and
+      // search_accounts_and_contacts return stale state to the QB.
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/sync-prospect-content`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${SUPABASE_KEY}`,
+            apikey: SUPABASE_KEY,
+          },
+          body: JSON.stringify({ notion_page_id: oiPageId.replace(/-/g, '') }),
+        });
+      } catch (syncErr) {
+        console.warn('[log-outreach-touch] post-update OI sync failed:', syncErr);
+      }
     }
 
     // 3. Sync the new touch back to Supabase so query_touches sees it.

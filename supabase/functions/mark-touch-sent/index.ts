@@ -65,6 +65,24 @@ async function syncTouch(touchPageId: string): Promise<void> {
   }
 }
 
+// After we PATCH the parent OI page (Last Touch, Status, Next Step, Next
+// Step Due), re-sync so Supabase accounts row reflects the new state.
+async function syncAccount(oiPageId: string): Promise<void> {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/sync-prospect-content`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        apikey: SUPABASE_KEY,
+      },
+      body: JSON.stringify({ notion_page_id: stripDashes(oiPageId) }),
+    });
+  } catch (err) {
+    console.warn('[mark-touch-sent] post-update OI sync failed:', err);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -172,6 +190,7 @@ serve(async (req) => {
       method: 'PATCH',
       body: JSON.stringify({ properties: oiUpdates }),
     });
+    await syncAccount(oiPageId);
 
     // 6. If outcome is "Meeting Booked", surface the queued siblings so the
     //    QB can ask the user whether to cancel them. We do NOT auto-cancel.
