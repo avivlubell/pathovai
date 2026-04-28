@@ -79,6 +79,10 @@ function humanizeToolCall(
       return 'Querying deals pipeline';
     case 'query_icp_triggers':
       return 'Querying ICP trigger monitor';
+    case 'query_touches':
+      return pickName() ? `Pulling touches for ${pickName()}` : 'Pulling outreach touches';
+    case 'log_outreach_touch':
+      return pickName() ? `Logging touch to Notion for ${pickName()}` : 'Logging touch to Notion';
     case 'sync_account_content':
       return 'Syncing account content from Notion';
     case 'run_prospect_pipeline':
@@ -131,7 +135,10 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   get_communications: 'get-communications',
   query_deals: 'query-deals',
   query_icp_triggers: 'query-icp-triggers',
+  query_touches: 'query-touches',
+  log_outreach_touch: 'log-outreach-touch',
   sync_account_content: 'sync-prospect-content',
+  sync_touch_content: 'sync-touch-content',
   run_prospect_pipeline: 'run-prospect-pipeline',
   prospect_researcher_batch: 'prospect-researcher',
   search_references: 'search-references',
@@ -226,6 +233,54 @@ const tools: Anthropic.Tool[] = [
         },
         limit: { type: 'number', description: 'Max rows to return (default 25, max 100)' },
       },
+    },
+  },
+  {
+    name: 'query_touches',
+    description:
+      'Query the Outreach Touches log — every email, LinkedIn DM, connection request, call, or meeting that has been drafted or sent for an account. Use this to answer "what have I sent to X?", "what is unsent?", "what is due this week?", or to gather prior outreach history. Returns rows with title, channel, touch_date, sent, outcome, and message body. Distinct from accounts (the company-level record).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        filter: {
+          type: 'object',
+          description: 'Optional filters',
+          properties: {
+            account_id: { type: 'string', description: 'Company UUID from accounts table — exact match on parent account' },
+            account_name: { type: 'string', description: 'Company name — fuzzy match; resolved to account_id internally' },
+            sent: { type: 'boolean', description: 'Filter to sent (true) or unsent/draft (false) only' },
+            channel: { type: 'string', description: 'Substring match on channel: Email, LinkedIn, Phone, Intro, Meeting' },
+            outcome: { type: 'string', description: 'Substring match on outcome: Meeting Booked, No Response, Disqualified, Warm Follow-up, Referred, Nurture, Connection Request Pending, Connected on LinkedIn' },
+            due_within_days: { type: 'number', description: 'Only unsent touches with touch_date within N days from today' },
+            since_days: { type: 'number', description: 'Only touches with touch_date in the last N days' },
+            before_date: { type: 'string', description: 'ISO date — only touches on or before this date' },
+            after_date: { type: 'string', description: 'ISO date — only touches on or after this date' },
+          },
+        },
+        limit: { type: 'number', description: 'Max rows (default 50, max 200)' },
+      },
+    },
+  },
+  {
+    name: 'log_outreach_touch',
+    description:
+      'Write a new touch to Notion (Outreach Touches DB) AND update the parent account in Outreach Intelligence. THIS IS A WRITE TOOL: it modifies the user\'s live ops database. Only call after the user has explicitly told you to log/save the touch ("log this", "save to Notion", "send to Notion") — never on a draft/preview turn, never as a follow-up to "looks good". When sent=true: also writes Last Touch on the parent and advances Status from "To Do" → "Working" if applicable. If next_touch_in_days/next_touch_channel are provided, updates the parent\'s Next Step Due and Next Step. Always pass either account_id OR company_name.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        account_id: { type: 'string', description: 'Company UUID from accounts table. Optional if company_name is provided.' },
+        company_name: { type: 'string', description: 'Company name — used to resolve account when UUID unknown.' },
+        channel: { type: 'string', description: 'Touch channel. Must be one of: Email, LinkedIn, Phone, Intro, Meeting.' },
+        message: { type: 'string', description: 'Full message body for this touch.' },
+        sent: { type: 'boolean', description: 'true if this touch went out, false if it is a draft.' },
+        touch_date: { type: 'string', description: 'ISO date (YYYY-MM-DD) of the touch. Defaults to today.' },
+        title: { type: 'string', description: 'Notion page title for the touch row. Defaults to "{Company} - {Channel} - {Date}".' },
+        outcome: { type: 'string', description: 'Optional outcome: Meeting Booked, No Response, Disqualified, Warm Follow-up, Referred, Nurture, Connection Request Pending, Connected on LinkedIn.' },
+        top_challenges: { type: 'array', items: { type: 'string' }, description: 'Optional discussion topics — multi_select values from the Top Challenges property.' },
+        next_touch_in_days: { type: 'number', description: 'If set, updates parent OI Next Step Due to today + N days. Omit if no next touch is scheduled.' },
+        next_touch_channel: { type: 'string', description: 'If set, updates parent OI Next Step. Must be one of: LinkedIn Inmail, eMail, Linkedin DM, LinkedIn Connection Request, Schedule meeting, LinkedIn Interaction.' },
+      },
+      required: ['channel', 'message', 'sent'],
     },
   },
   {

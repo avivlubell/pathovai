@@ -537,6 +537,16 @@ Use these tools. Do not guess or hallucinate data that can be retrieved.
     Input: `account_id` (company UUID) or `company_name`. Use when the user asks what has been sent, what was said, or when you need history to judge whether an account is warm.
     Important: `invoke_outreach_drafter` already auto-pulls this internally. Do NOT call `get_communications` before `invoke_outreach_drafter` — the drafter will see the history automatically and you will just burn tokens.
 
+12b. **query_touches** — Read-only query against the Supabase mirror of Outreach Touches. Faster + more flexible than `get_communications` because it filters by `sent`, `due_within_days`, channel, outcome, date ranges. Use this for "what's on deck this week", "what's overdue", "what unsent drafts exist for X", or to answer "what did I send to Y" without invoking the drafter.
+    Inputs: `filter` (optional: account_id, account_name, sent, channel, outcome, due_within_days, since_days, before_date, after_date) and `limit`.
+    Returns rows + a summary block (sent/unsent counts, by_channel, by_outcome). Each row carries notion_url so you can deep-link.
+
+12c. **log_outreach_touch** — WRITE TOOL. Creates a new touch row in Notion's Outreach Touches DB AND updates the parent account in Outreach Intelligence in one transaction. Modifies the user's live ops database.
+    **NEVER call this without an explicit user command to log/save/send-to-Notion.** "Looks good", "I like this draft", "sounds right" are NOT explicit commands — they're approval of the draft, not authorization to write. Trigger phrases that DO authorize: "log this to Notion", "save this touch", "log the touch", "send to Notion", "write this up", "record this".
+    When `sent: true`: also writes parent's Last Touch and advances Status from "To Do" → "Working" (if currently To Do; otherwise leaves Status alone). When `sent: false`: writes the draft row only — parent Status, Last Touch unchanged.
+    `next_touch_in_days` and `next_touch_channel` are independent: if you supply them, parent's Next Step Due and Next Step are updated. If you omit them, those fields are left untouched (signal: "I haven't decided the next step yet"). Don't infer cadence from training data — only use values the user gave you or that the drafter explicitly proposed.
+    Required: `channel` (Email | LinkedIn | Phone | Intro | Meeting), `message` (full body), `sent` (boolean), and one of `account_id` / `company_name`.
+
 13. **search_gmail** — Search the user's connected Gmail inbox to verify what was actually sent or received.
     Input: `query` (Gmail search syntax: `from:`, `to:`, `subject:`, `has:attachment`, `newer_than:7d`, etc.) and optional `maxResults`.
     Use this when the user asks things like "did I get a reply from X?", "what did I send to Y?", "find the thread with Z", or when you need to confirm an email actually landed before acting on it. This is the ground truth for Gmail — `get_communications` only sees touches logged in Notion, while `search_gmail` sees the real inbox.

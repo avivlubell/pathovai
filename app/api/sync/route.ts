@@ -3,9 +3,11 @@ import { NextResponse } from 'next/server';
 const SUPABASE_FUNCTIONS_BASE = 'https://urmgbmfvjuozvhigflqt.supabase.co/functions/v1';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const NOTION_INTEGRATION_TOKEN = process.env.NOTION_INTEGRATION_TOKEN || '';
+// Notion API version 2025-09-03 supports multi-data-source databases (Outreach
+// Touches uses this format). Older versions return 400 on Touches reads.
 const NOTION_HEADERS = {
   Authorization: `Bearer ${NOTION_INTEGRATION_TOKEN}`,
-  'Notion-Version': '2022-06-28',
+  'Notion-Version': '2025-09-03',
 };
 
 type RouteDecision =
@@ -47,8 +49,8 @@ async function resolveRoute(pageId: string): Promise<RouteDecision> {
   return { kind: 'unknown', dbTitle };
 }
 
-async function syncAccount(pageId: string) {
-  const res = await fetch(`${SUPABASE_FUNCTIONS_BASE}/sync-prospect-content`, {
+async function callSyncFunction(fn: 'sync-prospect-content' | 'sync-touch-content', pageId: string) {
+  const res = await fetch(`${SUPABASE_FUNCTIONS_BASE}/${fn}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -98,28 +100,22 @@ export async function GET(req: Request) {
       );
     }
 
-    if (route.kind === 'touches') {
+    const fn = route.kind === 'touches' ? 'sync-touch-content' : 'sync-prospect-content';
+    const { res, data } = await callSyncFunction(fn, page_id);
+    if (!res.ok) {
       return new NextResponse(
-        htmlPage(
-          'Touches sync coming in Phase 3',
-          `<p>This page is in <code>${route.dbTitle}</code>. The sync rails are wired in Notion but the Supabase + Quarterback integration ships in Phase 3.</p>
-           <p>No data was written.</p>`,
-          '#b85c00'
-        ),
-        { status: 501, headers: { 'Content-Type': 'text/html' } }
+        htmlPage('Sync failed', `<pre style="text-align:left;background:#f8f8f8;padding:12px">${JSON.stringify(data, null, 2)}</pre>`, '#c00'),
+        { status: res.status, headers: { 'Content-Type': 'text/html' } },
       );
     }
 
-    const { res, data } = await syncAccount(page_id);
-    if (!res.ok) {
-      return NextResponse.json({ error: 'Sync failed', details: data }, { status: res.status });
-    }
+    const summary = route.kind === 'touches'
+      ? `Touch <code>${data.title || page_id}</code> synced` +
+        (data.account_name ? ` (account: <strong>${data.account_name}</strong>)` : ' (no parent account resolved)')
+      : `Account <code>${data.company || page_id}</code> synced`;
 
     return new NextResponse(
-      htmlPage(
-        'Sync triggered successfully',
-        `<p>Account <code>${data.company || page_id}</code> is syncing to Supabase.</p>`
-      ),
+      htmlPage('Sync triggered successfully', `<p>${summary}</p>`),
       { status: 200, headers: { 'Content-Type': 'text/html' } }
     );
   } catch (err) {
@@ -148,14 +144,8 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    if (route.kind === 'touches') {
-      return NextResponse.json(
-        { success: false, skipped: true, reason: 'Touches sync not yet implemented (Phase 3)', db: route.dbTitle },
-        { status: 501 }
-      );
-    }
-
-    const { res, data } = await syncAccount(page_id);
+    const fn = route.kind === 'touches' ? 'sync-touch-content' : 'sync-prospect-content';
+    const { res, data } = await callSyncFunction(fn, page_id);
     return NextResponse.json({ success: res.ok, data }, { status: res.status });
   } catch (err) {
     return NextResponse.json({ error: 'Webhook handler failed', details: String(err) }, { status: 500 });
