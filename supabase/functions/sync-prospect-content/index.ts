@@ -46,6 +46,14 @@ function blockToText(block: any): string {
       return richTextToString(data.rich_text);
     case "divider":
       return "---";
+    case "table_row":
+      // Cells is an array of arrays of rich_text. Render as pipe-delimited row.
+      return (data.cells || [])
+        .map((cell: any[]) => richTextToString(cell).trim())
+        .join(" | ");
+    case "table":
+      // The table block itself has no text — its children (table_row) carry the content.
+      return "";
     default:
       return richTextToString(data?.rich_text || []);
   }
@@ -183,12 +191,17 @@ serve(async (req) => {
     if (sections.assessment) researchParts.push("FINAL ASSESSMENT:\n" + sections.assessment.trim());
     if (sections.next_action) researchParts.push("NEXT ACTION:\n" + sections.next_action.trim());
 
-    const researchRaw = researchParts.join("\n\n") || bodyText;
+    // Always include the full body so the LLM sees everything (contacts, free-form notes,
+    // anything outside the recognized tier headings). Parsed sections are appended for
+    // structured emphasis but never replace the raw body.
+    const researchRaw = researchParts.length > 0
+      ? bodyText + "\n\n---\n\n" + researchParts.join("\n\n")
+      : bodyText;
 
-    // Extract company name from properties
-    const companyName = getProp(props, "Company Name", "title")
-      || getProp(props, "Name", "title")
-      || getProp(props, "Company", "title")
+    // Extract company name from properties — find any property of type "title"
+    // (every Notion DB has exactly one) so we're not brittle to column renames.
+    const titleProp = Object.values(props).find((p: any) => p?.type === "title") as any;
+    const companyName = titleProp?.title?.[0]?.plain_text?.trim()
       || company_name
       || "Unknown";
 
@@ -229,12 +242,8 @@ serve(async (req) => {
       record.research_output = researchSummary;
     }
 
-    // Extract key contacts from properties
-    const contact = getProp(props, "Contact", "rich_text");
-    const title = getProp(props, "Title", "rich_text");
-    if (contact) {
-      record.key_contacts = JSON.stringify([{ name: contact, title: title || "Unknown" }]);
-    }
+    // NOTE: skipped key_contacts write — that column doesn't exist on accounts and
+    // would fail the upsert. Contacts in the page body now flow through research_output.
 
     // Clean nulls
     const clean: any = {};
