@@ -577,12 +577,19 @@ interface ToolCallRecord {
 // fabricated bullet can't hitch a ride on real siblings.
 function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
   if (!text || toolCalls.length === 0) return text;
-  const corpusRaw = toolCalls.map(tc => tc.result).join('\n');
+  // Normalize smart/curly quotes to straight before lowercasing the corpus
+  // and looking up needles. Without this, a phrase the drafter wrote with
+  // curly apostrophes (`’`) would not substring-match the same phrase the
+  // QB narrated with straight (`'`), producing a false-positive
+  // hard-fabrication strip.
+  const normalizeQuotes = (s: string): string =>
+    s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
+  const corpusRaw = normalizeQuotes(toolCalls.map(tc => tc.result).join('\n'));
   const corpus = corpusRaw.toLowerCase();
   const corpusStripped = corpus.replace(/[,\s]/g, '');
 
   const inCorpus = (needle: string): boolean => {
-    const n = needle.toLowerCase().trim();
+    const n = normalizeQuotes(needle).toLowerCase().trim();
     if (!n) return true;
     if (corpus.includes(n)) return true;
     // Tolerate "$10M" vs "$10 million", "10,000" vs "10000", etc.
@@ -595,7 +602,13 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
   // .matchAll()).
   const P = {
     QUOTE_DBL: '["“][^"”]{10,}["”]',
-    QUOTE_SGL: "['‘][^'’]{10,}['’]",
+    // Lookaround stops apostrophe-as-contraction false positives:
+    // "isn't a timing problem — it's stale" used to match because the
+    // regex saw `'t a timing problem — it'` as a quoted token. We now
+    // require the opening `'` to NOT be preceded by a letter and the
+    // closing `'` to NOT be followed by a letter. Real single-quoted
+    // strings ('hello there my friend') still match.
+    QUOTE_SGL: "(?<![A-Za-z])['‘][^'’]{10,}['’](?![A-Za-z])",
     DOLLAR: '\\$\\s*\\d[\\d,.]*\\s*(?:M|B|K|million|billion|thousand)?\\b',
     BIG_NUMBER: '\\b\\d{3,}\\b',
     BARE_YEAR: '\\b(?:19|20)\\d{2}\\b',
