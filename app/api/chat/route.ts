@@ -91,6 +91,8 @@ function humanizeToolCall(
       return pickName() ? `Cancelling queued touches for ${pickName()}` : 'Cancelling queued touches';
     case 'create_account':
       return pickName() ? `Creating account for ${pickName()}` : 'Creating account in Notion';
+    case 'create_contact':
+      return pickName() ? `Creating contact for ${pickName()}` : 'Creating contact in Notion';
     case 'update_account':
       return pickName() ? `Updating ${pickName()} in Notion` : 'Updating account in Notion';
     case 'sync_account_content':
@@ -151,6 +153,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   mark_touch_sent: 'mark-touch-sent',
   cancel_queued_touches: 'cancel-queued-touches',
   create_account: 'create-account',
+  create_contact: 'create-contact',
   update_account: 'update-account',
   sync_account_content: 'sync-prospect-content',
   sync_touch_content: 'sync-touch-content',
@@ -355,6 +358,30 @@ const tools: Anthropic.Tool[] = [
         force_create: { type: 'boolean', description: 'Default false. Set to true ONLY after the user has confirmed that surfaced duplicates are a different company.' },
       },
       required: ['company_name'],
+    },
+  },
+  {
+    name: 'create_contact',
+    description:
+      'Create a new contact (person) in Notion\'s Contacts database, link it to a parent account, and sync to Supabase. THIS IS A WRITE TOOL: it modifies the user\'s live ops database. Only call after the user has explicitly told you to add/create the contact ("add Christian Gormsen as a contact for Magnus Medical", "create a contact for the CEO at Sibel", "let\'s add Keith Maison").\n\nThe outreach drafter cannot run on an account that has no contact — it needs a target person. So when the user creates a fresh account (e.g., promoting an ICP Trigger to an OI page), the next natural step is usually to add at least one contact before drafting outreach.\n\nDuplicate detection runs by default (3 tiers, all account-scoped: exact name same account, fuzzy name same account, email match across all accounts). If duplicates surface (`success: false, error: "duplicate_detected" | "possible_duplicates"`), present matches to the user and ask how to proceed. Email matches across accounts may indicate the person changed jobs — surface that to the user.\n\nAfter creation, the new contact_id is returned and you can pass it (or just keep using account_id) to invoke_outreach_drafter; the drafter will pick up the contact via the synced contacts table.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        full_name: { type: 'string', description: 'REQUIRED. The person\'s full name. Becomes the Notion Name title and is the primary duplicate-detection key.' },
+        account_id: { type: 'string', description: 'Company UUID this contact belongs to. Optional if company_name is provided.' },
+        company_name: { type: 'string', description: 'Company name to resolve the parent account when UUID unknown.' },
+        title: { type: 'string', description: 'Optional job title (free text).' },
+        email: { type: 'string', description: 'Optional email address. Used as a duplicate-detection key across all accounts (catches job changes).' },
+        phone: { type: 'string', description: 'Optional phone number.' },
+        linkedin_url: { type: 'string', description: 'Optional LinkedIn profile URL.' },
+        notes: { type: 'string', description: 'Optional free-text notes.' },
+        contact_type: { type: 'string', description: 'Optional. Must be one of: CEO, CFO, CRO, VP Sales, VP Clinical, Physician Champion, Procurement, Other.' },
+        relationship_status: { type: 'string', description: 'Optional. Must be one of: Identified, Researched, Outreach, Connected, Engaged, Active Relationship, Unresponsive, Disqualified. Defaults to "Identified" for new contacts.' },
+        communication_channels: { type: 'array', items: { type: 'string' }, description: 'Optional multi-select. Values from: Email, LinkedIn, Phone, In-Person, Referral.' },
+        is_primary: { type: 'boolean', description: 'Optional. Mark as the primary contact for the account (Supabase-side flag).' },
+        force_create: { type: 'boolean', description: 'Default false. Set true ONLY after the user has confirmed surfaced duplicates are different people / different jobs / etc.' },
+      },
+      required: ['full_name'],
     },
   },
   {
