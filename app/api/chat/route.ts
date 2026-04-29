@@ -89,6 +89,8 @@ function humanizeToolCall(
       return 'Marking touch as sent in Notion';
     case 'cancel_queued_touches':
       return pickName() ? `Cancelling queued touches for ${pickName()}` : 'Cancelling queued touches';
+    case 'create_account':
+      return pickName() ? `Creating account for ${pickName()}` : 'Creating account in Notion';
     case 'sync_account_content':
       return 'Syncing account content from Notion';
     case 'run_prospect_pipeline':
@@ -146,6 +148,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   log_outreach_sequence: 'log-outreach-sequence',
   mark_touch_sent: 'mark-touch-sent',
   cancel_queued_touches: 'cancel-queued-touches',
+  create_account: 'create-account',
   sync_account_content: 'sync-prospect-content',
   sync_touch_content: 'sync-touch-content',
   run_prospect_pipeline: 'run-prospect-pipeline',
@@ -326,6 +329,29 @@ const tools: Anthropic.Tool[] = [
         account_id: { type: 'string', description: 'Cancel ALL unsent touches on this account. Use only with explicit user instruction.' },
         company_name: { type: 'string', description: 'Same as account_id but resolved by name.' },
       },
+    },
+  },
+  {
+    name: 'create_account',
+    description:
+      'Create a new account (company) row in Notion\'s Outreach Intelligence database and sync it to Supabase. THIS IS A WRITE TOOL: it modifies the user\'s live ops database. Only call after the user has explicitly told you to add/create the account ("create an account for X", "add Sibel Health to Notion", "promote this trigger to an account", "let\'s start working on X"). Never call as a follow-up to a generic "looks good".\n\nDuplicate detection runs by default (3 tiers: exact name match in accounts, fuzzy substring match in accounts, title substring match in Notion OI database). If duplicates are found, the tool returns `success: false` with `error: "duplicate_detected"` or `"possible_duplicates"` and a list of matches. When this happens, present the matches to the user — do not silently re-call with force_create. Only re-call with `force_create: true` if the user explicitly confirms it\'s a different company (e.g., "yes, those are different — that one is X subsidiary, this is the parent").\n\nIf you\'re promoting an ICP Trigger row to an account, pass `from_icp_trigger_id` (the trigger\'s notion_page_id from query_icp_triggers). The tool will pre-fill HQ Location, Website, and LinkedIn URL from the trigger row. Other constrained fields (regulatory_status, product_category, icp_tier) are not auto-mapped from the trigger\'s vocabulary — pass them explicitly if you want them set.\n\nNew accounts default to Status="To Do", Pipeline Stage="Research". The QB can immediately invoke prospect_researcher / icp_scorer / outreach_drafter / risk_assessor against the returned account_id.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        company_name: { type: 'string', description: 'REQUIRED. The company name. Becomes the Account title and is the primary duplicate-detection key.' },
+        from_icp_trigger_id: { type: 'string', description: 'Optional notion_page_id of an ICP Trigger row (from query_icp_triggers). When provided, HQ Location, Website, and LinkedIn URL are seeded from the trigger.' },
+        website: { type: 'string', description: 'Optional company website URL.' },
+        linkedin_url: { type: 'string', description: 'Optional company LinkedIn URL.' },
+        hq_location: { type: 'string', description: 'Optional HQ city/country as free text.' },
+        regulatory_status: { type: 'string', description: 'Optional. Must be one of: Pre-FDA, FDA Cleared, CE Mark Only, FDA + CE Mark, Post-Market.' },
+        product_category: { type: 'string', description: 'Optional. Must be one of: Hardware device, Hardware device / Combination, SaMD / Hardware device / DTx / Clinical AI / Combination / Other, Clinical AI / SaMD.' },
+        icp_tier: { type: 'string', description: 'Optional. Must be one of: Tier 1: Priority, Tier 2: Qualified, Tier 3: Monitor, Non-ICP.' },
+        source: { type: 'string', description: 'Optional. Must be one of: Inbound, Referral, LinkedIn, Conference, Research, Other.' },
+        notes: { type: 'string', description: 'Optional free-text notes for the Notes property.' },
+        icp_score: { type: 'number', description: 'Optional numeric ICP Score (0-10).' },
+        force_create: { type: 'boolean', description: 'Default false. Set to true ONLY after the user has confirmed that surfaced duplicates are a different company.' },
+      },
+      required: ['company_name'],
     },
   },
   {
