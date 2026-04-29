@@ -879,12 +879,21 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
 
   // Wrap an unverified line in a prose flag + hidden meta block. Used when
   // the verifier catches something the QB did not self-flag. Preserves the
-  // original claim so the user sees what was flagged and why.
+  // original claim so the user sees what was flagged and why. Plain
+  // English here matters — this prose is shown to the user inline.
   const flagInPlace = (line: string, reason: string): string => {
-    const claim = line.trim().replace(/^\s*[-*•]\s+/, '').replace(/^\s*\d+\.\s+/, '');
+    const claim = line
+      .trim()
+      .replace(/^\s*[-*•]\s+/, '')
+      .replace(/^\s*\d+\.\s+/, '')
+      // Strip leading/trailing markdown table pipes so a flagged table
+      // cell renders as readable prose, not "| Can we use plain english".
+      .replace(/^\s*\|\s*/, '')
+      .replace(/\s*\|\s*$/, '')
+      .replace(/\s*\|\s*/g, ' / ');
     const prose =
-      `\n⚠ This claim isn't directly grounded in tool output and needs manual ` +
-      `verification: ${claim} *(Manual review — see checklist.)*\n`;
+      `\n⚠ I couldn't verify this from the data I pulled — please double-check: ` +
+      `${claim} *(Worth checking — see list below.)*\n`;
     const meta =
       `\n<!--verify-meta\n` +
       `criticality: unassessed\n` +
@@ -985,7 +994,7 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
         console.warn(
           `[verifyClaims] flagged unattributed line. names: ${JSON.stringify(attributedNames)}. line: ${line.slice(0, 160)}`
         );
-        kept.push(flagInPlace(line, `attributes a statement to ${attributedNames.join(', ')} but has no source tag (e.g. [transcript], [email:...], [DB])`));
+        kept.push(flagInPlace(line, `mentions ${attributedNames.join(', ')} but doesn't say where the quote or claim came from. Add a source tag like [email], [transcript], or [DB] so we can trace it.`));
         continue;
       }
       const missingName = attributedNames.find(n => !inCorpus(n));
@@ -994,7 +1003,7 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
         console.warn(
           `[verifyClaims] flagged line — attributed name "${missingName}" not in corpus. line: ${line.slice(0, 160)}`
         );
-        kept.push(flagInPlace(line, `attributed name "${missingName}" does not appear in tool output — tag may point to wrong source`));
+        kept.push(flagInPlace(line, `mentions "${missingName}" but I couldn't find them in any of the data I pulled — the source tag may be pointing at the wrong place.`));
         continue;
       }
     }
@@ -1014,7 +1023,7 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
       console.warn(
         `[verifyClaims] flagged line — tokens not in corpus: ${JSON.stringify(missingTokens)}. line: ${line.slice(0, 160)}`
       );
-      kept.push(flagInPlace(line, `claim contains detail not found in tool output: ${missingTokens.map(t => JSON.stringify(t)).join(', ')}`));
+      kept.push(flagInPlace(line, `these specific details aren't in any data I pulled: ${missingTokens.map(t => JSON.stringify(t)).join(', ')}. They may need verification.`));
     }
   }
 
@@ -1109,23 +1118,25 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
     '',
     '---',
     '',
-    `### Verification checklist (${totalCount} item${totalCount === 1 ? '' : 's'})`,
+    `### Things worth double-checking (${totalCount})`,
     '',
-    'Each unverified claim below is flagged inline above with a `⚠`. ' +
-    'Paste the Perplexity prompt to verify, or open the source URL directly.',
+    'Each item below is flagged inline above with a `⚠`. ' +
+    'Paste the prompt into the suggested venue (Notion AI, Perplexity, Gmail, Drive) ' +
+    'to verify — or just open the source link.',
     '',
   ];
 
   items.forEach((item, idx) => {
-    const sev = (item.criticality.match(/^(HIGH|MEDIUM|LOW|unassessed)/i)?.[1] ?? 'review').toUpperCase();
-    out.push(`**${idx + 1}. ${item.claim}** · ${sev}`);
-    if (item.why) out.push(`Why unverified: ${item.why}`);
+    const sevRaw = item.criticality.match(/^(HIGH|MEDIUM|LOW)/i)?.[1];
+    const sevLabel = sevRaw ? ` · ${sevRaw.toUpperCase()}` : '';
+    out.push(`**${idx + 1}. ${item.claim}**${sevLabel}`);
+    if (item.why) out.push(`What's missing: ${item.why}`);
     if (item.url && item.url.toUpperCase() !== 'N/A') {
       out.push(`Source: ${item.url}`);
     }
     if (item.prompt) {
       out.push('');
-      out.push('Verify prompt:');
+      out.push('How to verify:');
       out.push('```');
       out.push(item.prompt);
       out.push('```');
@@ -1134,7 +1145,7 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
   });
 
   if (strippedClaims.length > 0) {
-    out.push(`**Stripped as hard fabrication** (${strippedClaims.length}) — quoted content not found in any tool output. The original line${strippedClaims.length === 1 ? ' is' : 's are'} listed below for your awareness; treat as suspect:`);
+    out.push(`**Removed as likely fabrication** (${strippedClaims.length}) — quoted content I couldn't find in any data I pulled, attributed to someone. The original line${strippedClaims.length === 1 ? ' is' : 's are'} listed below for your awareness; treat as suspect:`);
     out.push('');
     for (const claim of strippedClaims) {
       out.push(`- ~~${claim}~~`);
