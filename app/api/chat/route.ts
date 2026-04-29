@@ -855,17 +855,53 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
     }
 
     // HARD FABRICATION CHECK: a quoted string whose content is not in
-    // the corpus is invention, not inference. Strip outright but keep
-    // the line text so we can surface what was removed in the checklist.
+    // the corpus is suspect. Two paths:
+    // - If the quote sits in a sentence that contains an attribution verb
+    //   (said/wrote/replied/etc.) or "according to" / "per", the quote
+    //   claims to be someone's actual words. Missing from corpus = real
+    //   fabrication risk → strip.
+    // - Otherwise, the quote is most likely rhetorical or a label
+    //   (`no "not interested" responses`, `they call this "VAC purgatory"`).
+    //   Flag in place — keeps the line visible while surfacing the
+    //   unverified phrase. Sentence-scoping is critical: a line like
+    //   "Keith never responded. No bounce, no 'not interested'." has
+    //   `responded` in a separate clause from the quote and should NOT be
+    //   treated as attributed.
+    const ATTRIBUTION_CONTEXT_RE = new RegExp(
+      `\\b(?:${ATTRIB_VERBS.slice(3, -1)}|wrote|writes|replied|replies|responded|responds|cited|cites|quoted|quotes|according to|per)\\b`,
+      'i',
+    );
+    const findQuoteSentence = (text: string, quoteTok: string): string => {
+      // Split on sentence-end punctuation followed by whitespace, OR on em-dash.
+      const sentences = text.split(/(?<=[.!?])\s+|\s+—\s+/);
+      const needle = quoteTok.toLowerCase();
+      const match = sentences.find(s => s.toLowerCase().includes(needle));
+      return match ?? text;
+    };
     const quoteTokens = extractQuoteTokens(content);
     const missingQuote = quoteTokens.find(t => !inCorpus(t));
     if (missingQuote) {
-      strippedCount++;
-      strippedClaims.push(line.trim());
+      const sentence = findQuoteSentence(content, missingQuote);
+      const isAttributed = ATTRIBUTION_CONTEXT_RE.test(sentence);
+      if (isAttributed) {
+        strippedCount++;
+        strippedClaims.push(line.trim());
+        console.warn(
+          `[verifyClaims] HARD FABRICATION stripped (attributed quote). content: ${JSON.stringify(missingQuote)}. line: ${line.slice(0, 160)}`,
+        );
+        if (i + 1 < lines.length && /^\r?\n$/.test(lines[i + 1])) i++;
+        continue;
+      }
+      flaggedCount++;
       console.warn(
-        `[verifyClaims] HARD FABRICATION stripped. quoted content not in corpus: ${JSON.stringify(missingQuote)}. line: ${line.slice(0, 160)}`
+        `[verifyClaims] flagged unattributed quoted phrase: ${JSON.stringify(missingQuote)}. line: ${line.slice(0, 160)}`,
       );
-      if (i + 1 < lines.length && /^\r?\n$/.test(lines[i + 1])) i++;
+      kept.push(
+        flagInPlace(
+          line,
+          `contains a quoted phrase ${JSON.stringify(missingQuote)} not found verbatim in tool output, but no attribution in the same sentence — likely rhetorical use; treat as paraphrase`,
+        ),
+      );
       continue;
     }
 
