@@ -91,6 +91,8 @@ function humanizeToolCall(
       return pickName() ? `Cancelling queued touches for ${pickName()}` : 'Cancelling queued touches';
     case 'create_account':
       return pickName() ? `Creating account for ${pickName()}` : 'Creating account in Notion';
+    case 'update_account':
+      return pickName() ? `Updating ${pickName()} in Notion` : 'Updating account in Notion';
     case 'sync_account_content':
       return 'Syncing account content from Notion';
     case 'run_prospect_pipeline':
@@ -149,6 +151,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   mark_touch_sent: 'mark-touch-sent',
   cancel_queued_touches: 'cancel-queued-touches',
   create_account: 'create-account',
+  update_account: 'update-account',
   sync_account_content: 'sync-prospect-content',
   sync_touch_content: 'sync-touch-content',
   run_prospect_pipeline: 'run-prospect-pipeline',
@@ -352,6 +355,54 @@ const tools: Anthropic.Tool[] = [
         force_create: { type: 'boolean', description: 'Default false. Set to true ONLY after the user has confirmed that surfaced duplicates are a different company.' },
       },
       required: ['company_name'],
+    },
+  },
+  {
+    name: 'update_account',
+    description:
+      'Update an existing account in Notion\'s Outreach Intelligence database. THIS IS A WRITE TOOL: it modifies the user\'s live ops database. Only call after the user has explicitly told you to update the page ("update Acurable with this intel", "save this to Notion", "log these corrections to the Acurable page"). Never call as a follow-up to a generic "thanks" or "looks good".\n\nTwo update channels, both optional (at least one required):\n\n1. `property_updates` — patch constrained Notion properties: status, pipeline_stage, icp_tier, regulatory_status, product_category, engage_decision, source, timing_status, validation_status, icp_score, hq_location, website, linkedin_url, email, notes (rich_text, replaced wholesale — short scalars only), therapeutic_area / primary_gap (multi_select arrays — replaced wholesale), last_touch / response_date / next_step_due (ISO dates).\n\n2. `body_update` — append rich research/intel to the page body. Mode is `append` only (v1). Optional `heading` is prepended as a heading_2 (use this for dated section headers like "Update — April 28, 2026"). The `markdown` field accepts standard markdown (# headings, - bullets, 1. numbered lists, paragraphs, --- dividers). Inline emphasis (**bold**, *italic*, `code`, [links](url)) is reduced to plain text — Notion\'s annotation model is verbose; if the user wants formatting they can edit in Notion.\n\nThe most common use case: the user gives you a long-form intel update (corrections, new funding history, commercial team changes, recent LinkedIn posts) and asks you to write it to the page. Pass it as a single `body_update.markdown` block with a dated `body_update.heading`.\n\nAfter writing, the parent OI is re-synced to Supabase so the QB sees the new state on the next read.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        account_id: { type: 'string', description: 'Company UUID from accounts table. Optional if company_name is provided.' },
+        company_name: { type: 'string', description: 'Company name — used to resolve account when UUID unknown.' },
+        property_updates: {
+          type: 'object',
+          description: 'Optional. Patch constrained Notion properties.',
+          properties: {
+            status: { type: 'string', description: 'To Do | Nurture | Working | Disqualified | Completed' },
+            pipeline_stage: { type: 'string', description: 'Research | Qualify | Outreach | Engaged | Pilot | Client | Lost | Disqualified' },
+            icp_tier: { type: 'string', description: 'Tier 1: Priority | Tier 2: Qualified | Tier 3: Monitor | Non-ICP' },
+            regulatory_status: { type: 'string', description: 'Pre-FDA | FDA Cleared | CE Mark Only | FDA + CE Mark | Post-Market' },
+            product_category: { type: 'string', description: 'Hardware device | Hardware device / Combination | SaMD / Hardware device / DTx / Clinical AI / Combination / Other | Clinical AI / SaMD' },
+            engage_decision: { type: 'string', description: 'Proceed | Monitor | Defer | Disqualify' },
+            source: { type: 'string', description: 'Inbound | Referral | LinkedIn | Conference | Research | Other' },
+            timing_status: { type: 'string', description: 'Ready Now | Build Mode | Monitor | Too Mature' },
+            validation_status: { type: 'string', description: 'Pain Validated | Pain Assumed | Wrong Timing | Disqualified' },
+            icp_score: { type: 'number' },
+            hq_location: { type: 'string' },
+            website: { type: 'string' },
+            linkedin_url: { type: 'string' },
+            email: { type: 'string' },
+            notes: { type: 'string', description: 'Replaces the Notes property wholesale. Use for short scalars; long-form intel goes in body_update.' },
+            therapeutic_area: { type: 'array', items: { type: 'string' }, description: 'Multi-select; replaces existing list.' },
+            primary_gap: { type: 'array', items: { type: 'string' }, description: 'Multi-select; replaces existing list.' },
+            last_touch: { type: 'string', description: 'ISO date YYYY-MM-DD.' },
+            response_date: { type: 'string' },
+            next_step_due: { type: 'string' },
+          },
+        },
+        body_update: {
+          type: 'object',
+          description: 'Optional. Append rich research/intel to the page body.',
+          properties: {
+            mode: { type: 'string', description: 'Currently only "append" is supported.' },
+            heading: { type: 'string', description: 'Optional heading_2 prepended before the markdown content (e.g. "Update — April 28, 2026").' },
+            markdown: { type: 'string', description: 'Markdown content. Supported: # ## ### headings, - * bullets, 1. numbered lists, --- dividers, paragraphs. Inline emphasis stripped to plain text.' },
+          },
+          required: ['markdown'],
+        },
+      },
     },
   },
   {
