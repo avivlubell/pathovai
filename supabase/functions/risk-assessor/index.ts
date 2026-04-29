@@ -80,11 +80,30 @@ Deno.serve(async (req) => {
       matchInfo = resolved.match_info;
     }
 
-    const { data: account, error: accountError } = await supabase
+    let { data: account, error: accountError } = await supabase
       .from("accounts")
       .select("*")
       .eq("id", resolvedId)
       .single();
+
+    // Fallback: if UUID lookup failed but we have a company_name, retry
+    // by name. Covers the case where the QB passes a stale/hallucinated
+    // UUID alongside a valid name.
+    if ((!account || accountError) && company_name) {
+      const resolved = await resolveAccountByName(supabase, company_name);
+      if (resolved) {
+        const retry = await supabase
+          .from("accounts")
+          .select("*")
+          .eq("id", resolved.id)
+          .single();
+        if (retry.data) {
+          account = retry.data;
+          accountError = null;
+          matchInfo = resolved.match_info;
+        }
+      }
+    }
 
     if (accountError || !account) {
       return new Response(

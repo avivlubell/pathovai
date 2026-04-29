@@ -52,6 +52,22 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Fallback: if UUID lookup failed but we have a company_name, resolve
+    // by name. Covers the case where the QB passes a stale/hallucinated
+    // UUID alongside a valid name.
+    if (!account && company_name) {
+      const resolved = await resolveAccountByName(supabase, company_name);
+      if (resolved) {
+        const { data } = await supabase
+          .from("accounts")
+          .select("id, company_name, notion_page_id")
+          .eq("id", resolved.id)
+          .single();
+        account = data;
+        matchInfo = resolved.match_info;
+      }
+    }
+
     if (!account) {
       return new Response(
         JSON.stringify({ error: "Account not found", query: company_name ?? null }),

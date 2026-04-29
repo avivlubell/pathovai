@@ -84,6 +84,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Fallback: if UUID lookup failed (stale/hallucinated UUID from QB)
+    // but we have a company_name, resolve by name. Without this, a bad
+    // account_id alongside a valid company_name 404s instead of falling
+    // back to the name.
+    if (!account && inputName) {
+      const resolved = await resolveAccountByName(supabase, inputName);
+      if (resolved) {
+        const { data } = await supabase
+          .from("accounts")
+          .select("*")
+          .eq("id", resolved.id)
+          .single();
+        account = data;
+        matchInfo = resolved.match_info;
+      }
+    }
+
     if (!account) {
       return new Response(
         JSON.stringify({ error: "Account not found", query: inputName ?? null }),

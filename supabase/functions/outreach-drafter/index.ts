@@ -401,7 +401,14 @@ serve(async (req: Request) => {
           }
         }
       }
-    } else if (inputName) {
+    }
+
+    // Fallback: if the UUID lookup didn't find a row (stale/hallucinated
+    // UUID from the QB) but we have a company_name, resolve by name. This
+    // also covers the case where account_id was omitted entirely.
+    // Without this, passing { account_id: "bad-uuid", company_name: "Sibel Health" }
+    // would 404 even though Sibel Health resolves cleanly by name.
+    if (!account && inputName) {
       const resolved = await resolveAccountByName(supabase, inputName);
       if (resolved) {
         const { data } = await supabase
