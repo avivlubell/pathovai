@@ -855,24 +855,24 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
     }
 
     // HARD FABRICATION CHECK: a quoted string whose content is not in
-    // the corpus is suspect. Two paths:
-    // - If the quote sits in a sentence that contains an attribution verb
-    //   (said/wrote/replied/etc.) or "according to" / "per", the quote
-    //   claims to be someone's actual words. Missing from corpus = real
-    //   fabrication risk → strip.
-    // - Otherwise, the quote is most likely rhetorical or a label
-    //   (`no "not interested" responses`, `they call this "VAC purgatory"`).
-    //   Flag in place — keeps the line visible while surfacing the
-    //   unverified phrase. Sentence-scoping is critical: a line like
-    //   "Keith never responded. No bounce, no 'not interested'." has
-    //   `responded` in a separate clause from the quote and should NOT be
-    //   treated as attributed.
+    // the corpus is suspect — but only when it's *attributed*. If the
+    // quote sits in a sentence with an attribution verb (said/wrote/etc.)
+    // or "according to" / "per", it claims to be someone's actual words;
+    // missing from corpus = real fabrication risk → strip.
+    //
+    // If the quote is unattributed, it's almost always rhetorical: a
+    // tone descriptor (`Email 1 is investigative ("are you seeing this?")`),
+    // a label (`they call this "VAC purgatory"`), or a hypothetical
+    // characterization. Flagging these creates more noise than signal —
+    // the specific-claim check below still catches numbers/names/dates,
+    // and the attribution check still catches "<Person> said X" without
+    // a source tag. We log to console for audit trail but do NOT
+    // user-flag.
     const ATTRIBUTION_CONTEXT_RE = new RegExp(
       `\\b(?:${ATTRIB_VERBS.slice(3, -1)}|wrote|writes|replied|replies|responded|responds|cited|cites|quoted|quotes|according to|per)\\b`,
       'i',
     );
     const findQuoteSentence = (text: string, quoteTok: string): string => {
-      // Split on sentence-end punctuation followed by whitespace, OR on em-dash.
       const sentences = text.split(/(?<=[.!?])\s+|\s+—\s+/);
       const needle = quoteTok.toLowerCase();
       const match = sentences.find(s => s.toLowerCase().includes(needle));
@@ -882,8 +882,7 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
     const missingQuote = quoteTokens.find(t => !inCorpus(t));
     if (missingQuote) {
       const sentence = findQuoteSentence(content, missingQuote);
-      const isAttributed = ATTRIBUTION_CONTEXT_RE.test(sentence);
-      if (isAttributed) {
+      if (ATTRIBUTION_CONTEXT_RE.test(sentence)) {
         strippedCount++;
         strippedClaims.push(line.trim());
         console.warn(
@@ -892,17 +891,11 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
         if (i + 1 < lines.length && /^\r?\n$/.test(lines[i + 1])) i++;
         continue;
       }
-      flaggedCount++;
+      // Unattributed — log only, don't flag. Fall through so the
+      // line still goes through attribution + specific-claim checks.
       console.warn(
-        `[verifyClaims] flagged unattributed quoted phrase: ${JSON.stringify(missingQuote)}. line: ${line.slice(0, 160)}`,
+        `[verifyClaims] unattributed quoted phrase not in corpus (not user-flagged): ${JSON.stringify(missingQuote)}. line: ${line.slice(0, 160)}`,
       );
-      kept.push(
-        flagInPlace(
-          line,
-          `contains a quoted phrase ${JSON.stringify(missingQuote)} not found verbatim in tool output, but no attribution in the same sentence — likely rhetorical use; treat as paraphrase`,
-        ),
-      );
-      continue;
     }
 
     // ATTRIBUTION CHECK: lines that attribute thought/quote/action to a
