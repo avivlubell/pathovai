@@ -1306,15 +1306,27 @@ export async function POST(req: Request) {
         try {
           while (round < MAX_TOOL_ROUNDS) {
             round++;
+            const learningsAndContext =
+              (await fetchLearnings()) + conversationContext;
             const response = await anthropic.messages.create({
               model: 'claude-sonnet-4-6',
               max_tokens: 4096,
-              system:
-                SYSTEM_PROMPT + (await fetchLearnings()) + conversationContext,
+              system: [
+                {
+                  type: 'text',
+                  text: SYSTEM_PROMPT,
+                  cache_control: { type: 'ephemeral' },
+                },
+                ...(learningsAndContext
+                  ? [{ type: 'text' as const, text: learningsAndContext }]
+                  : []),
+              ],
               tools,
               tool_choice: { type: 'auto' },
               messages,
             });
+
+            console.log('USAGE:', JSON.stringify(response.usage));
 
             const toolUseBlocks = response.content.filter(
               (b): b is Anthropic.ContentBlock & { type: 'tool_use' } =>

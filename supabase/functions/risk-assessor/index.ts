@@ -164,7 +164,13 @@ Assess all risks for this account. Return ONLY valid JSON.`;
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 2000,
-        system: RISK_SYSTEM_PROMPT,
+        system: [
+          {
+            type: "text",
+            text: RISK_SYSTEM_PROMPT,
+            cache_control: { type: "ephemeral" },
+          },
+        ],
         messages: [{ role: "user", content: userMessage }],
       }),
     });

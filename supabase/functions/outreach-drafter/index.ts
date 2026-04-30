@@ -215,7 +215,13 @@ async function fetchLearnings(supabase: any): Promise<string> {
   return section;
 }
 
-async function callClaude(systemPrompt: string, userMessage: string, apiKey: string) {
+type SystemBlock = {
+  type: "text";
+  text: string;
+  cache_control?: { type: "ephemeral" };
+};
+
+async function callClaude(systemBlocks: SystemBlock[], userMessage: string, apiKey: string) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -227,7 +233,7 @@ async function callClaude(systemPrompt: string, userMessage: string, apiKey: str
       model: MODEL,
       max_tokens: MAX_TOKENS,
       messages: [{ role: "user", content: userMessage }],
-      system: systemPrompt,
+      system: systemBlocks,
     }),
   });
   const json = await response.json();
@@ -467,11 +473,20 @@ serve(async (req: Request) => {
       `=== PRIOR OUTREACH HISTORY (most recent first) ===\n${commsSection}`,
     ].filter(Boolean).join("\n\n");
 
-    const fullSystemPrompt = SYSTEM_PROMPT + learningsSection;
+    const systemBlocks: SystemBlock[] = [
+      {
+        type: "text",
+        text: SYSTEM_PROMPT,
+        cache_control: { type: "ephemeral" },
+      },
+    ];
+    if (learningsSection) {
+      systemBlocks.push({ type: "text", text: learningsSection });
+    }
 
     // First draft.
     const firstUserMessage = `Draft personalized outreach for this account:\n\n${accountContext}`;
-    const first = await callClaude(fullSystemPrompt, firstUserMessage, anthropicKey);
+    const first = await callClaude(systemBlocks, firstUserMessage, anthropicKey);
     let draft = parseDraftJson(first.text);
     let qa: QaReport = draft
       ? runQaOnDraft(draft, account.company_name)
@@ -484,7 +499,7 @@ serve(async (req: Request) => {
     if (!qa.passed && !hasCompanyMismatch) {
       retried = true;
       const retryMessage = buildRetryMessage(accountContext, draft ?? { raw: first.text }, qa);
-      const second = await callClaude(fullSystemPrompt, retryMessage, anthropicKey);
+      const second = await callClaude(systemBlocks, retryMessage, anthropicKey);
       const retryDraft = parseDraftJson(second.text);
       usage.retry = second.usage;
       if (retryDraft) {
