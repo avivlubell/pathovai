@@ -79,6 +79,8 @@ function humanizeToolCall(
       return 'Querying deals pipeline';
     case 'query_icp_triggers':
       return 'Querying ICP trigger monitor';
+    case 'query_industry_intelligence':
+      return 'Querying market intelligence briefings';
     case 'query_touches':
       return pickName() ? `Pulling touches for ${pickName()}` : 'Pulling outreach touches';
     case 'log_outreach_touch':
@@ -147,6 +149,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   get_communications: 'get-communications',
   query_deals: 'query-deals',
   query_icp_triggers: 'query-icp-triggers',
+  query_industry_intelligence: 'query-industry-intelligence',
   query_touches: 'query-touches',
   log_outreach_touch: 'log-outreach-touch',
   log_outreach_sequence: 'log-outreach-sequence',
@@ -250,6 +253,25 @@ const tools: Anthropic.Tool[] = [
           },
         },
         limit: { type: 'number', description: 'Max rows to return (default 25, max 100)' },
+      },
+    },
+  },
+  {
+    name: 'query_industry_intelligence',
+    description: 'Query the 📡 Market Intelligence Briefings — Notion-sourced weekly scan of MedTech commercial signals (RAPID/CMS/CPT pathway updates, GPO contract wins, hospital M&A, FDA clearances in adjacent categories, funding climate, technology tailwinds/headwinds). This is news about the WORLD a prospect operates in, not facts about the prospect itself. Use as a precondition before invoke_outreach_drafter to find timely macro hooks (RAPID pathway, M&A in their category, new CPT codes), and on direct user questions like "what\'s new this week?" / "any RAPID news?" / "what\'s happening in cardiovascular?". Filter by category, signal_type, therapeutic_area, topic_tags, icp_stage, urgency_window, and recency_days. Returns rows of {title, category, signal_type, source_publication, source_url, source_date, what_happened, so_what, urgency_window}.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: { type: 'string', description: 'Single-select. One of: "Procurement & VAC", "Reimbursement & Payer", "Regulatory & FDA", "Funding & Investor", "Tech Trend".' },
+        signal_type: { type: 'string', description: 'Single-select. One of: "Tailwind", "Headwind", "Event", "Mixed".' },
+        therapeutic_area: { type: 'array', items: { type: 'string' }, description: 'Match ANY of these therapeutic areas (array overlap). Allowed values: cardiovascular, neurology, orthopedics, imaging, RPM, AI diagnostics, surgical robotics, digital health, ambient AI, transseptal, oncology, point-of-care.' },
+        topic_tags: { type: 'array', items: { type: 'string' }, description: 'Match ANY of these topic tags (array overlap). Allowed values: RAPID, GPO, M&A, CPT-2026, breakthrough-designation, prior-auth, ambient, EHR-integration, 510k, robotics, ASC, IDN-consolidation, Vizient, Premier, HealthTrust, FHIR.' },
+        icp_stage: { type: 'array', items: { type: 'string' }, description: 'Match ANY of these ICP stages (array overlap). Allowed values: pre-clearance, post-clearance, pilot, scaling, bridge.' },
+        buyer_persona: { type: 'array', items: { type: 'string' }, description: 'Match ANY of these buyer personas (array overlap). Allowed values: CMO, VAC, Supply Chain, CFO, CIO, Procurement.' },
+        urgency_window: { type: 'string', description: 'Single-select. One of: "This week", "30-60 days", "Quarter", "Standing".' },
+        recency_days: { type: 'number', description: 'Only rows where source_date is within the last N days. Default 60. Pass 0 for no recency filter.' },
+        query: { type: 'string', description: 'Free-text fuzzy match against title / what_happened / so_what.' },
+        limit: { type: 'number', description: 'Max rows to return (default 5, max 25).' },
       },
     },
   },
@@ -701,7 +723,7 @@ const VERIFIER_TOOL = {
             reason: {
               type: 'string',
               description:
-                'One sentence explaining what specifically is missing from the data.',
+                'One sentence stating the specific entity/number/date/quote you searched for in the corpus and confirming it was absent. Format: "Searched corpus for X — not present." Do not use generic phrases like "needs a source tag" or "doesn\'t say where this came from"; those are not valid grounding-failure reasons.',
             },
             criticality: {
               type: 'string',
@@ -739,6 +761,15 @@ const VERIFIER_TOOL = {
 
 const VERIFIER_SYSTEM_PROMPT = `You are a fact-checker for a sales prospecting assistant. You receive a draft response the assistant wrote and the raw tool outputs the assistant pulled. Identify specific claims in the draft that cannot be grounded in the tool outputs.
 
+YOUR ONE JOB is grounding: did the entity / number / date / quote in the draft appear in the corpus? Nothing else.
+
+You are NOT a style reviewer, citation reviewer, or QA assistant. Specifically, do not:
+- Flag lines for missing inline source tags, citations, or attribution. The assistant has its own rules about citations; that is not your concern.
+- Invent your own QA criteria. The "Do NOT flag" list below is exhaustive — if a line doesn't fall into a flag category from THIS prompt, leave it alone.
+- Use generic reasons like "doesn't say where this came from" or "needs a source tag". The only valid reason to flag is that you searched the corpus and the specific entity/number/date/quote is genuinely absent.
+
+Before flagging anything, you MUST search the corpus for the supporting evidence. The reason field MUST quote a verbatim excerpt of what you searched for and confirm the corpus did not contain it. If you cannot articulate what specifically you searched for and didn't find, do not flag.
+
 Be tolerant of harmless format differences:
 - Date formats: "Dec 2025", "December 2025", "12/2025", "2025-12-15" all refer to the same date.
 - Name variants: "IdentifEye" matches "Identifeye" matches "identifeye health". Case and spacing don't matter.
@@ -764,8 +795,25 @@ Do NOT flag:
 - Section headers, labels, or table column headers.
 - Editorial summaries, paraphrases, or meta-statements about how a knowledge-base / reference document labels, frames, indexes, or organizes content — these are the assistant's interpretation of the source, not factual claims about prospects, dates, or entities. Examples to leave alone: "the term used in the KB is X", "the KB frames this as Y", "it's not indexed under Z as a label", "the solution framing — not 'remove the founder', but…". Quoted key phrases inside such summaries are the assistant naming a concept, not asserting a verbatim citation, and should not be flagged just because the exact phrase isn't in the corpus.
 - Conceptual / methodology questions answered from \`search_references\` (the Pathova Reference Library). The corpus is internal methodology docs; the assistant is allowed to summarize, paraphrase, and re-label content. Only flag if the assistant invents a specific entity, number, date, person, or quote that isn't supported anywhere in the corpus.
+- Self-reports about tool execution and session state — statements describing what a tool call did or did not return ("the query returned zero results", "no rows came back from search_accounts_and_contacts", "I couldn't find X in the data I pulled", "the touches log has 63 unique accounts"). These describe the assistant's own session, not claims about prospects, and are unverifiable from a corpus that contains only tool outputs by construction.
+- Statements about the assistant's own capabilities, tool availability, or process limitations ("there's no single query that returns Y", "I'd need to pull each account individually", "this would be labor intensive", "I don't have a tool that does Z"). These describe the toolset, not the data.
+- Procedural recommendations and suggested user actions ("you could run a Notion filter where X is empty", "the fastest path is to check Y", "try opening Z and filtering by W"). Advice about what the user *could do* is not a factual assertion about prospects, dates, or entities — even if it names a Notion property or describes a feature. Only flag if the recommendation embeds a specific made-up entity, number, or quote.
+- Hedged inferences and hypotheses explicitly framed as such ("this looks like a sync gap between Notion and Supabase", "appears to be incomplete", "I'd guess that…"). Only flag if the hedge wraps a specific invented entity/number/date/quote.
+- Faithful row summaries from tool query results. If \`query_deals\` returned a row for "Healables" with stage "Won" and a non-empty notes field, then the draft line "Healables / Won / Detailed notes present" is a correct summary of that row. Words like "Detailed notes present", "No notes", "notes available", "stage: Won", "in qualifying" are the assistant's characterizations of row content — do not require these phrases to appear verbatim in the corpus. Only flag if the company isn't in the deals output, the stage is wrong, or the notes-presence summary contradicts what's actually in the row.
+- Copy-pasteable research prompts the assistant authored for the user to run in an external tool (Perplexity, Comet, Crunchbase, FDA 510(k), Notion AI, LinkedIn). These are imperatives, not claims — they tell the user what to fetch, not what is true. Recognize them by the imperative voice ("Search for…", "Return all funding rounds…", "List every person with…", "Copy verbatim…", "Find any page mentioning…"), and by adjacent venue pointers like "→ Crunchbase" or "→ FDA 510(k) database". The assistant naming a target company inside such a prompt (e.g. "Search for 'Aevice Health'") is not a claim about Aevice — it's a query string. Leave the entire block alone.
+- Section headers and venue pointers: lines like "PRIORITY 4 — Funding verification", "PRIORITY 7 — Red flags check", "→ Crunchbase", "→ LinkedIn people page" are scaffolding for the prompt blocks above. They are not claims and have no source to cite. Never flag them with reasons like "doesn't say where this came from" or "needs a source tag" — that reason is categorically banned.
 
-Be conservative. False positives are worse than missed edge cases — the user has explicitly asked for fewer false flags. Return empty arrays if nothing is wrong.
+Worked example. Suppose the corpus contains a \`query_deals\` block with rows including:
+  { company: "Healables", stage: "Won", notes: "Long detailed text here..." }
+  { company: "PathKeeper Surgical", stage: "Won", notes: null }
+The draft says:
+  - Healables / Won / Detailed notes present
+  - PathKeeper Surgical / Won / No notes
+Correct verifier output: empty flag array. Both lines are faithful summaries of rows that exist in the corpus, even though the strings "Detailed notes present" and "No notes" do not appear verbatim in the data.
+
+Be conservative. False positives are worse than missed edge cases — the user has explicitly asked for fewer false flags. Return empty arrays if nothing is wrong. When in doubt, don't flag.
+
+Rule of thumb before flagging: ask "is this a claim about a prospect, person, company, date, number, or quote?" If it's a claim about *the assistant's tools*, *the act of querying*, *what the user could do next*, *the assistant's own uncertainty*, or *a faithful summary of a row that exists in the corpus*, do not flag it — even if the exact wording isn't in the corpus, since the corpus is tool output, not session metadata.
 
 For each flagged item, the \`line\` field MUST be a verbatim copy of the draft line (including leading bullet/number/pipe characters) so it can be located by exact substring match and replaced.`;
 
@@ -775,6 +823,16 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
   const corpus = toolCalls
     .map(tc => `=== ${tc.name} ===\n${tc.result}`)
     .join('\n\n');
+
+  // Fenced code blocks in the draft are copy-pasteable research prompts
+  // (per prompt.txt's GAP rendering convention). Their contents are
+  // imperatives the user will run in Perplexity / Crunchbase / FDA, not
+  // factual claims about prospects — redact them so the verifier doesn't
+  // try to ground "Search for 'Aevice'" or "Return all funding rounds".
+  const draftForVerifier = text.replace(
+    /```[\s\S]*?```/g,
+    '```[copy-pasteable research prompt — not a factual claim, ignore]```',
+  );
 
   type Flag = { line: string; claim: string; reason: string; criticality: string };
   type Strip = { line: string; reason: string };
@@ -798,7 +856,7 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
         {
           role: 'user',
           content:
-            `<draft>\n${text}\n</draft>\n\n` +
+            `<draft>\n${draftForVerifier}\n</draft>\n\n` +
             `<tool_data>\n${corpus}\n</tool_data>`,
         },
       ],
@@ -817,6 +875,28 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
     return text;
   }
 
+  // Drop flags whose reason is a banned meta-pattern. The verifier prompt
+  // forbids reasons like "doesn't say where this came from" / "needs a source
+  // tag" — they are not grounding failures, they're style/citation gripes.
+  // Haiku occasionally violates the rule anyway, so we enforce it here too.
+  const BANNED_REASON = /\b(needs?|missing|add|lacks?|requires?|without|no)\s+(an?\s+)?(source|citation|reference|attribution)\s*(tag|link|url)?|doesn'?t\s+say\s+where|where\s+(the\s+)?(quote|claim|info(rmation)?)\s+came\s+from|missing\s+(a\s+)?source\s+tag\b/i;
+  const beforeFlagFilter = flags.length;
+  flags = flags.filter(f => {
+    if (!f.reason) return true;
+    if (BANNED_REASON.test(f.reason)) {
+      console.warn(
+        `[verifyClaims] dropped flag with banned meta-reason: ${JSON.stringify(f.reason.slice(0, 160))}`,
+      );
+      return false;
+    }
+    return true;
+  });
+  if (flags.length !== beforeFlagFilter) {
+    console.warn(
+      `[verifyClaims] filtered ${beforeFlagFilter - flags.length} flag(s) with banned reasons`,
+    );
+  }
+
   if (flags.length === 0 && strips.length === 0) return text;
 
   // Map each data-pulling tool to the Notion database it ultimately mirrors.
@@ -829,6 +909,7 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
     get_account_detail: 'Outreach Intelligence',
     search_accounts_and_contacts: 'Outreach Intelligence (and Contacts)',
     query_icp_triggers: 'ICP Trigger Monitor',
+    query_industry_intelligence: 'Industry Intelligence (Market Intelligence Briefings)',
     query_deals: 'Motions & Deals',
     sync_account_content: 'Outreach Intelligence',
     search_references: 'Pathova Reference Library',
