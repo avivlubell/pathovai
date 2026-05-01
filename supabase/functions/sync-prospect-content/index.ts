@@ -109,6 +109,7 @@ function getProp(props: any, name: string, type: string): any {
     case "checkbox": return prop.checkbox ?? null;
     case "url": return prop.url || null;
     case "date": return prop.date?.start || null;
+    case "relation": return prop.relation?.map((r: any) => r.id.replace(/-/g, "")) || [];
     default: return null;
   }
 }
@@ -205,11 +206,15 @@ serve(async (req) => {
       || company_name
       || "Unknown";
 
-    const notionUrl = page.url || `https://notion.so/${pageId}`;
+    // Canonicalize page id to match sync-prospects (which always strips dashes
+    // before upserting on notion_page_id). Without this, a dashed input id
+    // would create a duplicate row instead of updating the existing one.
+    const canonicalPageId = (page.id || pageId).replace(/-/g, "");
+    const notionUrl = page.url || `https://notion.so/${canonicalPageId}`;
 
     // Build prospect record from properties
     const record: any = {
-      notion_page_id: pageId,
+      notion_page_id: canonicalPageId,
       notion_url: notionUrl,
       company_name: companyName,
       icp_score: getProp(props, "ICP Score", "number"),
@@ -244,6 +249,23 @@ serve(async (req) => {
 
     // NOTE: skipped key_contacts write — that column doesn't exist on accounts and
     // would fail the upsert. Contacts in the page body now flow through research_output.
+
+    // Read OI's Company relation and link to companies table. We only set the FK
+    // if the linked Companies page already exists in Supabase — otherwise the
+    // hard FK on accounts.company_notion_page_id would reject the upsert. Missing
+    // links are silently skipped (the next sync-companies run + retry will fix it).
+    const companyRelationIds = getProp(props, "Company", "relation");
+    if (companyRelationIds && companyRelationIds.length > 0) {
+      const companyPageId = companyRelationIds[0];
+      const { data: companyRow } = await supabase
+        .from("companies")
+        .select("notion_page_id")
+        .eq("notion_page_id", companyPageId)
+        .maybeSingle();
+      if (companyRow) {
+        record.company_notion_page_id = companyPageId;
+      }
+    }
 
     // Clean nulls
     const clean: any = {};

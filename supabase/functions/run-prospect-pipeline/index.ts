@@ -118,8 +118,8 @@ async function runPipelineForProspect(prospect: { id: string; company_name: stri
       company_name: prospect.company_name,
     });
     results.icp_scorer = { ok: scorerResult.ok, status: scorerResult.status };
-    if (scorerResult.ok && scorerResult.data?.scoring?.tier === "LOW") {
-      console.info(`[Pipeline] ${prospect.company_name} scored LOW/disqualified - skipping remaining agents`);
+    if (scorerResult.ok && scorerResult.data?.tier === "Non-ICP") {
+      console.info(`[Pipeline] ${prospect.company_name} scored Non-ICP/disqualified - skipping remaining agents`);
       results.skipped_agents = ["risk-assessor", "outreach-drafter"];
       results.skip_reason = "disqualified_by_scorer";
       results.duration_ms = Date.now() - startTime;

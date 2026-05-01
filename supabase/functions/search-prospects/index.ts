@@ -28,8 +28,8 @@ Deno.serve(async (req: Request) => {
 
     // 1. Fuzzy name matches (accounts + contacts).
     const [fuzzyAccounts, fuzzyContacts] = await Promise.all([
-      fuzzyFindAccounts(supabase, q, { limit: 25, minScore: 0.3 }),
-      fuzzyFindContacts(supabase, q, { limit: 25, minScore: 0.3 }),
+      fuzzyFindAccounts(supabase, q, { limit: 250, minScore: 0.3 }),
+      fuzzyFindContacts(supabase, q, { limit: 250, minScore: 0.3 }),
     ]);
 
     if (fuzzyAccounts.length > 0) {
@@ -59,7 +59,7 @@ Deno.serve(async (req: Request) => {
       .or(
         `product_category.ilike.%${q}%,hq_country.ilike.%${q}%,tier.ilike.%${q}%`,
       )
-      .limit(25);
+      .limit(250);
     for (const row of ilikeAccounts || []) {
       if (!accountMap.has(row.id)) {
         accountMap.set(row.id, { ...row, _match_score: null, _matched_on: 'keyword' });
@@ -88,7 +88,7 @@ Deno.serve(async (req: Request) => {
       .or(
         `email.ilike.%${q}%,title.ilike.%${q}%,company_name.ilike.%${q}%`,
       )
-      .limit(25);
+      .limit(250);
     for (const row of ilikeContacts || []) {
       if (!contactById.has(row.id)) {
         contactById.set(row.id, { ...row, _match_score: null });
@@ -101,13 +101,13 @@ Deno.serve(async (req: Request) => {
       .from('accounts')
       .select(ACCOUNT_COLUMNS)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(500);
     for (const row of data || []) accountMap.set(row.id, row);
 
     const { data: contacts } = await supabase
       .from('contacts')
       .select(CONTACT_COLUMNS)
-      .limit(50);
+      .limit(500);
     contactResults = contacts || [];
   }
 

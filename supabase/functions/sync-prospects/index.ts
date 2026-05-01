@@ -19,6 +19,7 @@ function getProp(props, name, type) {
     case "url": return prop.url || null;
     case "email": return prop.email || null;
     case "people": return prop.people ? prop.people.map(function(p) { return p.name; }).join(", ") : null;
+    case "relation": return prop.relation ? prop.relation.map(function(r) { return r.id.replace(/-/g, ""); }) : [];
     default: return null;
   }
 }
@@ -58,16 +59,27 @@ async function fetchAllGIPages() {
   return items;
 }
 
-function mapPageToRecord(page) {
+function mapPageToRecord(page, knownCompanyIds) {
   var props = page.properties || {};
   var pageId = page.id.replace(/-/g, "");
   var notionUrl = page.url || "https://notion.so/" + pageId;
   var companyName = getProp(props, "Account", "title") || "Unknown";
   var now = new Date().toISOString();
+
+  // Resolve Company relation to FK only if the linked company already exists in
+  // Supabase. The companies table has a hard FK on notion_page_id, so missing
+  // links are skipped — the next sync-companies run will close the gap.
+  var companyFk = null;
+  var companyRel = getProp(props, "Company", "relation");
+  if (companyRel && companyRel.length > 0 && knownCompanyIds && knownCompanyIds.has(companyRel[0])) {
+    companyFk = companyRel[0];
+  }
+
   return {
     notion_page_id: pageId,
     notion_url: notionUrl,
     company_name: companyName,
+    company_notion_page_id: companyFk,
     icp_score: getProp(props, "ICP Score", "number"),
     tier: getProp(props, "Pathova ICP Tier", "select"),
     gap0_severity: getProp(props, "Gap 0 Severity", "select"),
@@ -99,10 +111,22 @@ Deno.serve(async function(req) {
     var giPages = await fetchAllGIPages();
     totalFound = giPages.length;
 
+    // Pre-load known company notion_page_ids so we can populate the FK in one
+    // pass without per-row lookups. Missing companies fall back to NULL.
+    var knownCompanyIds = new Set();
+    var companiesResult = await supabase.from("companies").select("notion_page_id");
+    if (companiesResult.error) {
+      errorDetails.push("companies-prefetch:" + companiesResult.error.message);
+    } else if (companiesResult.data) {
+      for (var c = 0; c < companiesResult.data.length; c++) {
+        knownCompanyIds.add(companiesResult.data[c].notion_page_id);
+      }
+    }
+
     var records = [];
     for (var i = 0; i < giPages.length; i++) {
       try {
-        records.push(cleanRecord(mapPageToRecord(giPages[i])));
+        records.push(cleanRecord(mapPageToRecord(giPages[i], knownCompanyIds)));
       } catch (e) {
         errorCount++;
         errorDetails.push("map:" + e.message);

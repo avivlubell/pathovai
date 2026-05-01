@@ -18,7 +18,7 @@ const NOTION_HEADERS = {
 function getProp(props: any, name: string, type: string): any {
   var prop = props[name];
   if (!prop) return null;
-  switch (type) {h
+  switch (type) {
     case "title": return prop.title ? prop.title.map((t: any) => t.plain_text).join("") : null;
     case "rich_text": return prop.rich_text ? prop.rich_text.map((t: any) => t.plain_text).join("") : null;
     case "select": return prop.select ? prop.select.name : null;
