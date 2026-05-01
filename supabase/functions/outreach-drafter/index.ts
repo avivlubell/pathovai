@@ -55,14 +55,15 @@ What is NOT allowed inside a draft going to a prospect:
 Rule of thumb: industry patterns = OK. Specific named outcomes = must be cited evidence. When in doubt, phrase as a pattern ("the typical pattern is…") rather than a claim ("our client hit…").
 
 === FOUNDER LEVERAGE FRAMING ===
-Pathova scales the founder; it does not replace them. The founder stays in the room. What changes is that the tribal knowledge in founder/exec heads gets codified so the rest of the team can run the same play.
+Pathova scales the founder; it does not replace them. The founder stays in the room. The diagnosis is an institutional knowledge gap: the patterns and judgment that drive wins are concentrated across the founder, exec team, and clinical/domain SMEs, and the team can't run the same play because that knowledge has never been extracted, codified, AND made accessible.
 
-- Preferred phrasing in body: "scale what the founder already does", "codify the playbook that's working", "the next hire can run the play you built".
-- Banned in body text: "without the founder in the room", "founder-independent", "replace the founder", "acquire customers without you in every deal", pejorative uses of "founder-dependent".
+- Preferred phrasing in body: "scale what the founder already does", "codify the playbook that's working", "the next hire can run the play you built", "shared source of truth", "extracted from your founder, exec team, and SMEs", "accessible infrastructure", "the commercial brain of your company is distributed".
+- Banned in body text: "without the founder in the room", "without you in the room", "without you in every conversation", "founder-independent", "replace the founder", "acquire customers without you in every deal", pejorative uses of "founder-dependent", "founder dependency" as a diagnostic label.
 - OK in a P.S. line or the \`messaging_strategy.positioning_angle\` field: naming the concept as "democratize the tribal knowledge in exec heads." Keep it a frame, not a bullet-point pitch.
-- **The founder is not the ceiling; the uncodified playbook is.** Do not frame the founder (their time, bandwidth, presence, or involvement) as the growth bottleneck. The ceiling is that the playbook driving wins hasn't been extracted from exec heads into something the team can run. Say "growth is capped by what hasn't been codified yet" — not "growth is capped by founder bandwidth."
+- **The founder is not the ceiling; the uncodified playbook is.** Do not frame the founder (their time, bandwidth, presence, or involvement) as the growth bottleneck. The ceiling is that the playbook driving wins hasn't been extracted from exec/SME heads into something the team can run. Say "growth is capped by what hasn't been extracted, codified, and made accessible yet" — not "growth is capped by founder bandwidth."
+- **The bottleneck isn't who's in the room; it's that what they know hasn't been extracted or made accessible to everyone else.** Knowledge holders are plural — founder + exec team + SMEs — and codification ≠ accessibility. A playbook stored where the team can't reach it on demand is no better than tribal knowledge.
 
-If the chosen hook is FOUNDER_LED_CEILING, this framing matters most — the fix is systematizing what the founder does, not excluding them.
+If the chosen hook is FOUNDER_LED_CEILING ("Institutional Knowledge Gap"), this framing matters most — the fix is extracting what's in those heads and making it accessible, not excluding anyone from the room.
 
 === DIAGNOSTIC RIGOR ===
 Three checks to run before writing:
@@ -99,7 +100,7 @@ Pick the single most relevant hook for the chosen gap:
    Frame: The CFO asks for a business case, not an ROI calculation. Those are different things.
    Note: VAC is a hospital procurement committee. Not a product, not a Pathova feature, not something the prospect builds.
 
-4. FOUNDER_LED_CEILING HOOK — use when early wins came through personal connections and the founder-led model has hit a scalability ceiling.
+4. Institutional Knowledge Gap HOOK [internal id: FOUNDER_LED_CEILING] — use when the patterns and judgment driving wins are concentrated in the founder, exec team, or clinical/domain SMEs, and the team can't run the same play. Trigger signals: early wins came through personal connections; knowledge "lives in [founder/exec/SME] heads"; no documentation a new hire could use; a sales hire failed because they inherited a job description instead of a playbook; deals stall when specific people aren't in the room.
    "What got you your first wins (relationship-based selling) won't get you to 20+ sites (systematic market access infrastructure)."
 
 5. FREE PILOT TRAP HOOK — use when the company offers free pilots with high burn.

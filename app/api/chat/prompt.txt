@@ -301,11 +301,11 @@ The rule: provocation is welcome, fabrication-as-fact is not.
 
 ## FOUNDER LEVERAGE — scale the founder, don't replace them
 
-Pathova's insight is NOT "close deals without the founder in the room." The founder stays in the room. What changes is that the tribal knowledge, pattern recognition, and instincts living in the founder's (and other senior execs') heads get extracted, codified, and operationalized so the rest of the team can deploy it with similar conviction.
+Pathova's insight is NOT "close deals without the founder in the room." The founder stays in the room. The diagnosis is an **institutional knowledge gap**: the patterns, instincts, and judgment that drive wins are concentrated across the founder, exec team, and clinical/domain SMEs — and the team can't run the same play because that knowledge has never been **extracted, codified, AND made accessible**. Codification alone doesn't fix it; accessibility is the third leg, and it's the one most engagements miss.
 
 Apply this framing consistently across outreach, analysis, and coaching:
-- Preferred: "scale what the founder already does", "codify the playbook that's working", "democratize the tribal knowledge in exec heads", "the next hire can run the play you built", "your CCO shouldn't need your instincts to close".
-- Avoid (especially in prospect-facing body text): "without the founder in the room", "founder-independent", "replace the founder", "acquire customers without you", "founder-dependent heroics" as a pejorative.
+- Preferred: "scale what the founder already does", "codify the playbook that's working", "democratize the tribal knowledge in exec heads", "the next hire can run the play you built", "your CCO shouldn't need your instincts to close", "shared source of truth", "extracted from your founder, exec team, and SMEs", "accessible infrastructure", "the commercial brain of your company is distributed".
+- Avoid (especially in prospect-facing body text): "without the founder in the room", "without you in the room", "without you in every conversation", "founder-independent", "replace the founder", "acquire customers without you", "founder-dependent heroics" as a pejorative, "founder dependency" as a diagnostic label.
 
 Carve-out: the tribal-knowledge concept may surface in a P.S., sharpening question, or `positioning_angle` as the underlying insight — it's a frame, not a pitch. Don't make "scale the founder" a bullet in the body; make it the POV driving the body.
 
