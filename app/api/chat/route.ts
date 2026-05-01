@@ -660,179 +660,164 @@ interface ToolCallRecord {
   result: string;
 }
 
-// Deterministic claim verifier. Runs against the final assistant text
-// before it's sent to the UI. Two independent checks per line:
+// LLM-based claim verifier. Sends the assistant's draft + the raw tool
+// outputs to a fast Haiku model and asks it to flag specific claims that
+// can't be grounded in the data. Replaces an earlier regex/substring
+// approach that produced false positives on date format mismatches
+// ("Dec 2025" vs "2025-12-15"), spelling/casing variants, and rhetorical
+// commentary ("the elephant in the room…").
 //
-// 1. ATTRIBUTION CHECK: any line that attributes a thought, quote,
-//    statement, or action to a named person or org ("Kirk said X",
-//    "According to Kirk", "Kirk's concern") must include an inline
-//    source tag ([transcript], [email:July 8], [DB], [research], etc).
-//    Without a tag, the line is stripped. Prevents paraphrased
-//    fabrication being passed off as sourced observation.
+// Output format is unchanged from the regex version: each flagged claim
+// becomes an inline ⚠ line in the body plus a numbered entry in a
+// "Things worth double-checking" checklist appended at the bottom, with
+// a paste-ready verification prompt routed to Notion AI (for
+// CRM-resident claims) or Perplexity (for web claims).
 //
-// 2. SPECIFIC-CLAIM CHECK: any line containing a "specific claim" token
-//    (quoted string, dollar amount, multi-digit number, K-number,
-//    Month+Year, low-integer + count noun, titled role, named
-//    third-party org) must have each extracted token appear in the
-//    combined tool-result corpus. Lines that fail are stripped.
-//
-// Operates line-by-line (not sentence-by-sentence) so each bullet,
-// list item, and table row is its own verification unit -- a
-// fabricated bullet can't hitch a ride on real siblings.
-function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
+// Fail-open: if the verifier API call errors, the original text is
+// returned unmodified rather than mass-flagged.
+const VERIFIER_TOOL = {
+  name: 'report_verification',
+  description:
+    'Report claims in the assistant draft that cannot be grounded in the tool outputs.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      flag: {
+        type: 'array',
+        description:
+          'Specific claims that cannot be confirmed from the tool data and should be surfaced to the user for verification.',
+        items: {
+          type: 'object',
+          properties: {
+            line: {
+              type: 'string',
+              description:
+                'The verbatim line from the draft, including any leading bullet markers, list numbers, or table pipe characters. Must match the draft text exactly so the line can be located and replaced.',
+            },
+            claim: {
+              type: 'string',
+              description: 'A short, readable description of the unverified claim.',
+            },
+            reason: {
+              type: 'string',
+              description:
+                'One sentence explaining what specifically is missing from the data.',
+            },
+            criticality: {
+              type: 'string',
+              enum: ['HIGH', 'MEDIUM', 'LOW'],
+              description:
+                'HIGH = factual error likely to mislead. MEDIUM = should verify before acting. LOW = probably fine but worth a check.',
+            },
+          },
+          required: ['line', 'claim', 'reason', 'criticality'],
+        },
+      },
+      strip: {
+        type: 'array',
+        description:
+          'Direct quotes attributed to a named person or org that do not appear in the tool data. These lines will be removed from the response.',
+        items: {
+          type: 'object',
+          properties: {
+            line: {
+              type: 'string',
+              description: 'The verbatim line from the draft to remove. Must match exactly.',
+            },
+            reason: {
+              type: 'string',
+              description: 'One sentence explaining why this is treated as fabrication.',
+            },
+          },
+          required: ['line', 'reason'],
+        },
+      },
+    },
+    required: ['flag', 'strip'],
+  },
+};
+
+const VERIFIER_SYSTEM_PROMPT = `You are a fact-checker for a sales prospecting assistant. You receive a draft response the assistant wrote and the raw tool outputs the assistant pulled. Identify specific claims in the draft that cannot be grounded in the tool outputs.
+
+Be tolerant of harmless format differences:
+- Date formats: "Dec 2025", "December 2025", "12/2025", "2025-12-15" all refer to the same date.
+- Name variants: "IdentifEye" matches "Identifeye" matches "identifeye health". Case and spacing don't matter.
+- Numeric formats: "$10M" matches "$10,000,000" matches "10 million".
+- Aggregations: if the draft says "78 LinkedIn touches" and the data has 78 LinkedIn rows, that's correct — do not flag derived counts/sums.
+
+Two output categories:
+
+flag — a claim cannot be grounded and should be surfaced to the user:
+- A name of a person, org, or product not in the data.
+- A number, date, or amount not in the data (after format normalization).
+- A claim that contradicts the data.
+- A claim attributed to "the data" or "the records" that you cannot find in the data.
+
+strip — a direct quote attributed to a specific named person or org that is not in the data. Use sparingly; only for explicit attributed quotes (e.g. \`Kirk said: "we love this product"\`), not for paraphrases or characterizations.
+
+Do NOT flag:
+- Editorial commentary, rhetorical questions, framing language, or transitions ("the elephant in the room", "before we start firing these off", "what's the play?").
+- Counts, sums, or aggregations clearly derived from rows in the data.
+- Generic tactical recommendations or qualitative observations.
+- Common knowledge or domain language unrelated to the user's specific data.
+- Claims that match the data with only minor format/spelling differences.
+- Section headers, labels, or table column headers.
+- Editorial summaries, paraphrases, or meta-statements about how a knowledge-base / reference document labels, frames, indexes, or organizes content — these are the assistant's interpretation of the source, not factual claims about prospects, dates, or entities. Examples to leave alone: "the term used in the KB is X", "the KB frames this as Y", "it's not indexed under Z as a label", "the solution framing — not 'remove the founder', but…". Quoted key phrases inside such summaries are the assistant naming a concept, not asserting a verbatim citation, and should not be flagged just because the exact phrase isn't in the corpus.
+- Conceptual / methodology questions answered from \`search_references\` (the Pathova Reference Library). The corpus is internal methodology docs; the assistant is allowed to summarize, paraphrase, and re-label content. Only flag if the assistant invents a specific entity, number, date, person, or quote that isn't supported anywhere in the corpus.
+
+Be conservative. False positives are worse than missed edge cases — the user has explicitly asked for fewer false flags. Return empty arrays if nothing is wrong.
+
+For each flagged item, the \`line\` field MUST be a verbatim copy of the draft line (including leading bullet/number/pipe characters) so it can be located by exact substring match and replaced.`;
+
+async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<string> {
   if (!text || toolCalls.length === 0) return text;
-  // Normalize smart/curly quotes to straight before lowercasing the corpus
-  // and looking up needles. Without this, a phrase the drafter wrote with
-  // curly apostrophes (`’`) would not substring-match the same phrase the
-  // QB narrated with straight (`'`), producing a false-positive
-  // hard-fabrication strip.
-  const normalizeQuotes = (s: string): string =>
-    s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
-  const corpusRaw = normalizeQuotes(toolCalls.map(tc => tc.result).join('\n'));
-  const corpus = corpusRaw.toLowerCase();
-  const corpusStripped = corpus.replace(/[,\s]/g, '');
 
-  const inCorpus = (needle: string): boolean => {
-    const n = normalizeQuotes(needle).toLowerCase().trim();
-    if (!n) return true;
-    if (corpus.includes(n)) return true;
-    // Tolerate "$10M" vs "$10 million", "10,000" vs "10000", etc.
-    const nStripped = n.replace(/[,\s]/g, '');
-    return nStripped.length > 1 && corpusStripped.includes(nStripped);
-  };
+  const corpus = toolCalls
+    .map(tc => `=== ${tc.name} ===\n${tc.result}`)
+    .join('\n\n');
 
-  // Pattern sources stored as strings so we compile a fresh RegExp per use
-  // (global RegExp.lastIndex state breaks when shared across .test() and
-  // .matchAll()).
-  const P = {
-    QUOTE_DBL: '["“][^"”]{10,}["”]',
-    // Lookaround stops apostrophe-as-contraction false positives:
-    // "isn't a timing problem — it's stale" used to match because the
-    // regex saw `'t a timing problem — it'` as a quoted token. We now
-    // require the opening `'` to NOT be preceded by a letter and the
-    // closing `'` to NOT be followed by a letter. Real single-quoted
-    // strings ('hello there my friend') still match.
-    QUOTE_SGL: "(?<![A-Za-z])['‘][^'’]{10,}['’](?![A-Za-z])",
-    DOLLAR: '\\$\\s*\\d[\\d,.]*\\s*(?:M|B|K|million|billion|thousand)?\\b',
-    BIG_NUMBER: '\\b\\d{3,}\\b',
-    BARE_YEAR: '\\b(?:19|20)\\d{2}\\b',
-    MONTH_YEAR: '\\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+(?:19|20)\\d{2}\\b',
-    K_NUMBER: '\\b[A-Z]\\d{3,}[A-Z0-9]*\\b',
-    LOW_INT_NOUN: '\\b(\\d{1,2})\\s+(clinic|site|customer|rep|employee|pilot|patient|session|partnership|hospital|AMC|deployment|investor|round|hire)s?\\b',
-    TITLE: '\\b(?:Director of|VP of|Vice President of|Head of|Chief [A-Z][a-z]+ Officer|Chief [A-Z][a-z]+)\\s+[A-Z][A-Za-z ]+?(?=[,.\\n]|\\s+(?:at|for|of)\\s|$)',
-    ORG_SUFFIX: '\\b[A-Z][a-zA-Z]+(?:\\s+[A-Z][a-zA-Z]+)?\\s+(?:Surgical|Pharmaceutical|Pharma|Therapeutics|Medical|Health|Healthcare|Hospital|Labs|Laboratories|Bio|Biosciences|Pharmacy|Clinic|Diagnostics|Robotics)\\b',
-  };
+  type Flag = { line: string; claim: string; reason: string; criticality: string };
+  type Strip = { line: string; reason: string };
+  let flags: Flag[] = [];
+  let strips: Strip[] = [];
 
-  const hasSpecificClaim = (s: string): boolean =>
-    Object.values(P).some(src => new RegExp(src).test(s));
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2048,
+      system: [
+        {
+          type: 'text',
+          text: VERIFIER_SYSTEM_PROMPT,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      tools: [VERIFIER_TOOL as any],
+      tool_choice: { type: 'tool', name: 'report_verification' },
+      messages: [
+        {
+          role: 'user',
+          content:
+            `<draft>\n${text}\n</draft>\n\n` +
+            `<tool_data>\n${corpus}\n</tool_data>`,
+        },
+      ],
+    });
+    console.log('VERIFIER USAGE:', JSON.stringify(response.usage));
+    const toolUse = response.content.find(
+      (b): b is Anthropic.ContentBlock & { type: 'tool_use' } => b.type === 'tool_use',
+    );
+    if (toolUse) {
+      const input = toolUse.input as { flag?: Flag[]; strip?: Strip[] };
+      flags = Array.isArray(input.flag) ? input.flag : [];
+      strips = Array.isArray(input.strip) ? input.strip : [];
+    }
+  } catch (e) {
+    console.error('[verifyClaims] LLM verifier failed; returning text unmodified', e);
+    return text;
+  }
 
-  // Words that look like proper nouns but aren't attributable people.
-  // Pronouns, first-person references, and common sentence-leads.
-  const NON_ATTRIBUTABLE = new Set([
-    'we', 'he', 'she', 'they', 'the', 'it', 'i', 'our',
-    'this', 'that', 'these', 'those', 'there', 'here',
-    'research', 'transcript', 'email', 'note', 'notes', 'data',
-  ]);
-
-  const ATTRIB_VERBS =
-    '(?:said|says|asked|asks|noted|notes|flagged|flags|surfaced|surfaces|' +
-    'mentioned|mentions|told|tells|confirmed|confirms|described|describes|' +
-    'stated|states|reported|reports|believes|believed|thinks|thought|' +
-    'emphasized|emphasizes|acknowledged|acknowledges|observed|observes|' +
-    'pointed out|points out|called out|calls out|shared|shares|' +
-    'is concerned|was concerned|is worried|was worried|' +
-    'self-diagnosed|self-diagnoses)';
-
-  const P2 = {
-    // "Kirk said", "Kirk Thelander noted", etc.
-    ATTRIB_SUBJ_VERB: `\\b([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?)\\s+${ATTRIB_VERBS}\\b`,
-    // "According to Kirk", "per Kirk Thelander"
-    ATTRIB_ACCORDING: '\\b(?:according to|per)\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?)',
-    // "Kirk's concern", "Kirk's quote", "Kirk's take"
-    ATTRIB_POSSESSIVE:
-      "\\b([A-Z][a-z]+)'s\\s+(?:concern|concerns|worry|worries|question|questions|" +
-      'point|points|take|takes|opinion|opinions|view|views|frustration|frustrations|' +
-      'stance|stances|observation|observations|quote|quotes|words|own words)',
-    // Inline source tag: [transcript], [email:July 8], [DB:research_output], etc.
-    SOURCE_TAG:
-      '\\[(?:transcript|email|gmail|call|meet|meeting|notion|DB|db|research|' +
-      'communications|comms|source|research_output|research_summary)' +
-      '(?::[^\\]]*)?\\]',
-  };
-
-  const extractAttributedNames = (s: string): string[] => {
-    const names = new Set<string>();
-    const tryAdd = (raw: string) => {
-      const first = raw.trim().split(/\s+/)[0].toLowerCase();
-      if (!NON_ATTRIBUTABLE.has(first)) names.add(raw.trim());
-    };
-    for (const m of s.matchAll(new RegExp(P2.ATTRIB_SUBJ_VERB, 'g'))) tryAdd(m[1]);
-    for (const m of s.matchAll(new RegExp(P2.ATTRIB_ACCORDING, 'gi'))) tryAdd(m[1]);
-    for (const m of s.matchAll(new RegExp(P2.ATTRIB_POSSESSIVE, 'g'))) tryAdd(m[1]);
-    return Array.from(names);
-  };
-
-  const hasSourceTag = (s: string): boolean =>
-    new RegExp(P2.SOURCE_TAG, 'i').test(s);
-
-  const extractClaimTokens = (s: string): string[] => {
-    const tokens: string[] = [];
-    for (const m of s.matchAll(new RegExp(P.QUOTE_DBL, 'gu'))) {
-      tokens.push(m[0].slice(1, -1).slice(0, 60));
-    }
-    for (const m of s.matchAll(new RegExp(P.QUOTE_SGL, 'gu'))) {
-      tokens.push(m[0].slice(1, -1).slice(0, 60));
-    }
-    for (const m of s.matchAll(new RegExp(P.DOLLAR, 'gi'))) {
-      tokens.push(m[0]);
-    }
-    // Month+year before bare year -- "Feb 2026" is a stricter token than "2026".
-    const phrasedYears = new Set<string>();
-    for (const m of s.matchAll(new RegExp(P.MONTH_YEAR, 'gi'))) {
-      tokens.push(m[0]);
-      const y = m[0].match(/\d{4}/);
-      if (y) phrasedYears.add(y[0]);
-    }
-    for (const m of s.matchAll(new RegExp(P.K_NUMBER, 'g'))) {
-      tokens.push(m[0]);
-    }
-    for (const m of s.matchAll(new RegExp(P.LOW_INT_NOUN, 'gi'))) {
-      tokens.push(`${m[1]} ${m[2].toLowerCase()}`);
-    }
-    for (const m of s.matchAll(new RegExp(P.TITLE, 'g'))) {
-      tokens.push(m[0].trim());
-    }
-    for (const m of s.matchAll(new RegExp(P.ORG_SUFFIX, 'g'))) {
-      tokens.push(m[0]);
-    }
-    for (const m of s.matchAll(new RegExp(P.BIG_NUMBER, 'g'))) {
-      tokens.push(m[0]);
-    }
-    for (const m of s.matchAll(new RegExp(P.BARE_YEAR, 'g'))) {
-      if (!phrasedYears.has(m[0])) tokens.push(m[0]);
-    }
-    return tokens;
-  };
-
-  // Split on line breaks so each bullet / list item is verified independently.
-  const lines = text.split(/(\r?\n)/);
-  const kept: string[] = [];
-  let strippedCount = 0;
-
-  // Extract just the quoted-string tokens (verbatim quoted content)
-  // from a line. A quoted token whose content is not in the corpus is
-  // treated as HARD FABRICATION and the line is stripped. Non-quote
-  // token failures are flagged in place instead.
-  const extractQuoteTokens = (s: string): string[] => {
-    const out: string[] = [];
-    for (const m of s.matchAll(new RegExp(P.QUOTE_DBL, 'gu'))) {
-      out.push(m[0].slice(1, -1).slice(0, 60));
-    }
-    for (const m of s.matchAll(new RegExp(P.QUOTE_SGL, 'gu'))) {
-      out.push(m[0].slice(1, -1).slice(0, 60));
-    }
-    return out;
-  };
+  if (flags.length === 0 && strips.length === 0) return text;
 
   // Map each data-pulling tool to the Notion database it ultimately mirrors.
   // Used to route auto-generated verify prompts at Notion AI when the corpus
@@ -846,6 +831,7 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
     query_icp_triggers: 'ICP Trigger Monitor',
     query_deals: 'Motions & Deals',
     sync_account_content: 'Outreach Intelligence',
+    search_references: 'Pathova Reference Library',
   };
   const WEB_RESEARCH_TOOLS = new Set(['invoke_prospect_researcher']);
 
@@ -863,22 +849,14 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
       .replace(/^\s*\d+\.\s+/, '')
       .replace(/[*_`]/g, '')
       .trim();
-    // Markdown table rows wrapped in quotes look ridiculous —
-    // "| Identifeye Health | 1 | Email |". Convert pipes to slashes and
-    // drop the outer pipes so the prompt reads as a sentence.
     if (c.startsWith('|') || /\s\|\s/.test(c)) {
       c = c.replace(/^\s*\|\s*/, '').replace(/\s*\|\s*$/, '').replace(/\s*\|\s*/g, ' / ');
     }
     return c.slice(0, 240);
   };
 
-  // Build a verification prompt routed to the right venue. Notion-resident
-  // claims (touches, accounts, triggers, deals) point at Notion AI against
-  // the specific database. External/research claims point at Perplexity.
-  // Mixed sessions get both prompts so the user can pick.
   const autoVerifyPrompt = (claim: string): string => {
     const c = cleanClaimText(claim);
-
     const notionPrompt = (): string => {
       const dbList = Array.from(notionDbs).join(' or ');
       return (
@@ -889,7 +867,6 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
         `If no rows match, reply "not found" — do not infer.`
       );
     };
-
     const webPrompt = (): string =>
       `[Perplexity / Comet — public web]\n` +
       `Verify whether this statement is currently true: "${c}". ` +
@@ -898,239 +875,76 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
       `Return: (1) supporting URL, (2) verbatim excerpt from the source that confirms or refutes, ` +
       `(3) publication date. ` +
       `If the statement cannot be confirmed from primary sources, return "not found" — do not infer.`;
-
     if (usedNotion && usedWeb) return `${notionPrompt()}\n\n${webPrompt()}`;
     if (usedNotion) return notionPrompt();
     return webPrompt();
   };
 
-  // Wrap an unverified line in a prose flag + hidden meta block. Used when
-  // the verifier catches something the QB did not self-flag. Preserves the
-  // original claim so the user sees what was flagged and why. Plain
-  // English here matters — this prose is shown to the user inline.
-  const flagInPlace = (line: string, reason: string): string => {
-    const claim = line
-      .trim()
-      .replace(/^\s*[-*•]\s+/, '')
-      .replace(/^\s*\d+\.\s+/, '')
-      // Strip leading/trailing markdown table pipes so a flagged table
-      // cell renders as readable prose, not "| Can we use plain english".
-      .replace(/^\s*\|\s*/, '')
-      .replace(/\s*\|\s*$/, '')
-      .replace(/\s*\|\s*/g, ' / ');
-    const prose =
-      `\n⚠ I couldn't verify this from the data I pulled — please double-check: ` +
-      `${claim} *(Worth checking — see list below.)*\n`;
-    const meta =
-      `\n<!--verify-meta\n` +
-      `criticality: unassessed\n` +
-      `why_unverified: ${reason}\n` +
-      `go_to_url: N/A\n` +
-      `verify_prompt: ${autoVerifyPrompt(claim)}\n` +
-      `-->\n`;
-    return prose + meta;
-  };
+  // Apply mutations to the draft. Strips remove the matched line entirely;
+  // flags replace it with an inline ⚠ prose flag. Both rely on exact
+  // substring lookup against the verbatim line returned by the verifier —
+  // if the line can't be located, we log and skip rather than mangling
+  // surrounding output.
+  let working = text;
+  const stripped: string[] = [];
 
-  let flaggedCount = 0;
-  const strippedClaims: string[] = [];
-
-  let inMetaBlock = false;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (/^\r?\n$/.test(line) || line === '') {
-      kept.push(line);
+  for (const s of strips) {
+    if (!s.line) continue;
+    const idx = working.indexOf(s.line);
+    if (idx === -1) {
+      console.warn(
+        `[verifyClaims] strip line not found in draft: ${JSON.stringify(s.line.slice(0, 120))}`,
+      );
       continue;
     }
-
-    // Track verify-meta block boundaries — preserve content for the
-    // post-pass that builds the bottom checklist, then strips them.
-    if (/<!--verify-meta\b/.test(line)) {
-      kept.push(line);
-      inMetaBlock = true;
-      if (/-->/.test(line)) inMetaBlock = false;
-      continue;
-    }
-    if (inMetaBlock) {
-      kept.push(line);
-      if (/-->/.test(line)) inMetaBlock = false;
-      continue;
-    }
-
-    // Strip leading bullet/list markers when checking, keep original in output.
-    const content = line
-      .replace(/^\s*[-*•]\s+/, '')
-      .replace(/^\s*\d+\.\s+/, '');
-
-    // Skip prose ⚠ flag lines (already self-flagged or verifier-caught).
-    if (/^\s*⚠/.test(content)) {
-      kept.push(line);
-      continue;
-    }
-
-    // HARD FABRICATION CHECK: a quoted string whose content is not in
-    // the corpus is suspect — but only when it's *attributed*. If the
-    // quote sits in a sentence with an attribution verb (said/wrote/etc.)
-    // or "according to" / "per", it claims to be someone's actual words;
-    // missing from corpus = real fabrication risk → strip.
-    //
-    // If the quote is unattributed, it's almost always rhetorical: a
-    // tone descriptor (`Email 1 is investigative ("are you seeing this?")`),
-    // a label (`they call this "VAC purgatory"`), or a hypothetical
-    // characterization. Flagging these creates more noise than signal —
-    // the specific-claim check below still catches numbers/names/dates,
-    // and the attribution check still catches "<Person> said X" without
-    // a source tag. We log to console for audit trail but do NOT
-    // user-flag.
-    const ATTRIBUTION_CONTEXT_RE = new RegExp(
-      `\\b(?:${ATTRIB_VERBS.slice(3, -1)}|wrote|writes|replied|replies|responded|responds|cited|cites|quoted|quotes|according to|per)\\b`,
-      'i',
+    const lineStart = working.lastIndexOf('\n', idx - 1) + 1;
+    const lineEnd = working.indexOf('\n', idx + s.line.length);
+    const end = lineEnd === -1 ? working.length : lineEnd + 1;
+    const fullLine = working.slice(lineStart, lineEnd === -1 ? working.length : lineEnd).trim();
+    stripped.push(fullLine);
+    working = working.slice(0, lineStart) + working.slice(end);
+    console.warn(
+      `[verifyClaims] stripped line. reason: ${s.reason}. line: ${s.line.slice(0, 160)}`,
     );
-    const findQuoteSentence = (text: string, quoteTok: string): string => {
-      const sentences = text.split(/(?<=[.!?])\s+|\s+—\s+/);
-      const needle = quoteTok.toLowerCase();
-      const match = sentences.find(s => s.toLowerCase().includes(needle));
-      return match ?? text;
-    };
-    const quoteTokens = extractQuoteTokens(content);
-    const missingQuote = quoteTokens.find(t => !inCorpus(t));
-    if (missingQuote) {
-      const sentence = findQuoteSentence(content, missingQuote);
-      if (ATTRIBUTION_CONTEXT_RE.test(sentence)) {
-        strippedCount++;
-        strippedClaims.push(line.trim());
-        console.warn(
-          `[verifyClaims] HARD FABRICATION stripped (attributed quote). content: ${JSON.stringify(missingQuote)}. line: ${line.slice(0, 160)}`,
-        );
-        if (i + 1 < lines.length && /^\r?\n$/.test(lines[i + 1])) i++;
-        continue;
-      }
-      // Unattributed — log only, don't flag. Fall through so the
-      // line still goes through attribution + specific-claim checks.
-      console.warn(
-        `[verifyClaims] unattributed quoted phrase not in corpus (not user-flagged): ${JSON.stringify(missingQuote)}. line: ${line.slice(0, 160)}`,
-      );
-    }
-
-    // ATTRIBUTION CHECK: lines that attribute thought/quote/action to a
-    // named person or org must carry an inline source tag, and that name
-    // must appear somewhere in the corpus. Flag in place if they don't.
-    const attributedNames = extractAttributedNames(content);
-    if (attributedNames.length > 0) {
-      if (!hasSourceTag(content)) {
-        flaggedCount++;
-        console.warn(
-          `[verifyClaims] flagged unattributed line. names: ${JSON.stringify(attributedNames)}. line: ${line.slice(0, 160)}`
-        );
-        kept.push(flagInPlace(line, `mentions ${attributedNames.join(', ')} but doesn't say where the quote or claim came from. Add a source tag like [email], [transcript], or [DB] so we can trace it.`));
-        continue;
-      }
-      const missingName = attributedNames.find(n => !inCorpus(n));
-      if (missingName) {
-        flaggedCount++;
-        console.warn(
-          `[verifyClaims] flagged line — attributed name "${missingName}" not in corpus. line: ${line.slice(0, 160)}`
-        );
-        kept.push(flagInPlace(line, `mentions "${missingName}" but I couldn't find them in any of the data I pulled — the source tag may be pointing at the wrong place.`));
-        continue;
-      }
-    }
-
-    // SPECIFIC-CLAIM CHECK: extract non-quote claim tokens and flag in
-    // place if any are missing from the corpus.
-    if (!hasSpecificClaim(content)) {
-      kept.push(line);
-      continue;
-    }
-    const tokens = extractClaimTokens(content);
-    const missingTokens = tokens.filter(t => !inCorpus(t));
-    if (missingTokens.length === 0) {
-      kept.push(line);
-    } else {
-      flaggedCount++;
-      console.warn(
-        `[verifyClaims] flagged line — tokens not in corpus: ${JSON.stringify(missingTokens)}. line: ${line.slice(0, 160)}`
-      );
-      kept.push(flagInPlace(line, `these specific details aren't in any data I pulled: ${missingTokens.map(t => JSON.stringify(t)).join(', ')}. They may need verification.`));
-    }
   }
 
-  let verified = kept.join('').trim();
-
-  // Parse <!--verify-meta ... --> blocks. Each block is paired with the
-  // nearest preceding ⚠ prose line, which becomes the human-readable
-  // claim in the checklist. The meta block itself is then stripped from
-  // inline output so the user sees only the prose flag plus the
-  // checklist at the bottom.
   type ChecklistItem = {
     claim: string;
     criticality: string;
-    why: string;
-    url: string;
+    reason: string;
     prompt: string;
   };
   const items: ChecklistItem[] = [];
 
-  const META_RE = /<!--verify-meta\s*\n([\s\S]*?)\n\s*-->/g;
-  const FIELD_RE = /^\s*(criticality|why_unverified|go_to_url|verify_prompt)\s*:\s*(.*)$/i;
-
-  const parseMeta = (raw: string): Omit<ChecklistItem, 'claim'> => {
-    const out: Record<string, string> = { criticality: '', why_unverified: '', go_to_url: '', verify_prompt: '' };
-    let last: string | null = null;
-    for (const ln of raw.split('\n')) {
-      const m = ln.match(FIELD_RE);
-      if (m) {
-        last = m[1].toLowerCase();
-        out[last] = m[2].trim();
-      } else if (last && ln.trim()) {
-        out[last] += ' ' + ln.trim();
-      }
+  for (const f of flags) {
+    if (!f.line) continue;
+    const idx = working.indexOf(f.line);
+    if (idx === -1) {
+      console.warn(
+        `[verifyClaims] flag line not found in draft: ${JSON.stringify(f.line.slice(0, 120))}`,
+      );
+      continue;
     }
-    return {
-      criticality: out.criticality || 'unassessed',
-      why: out.why_unverified || '',
-      url: out.go_to_url || '',
-      prompt: out.verify_prompt || '',
-    };
-  };
-
-  const cleanProseToClaim = (prose: string): string =>
-    prose
-      .replace(/^⚠\s*/, '')
-      .replace(/\s*\*?\(\s*(?:HIGH|MEDIUM|LOW|Manual review|unassessed)\b[^)]*\)\*?\s*$/i, '')
-      .trim();
-
-  // Walk meta blocks in order; for each, look back into the unmodified
-  // text for the most recent ⚠ prose line.
-  let m: RegExpExecArray | null;
-  const consumed: { start: number; end: number }[] = [];
-  while ((m = META_RE.exec(verified)) !== null) {
-    const before = verified.slice(0, m.index);
-    const warnIdx = before.lastIndexOf('⚠');
-    let claim = '';
-    if (warnIdx !== -1) {
-      const nl = before.indexOf('\n', warnIdx);
-      const proseLine = nl === -1 ? before.slice(warnIdx) : before.slice(warnIdx, nl);
-      claim = cleanProseToClaim(proseLine);
-    }
-    const meta = parseMeta(m[1]);
-    items.push({ claim: claim || '(claim text unavailable)', ...meta });
-    consumed.push({ start: m.index, end: m.index + m[0].length });
+    const cleaned = cleanClaimText(f.claim || f.line);
+    const prose =
+      `⚠ I couldn't verify this from the data I pulled — please double-check: ` +
+      `${cleaned} *(Worth checking — see list below.)*`;
+    working = working.slice(0, idx) + prose + working.slice(idx + f.line.length);
+    items.push({
+      claim: cleaned,
+      criticality: f.criticality || 'unassessed',
+      reason: f.reason || '',
+      prompt: autoVerifyPrompt(cleaned),
+    });
+    console.warn(
+      `[verifyClaims] flagged line. reason: ${f.reason}. line: ${f.line.slice(0, 160)}`,
+    );
   }
 
-  // Strip meta blocks from inline output (back-to-front to preserve indices).
-  // Surrounding whitespace is normalized by the \n{3,} collapse below — that
-  // keeps the blank line between the prose ⚠ and the next paragraph intact.
-  for (let k = consumed.length - 1; k >= 0; k--) {
-    const { start, end } = consumed[k];
-    verified = verified.slice(0, start) + verified.slice(end);
-  }
-  verified = verified.replace(/\n{3,}/g, '\n\n').trim();
+  let verified = working.replace(/\n{3,}/g, '\n\n').trim();
 
-  if (items.length === 0 && strippedClaims.length === 0) {
-    return verified;
-  }
+  if (items.length === 0 && stripped.length === 0) return verified;
 
-  // Build the verification checklist.
   const sevRank = (s: string): number => {
     const u = s.toUpperCase();
     if (u.startsWith('HIGH')) return 0;
@@ -1140,7 +954,7 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
   };
   items.sort((a, b) => sevRank(a.criticality) - sevRank(b.criticality));
 
-  const totalCount = items.length + strippedClaims.length;
+  const totalCount = items.length + stripped.length;
   const out: string[] = [
     '',
     '---',
@@ -1148,8 +962,8 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
     `### Things worth double-checking (${totalCount})`,
     '',
     'Each item below is flagged inline above with a `⚠`. ' +
-    'Paste the prompt into the suggested venue (Notion AI, Perplexity, Gmail, Drive) ' +
-    'to verify — or just open the source link.',
+      'Paste the prompt into the suggested venue (Notion AI, Perplexity, Gmail, Drive) ' +
+      'to verify — or just open the source link.',
     '',
   ];
 
@@ -1157,10 +971,7 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
     const sevRaw = item.criticality.match(/^(HIGH|MEDIUM|LOW)/i)?.[1];
     const sevLabel = sevRaw ? ` · ${sevRaw.toUpperCase()}` : '';
     out.push(`**${idx + 1}. ${item.claim}**${sevLabel}`);
-    if (item.why) out.push(`What's missing: ${item.why}`);
-    if (item.url && item.url.toUpperCase() !== 'N/A') {
-      out.push(`Source: ${item.url}`);
-    }
+    if (item.reason) out.push(`What's missing: ${item.reason}`);
     if (item.prompt) {
       out.push('');
       out.push('How to verify:');
@@ -1171,10 +982,12 @@ function verifyClaims(text: string, toolCalls: ToolCallRecord[]): string {
     out.push('');
   });
 
-  if (strippedClaims.length > 0) {
-    out.push(`**Removed as likely fabrication** (${strippedClaims.length}) — quoted content I couldn't find in any data I pulled, attributed to someone. The original line${strippedClaims.length === 1 ? ' is' : 's are'} listed below for your awareness; treat as suspect:`);
+  if (stripped.length > 0) {
+    out.push(
+      `**Removed as likely fabrication** (${stripped.length}) — quoted content I couldn't find in any data I pulled, attributed to someone. The original line${stripped.length === 1 ? ' is' : 's are'} listed below for your awareness; treat as suspect:`,
+    );
     out.push('');
-    for (const claim of strippedClaims) {
+    for (const claim of stripped) {
       out.push(`- ~~${claim}~~`);
     }
     out.push('');
@@ -1340,7 +1153,7 @@ export async function POST(req: Request) {
               );
               const finalText = textBlocks.map((b: any) => b.text).join('\n');
               const reply = extractReply(finalText);
-              const verifiedReply = verifyClaims(reply, turnToolCalls);
+              const verifiedReply = await verifyClaims(reply, turnToolCalls);
               send('done', { reply: verifiedReply, sources });
               controller.close();
               return;
