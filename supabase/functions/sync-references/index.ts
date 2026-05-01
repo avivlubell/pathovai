@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const NOTION_TOKEN = Deno.env.get("NOTION_INTEGRATION_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SYNC_SECRET = Deno.env.get("SYNC_TRIGGER_SECRET");
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -79,6 +80,9 @@ function getPageTitle(page: any): string {
 }
 
 serve(async (req) => {
+  if (!SYNC_SECRET || req.headers.get("x-sync-secret") !== SYNC_SECRET) {
+    return new Response(null, { status: 401 });
+  }
   try {
     const results: any[] = [];
     for (const entry of REFERENCE_REGISTRY) {
