@@ -729,7 +729,7 @@ const VERIFIER_TOOL = {
               type: 'string',
               enum: ['HIGH', 'MEDIUM', 'LOW'],
               description:
-                'HIGH = factual error likely to mislead. MEDIUM = should verify before acting. LOW = probably fine but worth a check.',
+                'Severity of an UNGROUNDED claim. HIGH = factual error likely to mislead. MEDIUM = unconfirmable, should verify before acting. LOW = unconfirmable but plausible. The criticality scale ONLY applies to claims you have already determined are not grounded in the corpus — never use any level (including LOW) for a claim whose reason field would say "matches the draft", "matches the corpus", or "the characterization matches". A grounded claim should not appear in the flag array at all.',
             },
           },
           required: ['line', 'claim', 'reason', 'criticality'],
@@ -769,6 +769,8 @@ You are NOT a style reviewer, citation reviewer, or QA assistant. Specifically, 
 - Use generic reasons like "doesn't say where this came from" or "needs a source tag". The only valid reason to flag is that you searched the corpus and the specific entity/number/date/quote is genuinely absent.
 
 Before flagging anything, you MUST search the corpus for the supporting evidence. The reason field MUST quote a verbatim excerpt of what you searched for and confirm the corpus did not contain it. If you cannot articulate what specifically you searched for and didn't find, do not flag.
+
+A flag whose reason CONFIRMS the claim is in the corpus is self-contradicting and is the single most common verifier mistake. If you searched the corpus, found the supporting evidence, and your reason would say something like "matches the draft exactly", "the characterization matches", "found in the corpus", "is grounded", "is correct", or "is supported by the data" — DO NOT emit a flag at any criticality level. Return an empty flag array (or omit that item from the array). LOW does not mean "grounded but worth surfacing"; it means "ungrounded but probably plausible." If the reason field would confirm grounding, the correct action is silence, not a LOW-criticality flag.
 
 Be tolerant of harmless format differences:
 - Date formats: "Dec 2025", "December 2025", "12/2025", "2025-12-15" all refer to the same date.
@@ -916,6 +918,19 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
     if (hasTemporalQuote && !hasSpecificDate) {
       console.warn(
         `[verifyClaims] dropped flag with temporal-only reason: ${JSON.stringify(f.reason.slice(0, 160))}`,
+      );
+      return false;
+    }
+    // Reason itself confirms the claim is grounded ("matches the draft exactly",
+    // "the characterization matches", "is correct", etc.) — the verifier emitted
+    // a self-contradicting flag, usually at LOW criticality. Drop unless the
+    // reason also contains an explicit negation/discrepancy marker, which would
+    // mean the "matches" reference was qualified.
+    const NEGATION = /\b(not|no|n'?t|never|absent|missing|instead|rather|contradict(?:s|ed|ion)?|discrepan(?:t|cy)|differs?\s+from|disagrees?\s+with|inconsistent\s+with|fail(?:s|ed)?\s+to\s+(?:match|find)|could\s+not\s+(?:find|locate|verify))\b/i;
+    const SELF_CONFIRMING = /\b(?:characterization\s+matches?|matches?\s+(?:the\s+)?(?:draft|claim|data|corpus|expectation)(?:\s+(?:exactly|verbatim))?|matches?\s+exactly|matches?\.|fully\s+grounded|is\s+grounded\b|grounded\s+in\s+(?:the\s+)?(?:data|corpus)|is\s+(?:correct|supported|verified|confirmed)\s+(?:by|in)\s+(?:the\s+)?(?:data|corpus)|consistent\s+with\s+(?:the\s+)?(?:data|corpus)|verified\s+against\s+(?:the\s+)?(?:data|corpus)|claim\s+(?:is|was)\s+(?:correct|grounded|supported|verified|confirmed))\b/i;
+    if (SELF_CONFIRMING.test(f.reason) && !NEGATION.test(f.reason)) {
+      console.warn(
+        `[verifyClaims] dropped flag with self-confirming reason: ${JSON.stringify(f.reason.slice(0, 160))}`,
       );
       return false;
     }
