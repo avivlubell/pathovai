@@ -772,6 +772,7 @@ Before flagging anything, you MUST search the corpus for the supporting evidence
 
 Be tolerant of harmless format differences:
 - Date formats: "Dec 2025", "December 2025", "12/2025", "2025-12-15" all refer to the same date.
+- Date-range summaries: phrases like "November–December 2025", "Oct–Dec 2025", "Q4 2025", "late 2025", "fall 2025" are grounded if the corpus has rows whose date fields (\`touch_date\`, \`created_at\`, \`updated_at\`, etc.) fall within that range. Apply format normalization at the range level — never flag a draft phrase like "Nov–Dec 2025" because the literal string isn't in the corpus. ISO dates like "2025-11-11" and "2025-12-18" *are* "Nov–Dec 2025".
 - Name variants: "IdentifEye" matches "Identifeye" matches "identifeye health". Case and spacing don't matter.
 - Numeric formats: "$10M" matches "$10,000,000" matches "10 million".
 - Aggregations: if the draft says "78 LinkedIn touches" and the data has 78 LinkedIn rows, that's correct — do not flag derived counts/sums.
@@ -789,6 +790,7 @@ strip — a direct quote attributed to a specific named person or org that is no
 Do NOT flag:
 - Editorial commentary, rhetorical questions, framing language, or transitions ("the elephant in the room", "before we start firing these off", "what's the play?").
 - Counts, sums, or aggregations clearly derived from rows in the data.
+- Derived temporal observations — "the queue is large and old", "most are 4–5 months past their intended send date", "these stalled before touch #1", "this sequence is stale", "the bulk of these are from late 2025". These are computed from row dates plus today's date plus the assistant's framing. Date-range summaries ("Nov–Dec 2025", "Oct–Dec 2025") fall in this category — they are aggregations over the time dimension, grounded by the date fields of the rows themselves. Never flag them, even if the literal phrase doesn't appear in the corpus.
 - Generic tactical recommendations or qualitative observations.
 - Common knowledge or domain language unrelated to the user's specific data.
 - Claims that match the data with only minor format/spelling differences.
@@ -810,6 +812,11 @@ The draft says:
   - Healables / Won / Detailed notes present
   - PathKeeper Surgical / Won / No notes
 Correct verifier output: empty flag array. Both lines are faithful summaries of rows that exist in the corpus, even though the strings "Detailed notes present" and "No notes" do not appear verbatim in the data.
+
+Worked example for temporal aggregations. Suppose \`query_touches\` returned rows with \`touch_date\` values like "2025-10-09", "2025-11-11", "2025-12-18", "2025-12-27", all with \`sent: false\`. The draft says:
+  - "The queue is large and old. The majority are from November–December 2025 — most are 4–5+ months past their intended send dates."
+  - "+ 28 more accounts / 1–3 each / Mixed / Oct–Dec 2025"
+Correct verifier output: empty flag array. The phrases "November–December 2025" and "Oct–Dec 2025" are date-range summaries grounded in the ISO \`touch_date\` values (Nov 11 and Dec 18 → "Nov–Dec 2025"). "4–5 months past" is a derived calculation from those dates plus today's date. "The queue is large and old" is editorial framing. NONE of this should be flagged just because the literal strings "December 2025" or "Oct–Dec 2025" don't appear verbatim in the corpus — that is exactly the format-normalization mistake the rules above forbid.
 
 Be conservative. False positives are worse than missed edge cases — the user has explicitly asked for fewer false flags. Return empty arrays if nothing is wrong. When in doubt, don't flag.
 
@@ -880,12 +887,35 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
   // tag" — they are not grounding failures, they're style/citation gripes.
   // Haiku occasionally violates the rule anyway, so we enforce it here too.
   const BANNED_REASON = /\b(needs?|missing|add|lacks?|requires?|without|no)\s+(an?\s+)?(source|citation|reference|attribution)\s*(tag|link|url)?|doesn'?t\s+say\s+where|where\s+(the\s+)?(quote|claim|info(rmation)?)\s+came\s+from|missing\s+(a\s+)?source\s+tag\b/i;
+
+  // Drop flags whose reason cites only a coarse temporal phrase (month-year,
+  // quarter-year, year, year-range) as the missing detail. The prompt requires
+  // date format normalization, so "December 2025 isn't in the corpus" is a
+  // verifier failure mode — ISO dates like "2025-12-15" already match it.
+  // Specific full dates (e.g. "Dec 5, 2025", "2025-12-15") are NOT matched and
+  // remain flaggable.
+  const MONTH = '(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)';
+  const TEMPORAL_PHRASE = new RegExp(
+    `["'\\u201c\\u2018](?:\\s*(?:${MONTH}(?:\\s*[\\u2013\\u2014/-]\\s*${MONTH})?\\s+\\d{4}|Q[1-4]\\s*[\\u2013\\u2014/-]?\\s*\\d{4}|\\d{4}(?:\\s*[\\u2013\\u2014/-]\\s*\\d{4})?))\\s*["'\\u201d\\u2019]`,
+    'i',
+  );
   const beforeFlagFilter = flags.length;
   flags = flags.filter(f => {
     if (!f.reason) return true;
     if (BANNED_REASON.test(f.reason)) {
       console.warn(
         `[verifyClaims] dropped flag with banned meta-reason: ${JSON.stringify(f.reason.slice(0, 160))}`,
+      );
+      return false;
+    }
+    // Reason quotes a coarse temporal phrase as the missing detail AND no
+    // specific day-level date is mentioned — this is a date-format-normalization
+    // failure by the verifier. Drop the flag.
+    const hasTemporalQuote = TEMPORAL_PHRASE.test(f.reason);
+    const hasSpecificDate = /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?\b/i.test(f.reason);
+    if (hasTemporalQuote && !hasSpecificDate) {
+      console.warn(
+        `[verifyClaims] dropped flag with temporal-only reason: ${JSON.stringify(f.reason.slice(0, 160))}`,
       );
       return false;
     }
