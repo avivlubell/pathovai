@@ -92,6 +92,30 @@ function mapScanPageToRecord(page: any): any {
   };
 }
 
+// Parse the QB Feature Deltas JSON the scanner stores in a rich_text property.
+// Returns [] on parse failure or unexpected shape — never throws, so a malformed
+// delta blob can't fail the row's whole upsert.
+function parseFeatureDeltas(raw: string | null): any[] {
+  if (!raw || typeof raw !== "string") return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((d: any) => d && typeof d.bucket === "string");
+  } catch (_e) {
+    return [];
+  }
+}
+
+// Notion stores Confidence Score as a number; spec says 1-5 integer.
+// Round and clamp so a stray 4.7 or 0 doesn't break downstream ranking.
+function clampConfidence(raw: number | null): number | null {
+  if (raw === null || raw === undefined || Number.isNaN(raw)) return null;
+  const n = Math.round(Number(raw));
+  if (n < 1) return 1;
+  if (n > 5) return 5;
+  return n;
+}
+
 function mapItemPageToRecord(page: any): any {
   const props = page.properties || {};
   const pageId = stripDashes(page.id);
@@ -101,6 +125,10 @@ function mapItemPageToRecord(page: any): any {
   const scanRelations: string[] = getProp(props, "Scan", "relation") || [];
   const scanNotionPageId = scanRelations.length > 0 ? scanRelations[0] : null;
 
+  // used_in_outreach and last_cited are intentionally NOT mapped — they're
+  // operational state owned by Supabase (written by mark-intelligence-cited
+  // when an outreach actually cites the signal). Including them here would
+  // clobber Supabase state every weekly sync.
   return {
     notion_page_id: pageId,
     notion_url: page.url || ("https://notion.so/" + pageId),
@@ -118,8 +146,14 @@ function mapItemPageToRecord(page: any): any {
     topic_tags: getProp(props, "Topic Tags", "multi_select"),
     urgency_window: getProp(props, "Urgency Window", "select"),
     scan_notion_page_id: scanNotionPageId,
-    used_in_outreach: getProp(props, "Used In Outreach", "checkbox") ?? false,
-    last_cited: getProp(props, "Last Cited", "date"),
+    qb_feature_deltas: parseFeatureDeltas(getProp(props, "QB Feature Deltas (JSON)", "rich_text")),
+    qb_impact_type: getProp(props, "QB Impact Type", "select"),
+    recommended_outreach_trigger: getProp(props, "Recommended Outreach Trigger", "rich_text"),
+    expiration_date: getProp(props, "Expiration Date", "date"),
+    evidence_strength: getProp(props, "Evidence Strength", "select"),
+    confidence_score: clampConfidence(getProp(props, "Confidence Score", "number")),
+    geography: getProp(props, "Geography", "rich_text"),
+    affected_company_or_segment: getProp(props, "Affected Company or Segment", "rich_text"),
     updated_at: now,
   };
 }
