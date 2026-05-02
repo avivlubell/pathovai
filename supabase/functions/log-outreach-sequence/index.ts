@@ -67,39 +67,34 @@ async function resolveAccount(input: { account_id?: string; company_name?: strin
   return null;
 }
 
-async function syncTouch(touchPageId: string): Promise<void> {
-  try {
-    await fetch(`${SUPABASE_URL}/functions/v1/sync-touch-content`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        apikey: SUPABASE_KEY,
-      },
-      body: JSON.stringify({ notion_page_id: stripDashes(touchPageId) }),
-    });
-  } catch (err) {
-    console.warn('[log-outreach-sequence] post-create sync failed:', err);
-  }
-}
+type CreatedTouchRow = {
+  notion_page_id: string;
+  notion_url: string;
+  account_id: string;
+  account_name: string;
+  related_outreach_page_id: string;
+  title: string;
+  touch_date: string;
+  channel: string;
+  sent: boolean;
+  outcome: string | null;
+  top_challenges: string[];
+  message: string;
+};
 
-// After we PATCH the parent OI page in Notion (Last Touch, Status, Next Step,
-// Next Step Due), the Supabase accounts row is stale until we re-sync.
-// Without this, get_account_detail / search_accounts_and_contacts would
-// return stale Status/Next Step/Last Touch to the QB.
-async function syncAccount(oiPageId: string): Promise<void> {
-  try {
-    await fetch(`${SUPABASE_URL}/functions/v1/sync-prospect-content`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        apikey: SUPABASE_KEY,
-      },
-      body: JSON.stringify({ notion_page_id: stripDashes(oiPageId) }),
-    });
-  } catch (err) {
-    console.warn('[log-outreach-sequence] post-update OI sync failed:', err);
+async function upsertTouchRow(row: CreatedTouchRow): Promise<void> {
+  const { error } = await supabase.from('touches').upsert(
+    {
+      ...row,
+      contact_notion_page_id: null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'notion_page_id' },
+  );
+  if (error) {
+    throw new Error(
+      `touches upsert failed for ${row.notion_page_id} (Notion page exists at ${row.notion_url}): ${error.message}`,
+    );
   }
 }
 
@@ -225,7 +220,21 @@ serve(async (req) => {
             properties: props,
           }),
         });
-        await syncTouch(created.id);
+        const touchPageIdStripped = stripDashes(created.id);
+        await upsertTouchRow({
+          notion_page_id: touchPageIdStripped,
+          notion_url: created.url,
+          account_id: account.id,
+          account_name: account.company_name,
+          related_outreach_page_id: stripDashes(account.notion_page_id),
+          title: t.title,
+          touch_date: t.touch_date,
+          channel: t.channel,
+          sent: t.sent,
+          outcome: t.outcome ?? null,
+          top_challenges: Array.isArray(t.top_challenges) ? t.top_challenges : [],
+          message: t.message,
+        });
         results.push({
           created: true,
           notion_page_id: created.id,
@@ -240,7 +249,7 @@ serve(async (req) => {
       } catch (err: any) {
         results.push({
           created: false,
-          skipped_reason: `notion_create_failed: ${err?.message || err}`,
+          skipped_reason: `create_or_upsert_failed: ${err?.message || err}`,
           channel: t.channel,
           touch_date: t.touch_date,
         });
@@ -289,7 +298,20 @@ serve(async (req) => {
         method: 'PATCH',
         body: JSON.stringify({ properties: oiUpdates }),
       });
-      await syncAccount(oiPageId);
+      // Mirror the Notion status change into accounts.outreach_status — the
+      // only OI field today's accounts schema reflects (Last Touch / Next Step
+      // / Next Step Due Notion props have no corresponding columns yet).
+      if (sentTouchesInBatch.length > 0 && currentStatus === 'To Do') {
+        const { error: acctErr } = await supabase
+          .from('accounts')
+          .update({ outreach_status: 'Working', updated_at: new Date().toISOString() })
+          .eq('id', account.id);
+        if (acctErr) {
+          throw new Error(
+            `accounts.outreach_status update failed for ${account.company_name}: ${acctErr.message}`,
+          );
+        }
+      }
     }
 
     return new Response(

@@ -164,9 +164,10 @@ serve(async (req) => {
     const currentStatus = oiPage?.properties?.Status?.status?.name ?? null;
 
     const oiUpdates: Record<string, any> = {};
+    const statusAutoAdvanced = sent && currentStatus === 'To Do';
     if (sent) {
       oiUpdates['Last Touch'] = { date: { start: effectiveDate } };
-      if (currentStatus === 'To Do') {
+      if (statusAutoAdvanced) {
         oiUpdates['Status'] = { status: { name: 'Working' } };
       }
     }
@@ -179,43 +180,56 @@ serve(async (req) => {
       oiUpdates['Next Step'] = { select: { name: next_touch_channel } };
     }
 
-    let oiUpdated: any = null;
     if (Object.keys(oiUpdates).length > 0) {
-      oiUpdated = await notion(`/pages/${oiPageId}`, {
+      await notion(`/pages/${oiPageId}`, {
         method: 'PATCH',
         body: JSON.stringify({ properties: oiUpdates }),
       });
-      // Re-sync the parent account so Supabase reflects Last Touch / Status
-      // / Next Step / Next Step Due. Without this, get_account_detail and
-      // search_accounts_and_contacts return stale state to the QB.
-      try {
-        await fetch(`${SUPABASE_URL}/functions/v1/sync-prospect-content`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${SUPABASE_KEY}`,
-            apikey: SUPABASE_KEY,
-          },
-          body: JSON.stringify({ notion_page_id: oiPageId.replace(/-/g, '') }),
-        });
-      } catch (syncErr) {
-        console.warn('[log-outreach-touch] post-update OI sync failed:', syncErr);
+      // Mirror the Notion status change into accounts.outreach_status. That's the
+      // only OI field today's accounts schema reflects — Last Touch / Next Step /
+      // Next Step Due Notion props have no corresponding columns yet.
+      if (statusAutoAdvanced) {
+        const { error: acctErr } = await supabase
+          .from('accounts')
+          .update({ outreach_status: 'Working', updated_at: new Date().toISOString() })
+          .eq('id', account.id);
+        if (acctErr) {
+          throw new Error(
+            `accounts.outreach_status update failed for ${account.company_name}: ${acctErr.message}`,
+          );
+        }
       }
     }
 
-    // 3. Sync the new touch back to Supabase so query_touches sees it.
-    try {
-      await fetch(`${SUPABASE_URL}/functions/v1/sync-touch-content`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-          apikey: SUPABASE_KEY,
-        },
-        body: JSON.stringify({ notion_page_id: touchPageId.replace(/-/g, '') }),
-      });
-    } catch (syncErr) {
-      console.warn('[log-outreach-touch] post-create sync failed:', syncErr);
+    // 3. Write the new touch row directly to Supabase. We have all the data
+    //    we just sent to Notion, so there's no need to round-trip through
+    //    sync-touch-content (which previously failed silently on inter-edge
+    //    auth — see dispatch-sync/index.ts comment).
+    const touchPageIdStripped = touchPageId.replace(/-/g, '');
+    const oiPageIdStripped = oiPageId.replace(/-/g, '');
+    const { error: touchErr } = await supabase.from('touches').upsert(
+      {
+        notion_page_id: touchPageIdStripped,
+        notion_url: touchUrl,
+        account_id: account.id,
+        account_name: account.company_name,
+        related_outreach_page_id: oiPageIdStripped,
+        contact_notion_page_id: null,
+        title: effectiveTitle,
+        touch_date: effectiveDate,
+        channel,
+        sent,
+        outcome: outcome ?? null,
+        top_challenges: Array.isArray(top_challenges) ? top_challenges : [],
+        message,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'notion_page_id' },
+    );
+    if (touchErr) {
+      throw new Error(
+        `touches upsert failed for ${touchPageIdStripped} (Notion page exists at ${touchUrl}): ${touchErr.message}`,
+      );
     }
 
     return new Response(
