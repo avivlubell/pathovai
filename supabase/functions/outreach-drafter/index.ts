@@ -134,6 +134,24 @@ Rules for using the history:
 
 If the history is empty or could not be loaded, proceed normally and say so in personalization_notes ("No prior outreach on record.").
 
+=== EXTERNAL CONTEXT BLOCKS ===
+Two optional context blocks may appear in the user message: MACRO CONTEXT and VOICE OF BUYER. They are not the same and must NOT be used the same way.
+
+**MACRO CONTEXT** (industry intelligence — news/events from the world)
+- Source: 📡 Market Intelligence Briefings. Each row is a dated event (RAPID/CMS/CPT update, GPO contract win, hospital M&A, FDA clearance in adjacent category, funding climate shift).
+- How to use: a strong, recent Tailwind or Event with urgency_window "This week" or "30-60 days" can anchor the opener ("Watching Thursday's RAPID announcement…"). Headwinds anchor urgency, not optimism. Paraphrase is fine. Always cite as "[publication, source_date]" and include the source_url in the touch's references when relevant.
+- If the block is present but weak/empty: ignore it. Do not stretch a stale macro hook. A clean diagnosis-led opener beats a forced macro hook.
+
+**VOICE OF BUYER** (podcast signals — voice-of-operator / voice-of-investor)
+- Source: 📻 Podcast Intelligence — Signal Feed. Each row is a distilled insight from a MedTech podcast (Medsider, State of MedTech, LSI / Emerging MedTech, etc.) tagged with signal_type: Buyer Psychology, Commercial Pattern, Category Signal, Investor Framing, Objection, or Trigger Event.
+- How to use: when you cite, **quote the key_insight verbatim or near-verbatim** and attribute to "[Guest Name] @ [Guest Company], on [Show]" with the source_url. The credibility *is* the original phrasing — paraphrasing into generic sales-speak destroys the value.
+- Good: "On Medsider last month, Sarah Chen at Acme called RAPID 'a forcing function for VAC re-pricing' — your situation maps onto exactly that." (verbatim quote, attributed)
+- Bad: "Industry experts agree RAPID is reshaping VAC pricing." (paraphrased, no attribution = generic sales-speak)
+- Use at most ONE voice-of-buyer quote across the sequence — not one per touch. Pick the touch where it lands hardest (usually email_1).
+- If the block is present but weak/empty: ignore it. Do not invent quotes. Do not summarize "many operators say…" in lieu of a real attributed line.
+
+These blocks are **optional inputs**, not mandatory citations. The PIC evidence array remains the source of truth for prospect-specific claims (cost of inaction, why-now grounded in their world). MACRO and VOICE OF BUYER are anchoring/credibility layers, not evidence about the prospect.
+
 === TARGET SELECTION ===
 Pick ONE target contact — the highest-leverage person to land the chosen gap. Use their actual name from the prospect data; no "[First Name]" placeholders.
 
@@ -364,6 +382,16 @@ serve(async (req: Request) => {
     // draft for the wrong company.
     const account_id: string | undefined = body?.account_id ?? body?.prospect_id;
     const inputName: string | undefined = body?.company_name;
+    const macroContextItems: any[] = Array.isArray(body?.macro_context)
+      ? body.macro_context
+      : Array.isArray(body?.macro_context?.items)
+        ? body.macro_context.items
+        : [];
+    const voiceOfBuyerItems: any[] = Array.isArray(body?.voice_of_buyer)
+      ? body.voice_of_buyer
+      : Array.isArray(body?.voice_of_buyer?.items)
+        ? body.voice_of_buyer.items
+        : [];
     if (!account_id && !inputName) {
       return new Response(
         JSON.stringify({ error: "account_id or company_name is required" }),
@@ -466,12 +494,52 @@ serve(async (req: Request) => {
       ? `(Could not load prior outreach history: ${commsResult.error})`
       : formatCommunicationsForPrompt(commsResult.communications, 10, 800);
 
+    const macroSection = macroContextItems.length > 0
+      ? `=== MACRO CONTEXT (industry intelligence — paraphrase OK, cite [publication, source_date]) ===\n${
+          macroContextItems.slice(0, 5).map((it: any, idx: number) => {
+            const parts = [
+              `[${idx + 1}] ${it.title ?? "(untitled)"}`,
+              it.signal_type ? `signal_type: ${it.signal_type}` : null,
+              it.urgency_window ? `urgency_window: ${it.urgency_window}` : null,
+              it.source_publication ? `source: ${it.source_publication}` : null,
+              it.source_date ? `date: ${it.source_date}` : null,
+              it.so_what ? `so_what: ${it.so_what}` : null,
+              it.what_happened ? `what_happened: ${it.what_happened}` : null,
+              it.source_url ? `url: ${it.source_url}` : null,
+            ].filter(Boolean);
+            return parts.join("\n");
+          }).join("\n\n")
+        }`
+      : null;
+
+    const voiceSection = voiceOfBuyerItems.length > 0
+      ? `=== VOICE OF BUYER (podcast signals — quote VERBATIM, attribute to "[Guest Name] @ [Guest Company], on [Show]") ===\n${
+          voiceOfBuyerItems.slice(0, 5).map((it: any, idx: number) => {
+            const parts = [
+              `[${idx + 1}] ${it.title ?? "(untitled)"}`,
+              it.signal_type ? `signal_type: ${it.signal_type}` : null,
+              it.show ? `show: ${it.show}` : null,
+              it.guest_name ? `guest_name: ${it.guest_name}` : null,
+              it.guest_company ? `guest_company: ${it.guest_company}` : null,
+              it.air_date ? `air_date: ${it.air_date}` : null,
+              it.icp_relevance ? `icp_relevance: ${it.icp_relevance}` : null,
+              it.key_insight ? `key_insight (quote this verbatim if used): ${it.key_insight}` : null,
+              it.content_angle ? `content_angle: ${it.content_angle}` : null,
+              it.source_url ? `url: ${it.source_url}` : null,
+            ].filter(Boolean);
+            return parts.join("\n");
+          }).join("\n\n")
+        }`
+      : null;
+
     const accountContext = [
       `Company: ${account.company_name}`,
       account.website ? `Website: ${account.website}` : null,
       research?.research_data ? `Research Intelligence: ${JSON.stringify(research.research_data)}` : null,
       icpScore?.score_data ? `ICP Score Data: ${JSON.stringify(icpScore.score_data)}` : null,
       `=== PRIOR OUTREACH HISTORY (most recent first) ===\n${commsSection}`,
+      macroSection,
+      voiceSection,
     ].filter(Boolean).join("\n\n");
 
     const systemBlocks: SystemBlock[] = [
