@@ -81,6 +81,8 @@ function humanizeToolCall(
       return 'Querying ICP trigger monitor';
     case 'query_industry_intelligence':
       return 'Querying market intelligence briefings';
+    case 'query_podcast_signals':
+      return 'Querying podcast signal feed';
     case 'query_touches':
       return pickName() ? `Pulling touches for ${pickName()}` : 'Pulling outreach touches';
     case 'log_outreach_touch':
@@ -150,6 +152,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   query_deals: 'query-deals',
   query_icp_triggers: 'query-icp-triggers',
   query_industry_intelligence: 'query-industry-intelligence',
+  query_podcast_signals: 'query-podcast-signals',
   query_touches: 'query-touches',
   log_outreach_touch: 'log-outreach-touch',
   log_outreach_sequence: 'log-outreach-sequence',
@@ -271,6 +274,21 @@ const tools: Anthropic.Tool[] = [
         urgency_window: { type: 'string', description: 'Single-select. One of: "This week", "30-60 days", "Quarter", "Standing".' },
         recency_days: { type: 'number', description: 'Only rows where source_date is within the last N days. Default 60. Pass 0 for no recency filter.' },
         query: { type: 'string', description: 'Free-text fuzzy match against title / what_happened / so_what.' },
+        limit: { type: 'number', description: 'Max rows to return (default 5, max 25).' },
+      },
+    },
+  },
+  {
+    name: 'query_podcast_signals',
+    description: 'Query the 📻 Podcast Intelligence — Signal Feed: insights distilled from MedTech podcasts (Medsider, State of MedTech, LSI / Emerging MedTech, Mike on Medtech, etc.) and tagged by what kind of signal they carry. This is voice-of-buyer / voice-of-investor / voice-of-operator data — how founders, payers, and investors actually talk about the category. Distinct from query_industry_intelligence (which is news/events about the world). Use this to (a) ground the agent in current MedTech commercial vocabulary and framing before discussing a category or persona, and (b) pull a credible quote or pattern to anchor an outreach hook with authority ("on Medsider last month, [Operator] said X — your situation looks like that"). Returns rows of {title, show, guest_name, guest_company, air_date, source_url, signal_type, icp_relevance, content_angle, key_insight}. Filter by signal_type, show, icp_relevance, and recency_days.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        signal_type: { type: 'string', description: 'Single-select. One of: "Buyer Psychology", "Commercial Pattern", "Category Signal", "Investor Framing", "Objection", "Trigger Event".' },
+        show: { type: 'string', description: 'Single-select. One of: "Medsider", "State of MedTech", "LSI / Emerging MedTech", "Mike on Medtech", "StartUp Health", "HLTH Matters", "Beckers Healthcare", "MedTech Startup Podcast", "Medical Device Marketing", "Amplifiz MedTech", "Samuel Adeyinka / Medical Sales Podcast".' },
+        icp_relevance: { type: 'string', description: 'Single-select. One of: "High", "Medium", "Low". Filter to High when grounding outreach for a Tier-1 ICP account.' },
+        recency_days: { type: 'number', description: 'Only rows where air_date is within the last N days. Default 180 (podcasts age slower than news). Pass 0 for no recency filter.' },
+        query: { type: 'string', description: 'Free-text fuzzy match against title / key_insight / content_angle / guest_company.' },
         limit: { type: 'number', description: 'Max rows to return (default 5, max 25).' },
       },
     },
@@ -514,12 +532,48 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'invoke_outreach_drafter',
-    description: 'Outreach Drafter specialist agent. Takes an ACCOUNT (company) and produces a diagnosis-first PIC (Prospect Intelligence Card) then a 3-touch sequence (LinkedIn + 2 emails) to a single target person AT that company, grounded in evidence and QA-checked. You do NOT need a contact/person id -- the drafter picks the best target from the account data. The drafter auto-pulls prior outreach history from Notion so it avoids repeating angles. ALWAYS pass company_name alongside account_id so the drafter can verify the UUID resolves to the right company; if there is any doubt about the UUID, pass company_name only and let the drafter resolve it.',
+    description: 'Outreach Drafter specialist agent. Takes an ACCOUNT (company) and produces a diagnosis-first PIC (Prospect Intelligence Card) then a 3-touch sequence (LinkedIn + 2 emails) to a single target person AT that company, grounded in evidence and QA-checked. You do NOT need a contact/person id -- the drafter picks the best target from the account data. The drafter auto-pulls prior outreach history from Notion so it avoids repeating angles. ALWAYS pass company_name alongside account_id so the drafter can verify the UUID resolves to the right company; if there is any doubt about the UUID, pass company_name only and let the drafter resolve it. Optionally pass `macro_context` (industry intelligence rows from query_industry_intelligence — paraphrasable news/events) and/or `voice_of_buyer` (podcast signal rows from query_podcast_signals — must be quoted verbatim with attribution). The drafter handles each block differently per its prompt.',
     input_schema: {
       type: 'object' as const,
       properties: {
         account_id: { type: 'string', description: 'Company UUID from accounts table (NOT a contact/person id). Optional if company_name is provided.' },
         company_name: { type: 'string', description: 'Company name. Used to verify account_id resolves to the right company, or to resolve the account when UUID is unknown. Pass this whenever you have it.' },
+        macro_context: {
+          type: 'array',
+          description: 'Optional. Up to 5 industry intelligence rows from query_industry_intelligence to anchor a dated macro hook in the opener. Each item should carry {title, signal_type, urgency_window, source_publication, source_date, so_what, what_happened, source_url}. The drafter paraphrases these with attribution.',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              signal_type: { type: 'string' },
+              urgency_window: { type: 'string' },
+              source_publication: { type: 'string' },
+              source_date: { type: 'string' },
+              so_what: { type: 'string' },
+              what_happened: { type: 'string' },
+              source_url: { type: 'string' },
+            },
+          },
+        },
+        voice_of_buyer: {
+          type: 'array',
+          description: 'Optional. Up to 5 podcast signal rows from query_podcast_signals for verbatim, attributed quoting. Each item should carry {title, signal_type, show, guest_name, guest_company, air_date, icp_relevance, key_insight, content_angle, source_url}. The drafter quotes key_insight verbatim and attributes to "[guest_name] @ [guest_company], on [show]". Use at most one quote across the sequence.',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              signal_type: { type: 'string' },
+              show: { type: 'string' },
+              guest_name: { type: 'string' },
+              guest_company: { type: 'string' },
+              air_date: { type: 'string' },
+              icp_relevance: { type: 'string' },
+              key_insight: { type: 'string' },
+              content_angle: { type: 'string' },
+              source_url: { type: 'string' },
+            },
+          },
+        },
       },
     },
   },
@@ -910,6 +964,7 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
     search_accounts_and_contacts: 'Outreach Intelligence (and Contacts)',
     query_icp_triggers: 'ICP Trigger Monitor',
     query_industry_intelligence: 'Industry Intelligence (Market Intelligence Briefings)',
+    query_podcast_signals: 'Podcast Intelligence — Signal Feed',
     query_deals: 'Motions & Deals',
     sync_account_content: 'Outreach Intelligence',
     search_references: 'Pathova Reference Library',
