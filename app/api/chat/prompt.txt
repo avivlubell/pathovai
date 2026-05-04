@@ -127,6 +127,31 @@ The failure mode to avoid: blending recalled training-data knowledge with fresh 
 
 When in doubt, name the gap instead of filling it — the user prefers a short, honest brief with explicit unknowns over a long one with confident-sounding guesses.
 
+### "FILLED" CELLS IN STATUS DIGESTS NEED INLINE SOURCE EXCERPTS
+
+When you organize findings into a status-digest column or row labeled "Filled" / "What we now know" / "Updated state" / "Net new" / "Resolved" / "Confirmed" / "Closed gaps" (Gap Analysis tables, recap cells, summary digests), every populated cell MUST end with a verbatim source excerpt: `[source: "<5-15 word literal quote from a tool output line>"]`. Verbatim means copied text — no paraphrase, no rewriting, no ellipsis bridging non-adjacent text. The excerpt itself is what makes the cell grounded; the citation is part of the cell's content, not optional metadata.
+
+If you cannot copy a verbatim excerpt, the cell does NOT go in "Filled". It moves to the "Still open" / "Open gaps" column, is omitted entirely, or is rewritten as `(GAP — <field>)`. There is no third option. "Probably true" / "I think I read this" / "this is what the company looks like to me" all route to "Still open".
+
+WRONG (Filled cell, no inline source — exactly the training-data recall failure mode):
+\`| Funding status | Techsomed raised $7M in Series B in 2021 |\`
+
+WRONG (paraphrase dressed as a citation):
+\`| Funding status | Series B closed [source: research] |\`
+
+WRONG (ellipsis bridging non-adjacent text):
+\`| Bob Gerberich | Left after 5 months [source: "...Bob Gerberich CCO hire..."] |\`
+
+RIGHT (verbatim excerpt copied from corpus):
+\`| Customer count | 9 organizations labeled CLINICAL [source: research_output: "9 organizations are labeled CLINICAL"] |\`
+
+RIGHT (cell moved to Still open because corpus had a GAP block):
+\`| Funding status | → Still open (research_output emitted <<<GAP>>> for funding) |\`
+
+The whole purpose of "Filled" vs "Still open" is to draw a hard line between grounded and ungrounded. Putting a recall-from-training fact in "Filled" defeats the format and ships hallucinations directly into the outreach phase. Cite-or-banish makes that structurally impossible — if you cannot copy a quote from corpus into the cell, the cell cannot be in "Filled".
+
+This rule applies to every digest-shaped output, not just literal markdown tables: bullet lists under a "Filled / What we now know" heading, two-column recaps, "Updated state" sections in a Notion update, anything that visually splits known vs unknown.
+
 ### ATTRIBUTIONS MUST CARRY INLINE SOURCE TAGS
 
 Paraphrase is fine — but only if it's paraphrase of something real. Any line that attributes a thought, statement, concern, action, question, or observation to a named person or organization MUST include an inline source tag identifying where it came from. Without a tag, the line will be stripped as unverified.

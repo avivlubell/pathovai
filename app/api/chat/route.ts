@@ -1106,6 +1106,12 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
   };
   const items: ChecklistItem[] = [];
 
+  // Inline marker: prepend ⚠ to the original line, preserving any leading
+  // bullet/number/table-pipe prefix. Keeps the line readable; no preamble or
+  // "see list below" decoration. Long-form preamble was overwhelming the
+  // briefing's signal-to-noise ratio (user feedback: "half the output is
+  // verification language").
+  const PREFIX_RE = /^(\s*(?:[-*•]\s+|\d+\.\s+|\|\s*)?)/;
   for (const f of flags) {
     if (!f.line) continue;
     const idx = working.indexOf(f.line);
@@ -1116,9 +1122,7 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
       continue;
     }
     const cleaned = cleanClaimText(f.claim || f.line);
-    const prose =
-      `⚠ I couldn't verify this from the data I pulled — please double-check: ` +
-      `${cleaned} *(Worth checking — see list below.)*`;
+    const prose = f.line.replace(PREFIX_RE, '$1⚠ ');
     working = working.slice(0, idx) + prose + working.slice(idx + f.line.length);
     items.push({
       claim: cleaned,
@@ -1144,43 +1148,39 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
   };
   items.sort((a, b) => sevRank(a.criticality) - sevRank(b.criticality));
 
+  // Compact reason: drop the "Searched corpus for X — " preamble (the verifier
+  // prompt asks for that format, but it doubles the line length without adding
+  // signal once it's a list item) and clamp length so each entry fits on one
+  // visual line in the chat.
+  const compactReason = (r: string): string => {
+    let s = r.replace(/^searched\s+(corpus|the\s+corpus|tool\s+data)[^.—-]*[—-]\s*/i, '').trim();
+    s = s.replace(/\s+/g, ' ');
+    return s.length > 140 ? s.slice(0, 137).replace(/\s+\S*$/, '') + '…' : s;
+  };
+
   const totalCount = items.length + stripped.length;
-  const out: string[] = [
-    '',
-    '---',
-    '',
-    `### Things worth double-checking (${totalCount})`,
-    '',
-    'Each item below is flagged inline above with a `⚠`. ' +
-      'Paste the prompt into the suggested venue (Notion AI, Perplexity, Gmail, Drive) ' +
-      'to verify — or just open the source link.',
-    '',
-  ];
+  const out: string[] = ['', '---', `**⚠ Unverified (${totalCount}):**`];
 
   items.forEach((item, idx) => {
-    const sevRaw = item.criticality.match(/^(HIGH|MEDIUM|LOW)/i)?.[1];
-    const sevLabel = sevRaw ? ` · ${sevRaw.toUpperCase()}` : '';
-    out.push(`**${idx + 1}. ${item.claim}**${sevLabel}`);
-    if (item.reason) out.push(`What's missing: ${item.reason}`);
-    if (item.prompt) {
-      out.push('');
-      out.push('How to verify:');
-      out.push('```');
-      out.push(item.prompt);
-      out.push('```');
-    }
-    out.push('');
+    const sevRaw = item.criticality.match(/^(HIGH|MEDIUM|LOW)/i)?.[1]?.toUpperCase();
+    const sev = sevRaw ? `${sevRaw} — ` : '';
+    const reason = item.reason ? ` · ${compactReason(item.reason)}` : '';
+    out.push(`${idx + 1}. ${sev}${item.claim}${reason}`);
   });
 
   if (stripped.length > 0) {
-    out.push(
-      `**Removed as likely fabrication** (${stripped.length}) — quoted content I couldn't find in any data I pulled, attributed to someone. The original line${stripped.length === 1 ? ' is' : 's are'} listed below for your awareness; treat as suspect:`,
-    );
     out.push('');
+    out.push(
+      `**Removed (${stripped.length})** — quoted content not found in tool data, attributed to a named person/org:`,
+    );
     for (const claim of stripped) {
       out.push(`- ~~${claim}~~`);
     }
+  }
+
+  if (items.length > 0) {
     out.push('');
+    out.push('_Ask for the verify prompt for #N to get a paste-ready Notion AI / Perplexity query._');
   }
 
   return verified + '\n' + out.join('\n').trimEnd();
