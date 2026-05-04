@@ -829,6 +829,9 @@ Be tolerant of harmless format differences:
 - Name variants: "IdentifEye" matches "Identifeye" matches "identifeye health". Case and spacing don't matter.
 - Numeric formats: "$10M" matches "$10,000,000" matches "10 million".
 - Aggregations: if the draft says "78 LinkedIn touches" and the data has 78 LinkedIn rows, that's correct — do not flag derived counts/sums.
+- Verb/event paraphrases: "established", "effective", "active", "launched", "introduced", "released", "took effect", "went live", "announced", "set up", "stood up" all describe the same kind of milestone. If the corpus says a code/program/policy was "effective April 1, 2026" and the draft says "established in April 2026" / "launched in April 2026" / "took effect April 2026", that is the same event paraphrased — do not flag. The grounded fact is the entity + the date + the milestone existing; the verb is the assistant's word choice. Granularity differences in the same direction are fine too: "April 2026" is a faithful summary of "April 1, 2026". Only flag if the date is wrong (different month/year), the entity is missing, or the milestone itself is absent.
+
+Sanity check before writing a flag: read the reason field you are about to submit. If it describes finding the supporting data in the corpus and then disputing the assistant's word choice, granularity, or framing ("the data states X became Y on date D, not that it was 'Z' on D"), that is proof the claim IS grounded — drop the flag. The reason field exists to document a true grounding failure (entity/number/date/quote absent), not to log a wording disagreement.
 
 Two output categories:
 
@@ -864,6 +867,12 @@ The draft says:
   - Healables / Won / Detailed notes present
   - PathKeeper Surgical / Won / No notes
 Correct verifier output: empty flag array. Both lines are faithful summaries of rows that exist in the corpus, even though the strings "Detailed notes present" and "No notes" do not appear verbatim in the data.
+
+Worked example (verb/event paraphrase). Suppose the corpus contains an ICP trigger row:
+  { account: "Bunkerhill Health", trigger: "CMS billing code", date_effective: "2026-04-01", announced_on: "2026-04-15" }
+The draft says:
+  - Bunkerhill Health — CMS billing code established in April 2026
+Correct verifier output: empty flag array. The entity, the milestone (CMS billing code), and the month/year are all present in the corpus. "Established", "effective", and "took effect" are interchangeable verbs for this milestone, and "April 2026" is a faithful month-grain summary of "2026-04-01". Do NOT flag with reasons like "the data says effective April 1, not established" — that is wording quibbling, not a grounding failure.
 
 Be conservative. False positives are worse than missed edge cases — the user has explicitly asked for fewer false flags. Return empty arrays if nothing is wrong. When in doubt, don't flag.
 
