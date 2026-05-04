@@ -831,7 +831,13 @@ Be tolerant of harmless format differences:
 - Aggregations: if the draft says "78 LinkedIn touches" and the data has 78 LinkedIn rows, that's correct — do not flag derived counts/sums.
 - Verb/event paraphrases: "established", "effective", "active", "launched", "introduced", "released", "took effect", "went live", "announced", "set up", "stood up" all describe the same kind of milestone. If the corpus says a code/program/policy was "effective April 1, 2026" and the draft says "established in April 2026" / "launched in April 2026" / "took effect April 2026", that is the same event paraphrased — do not flag. The grounded fact is the entity + the date + the milestone existing; the verb is the assistant's word choice. Granularity differences in the same direction are fine too: "April 2026" is a faithful summary of "April 1, 2026". Only flag if the date is wrong (different month/year), the entity is missing, or the milestone itself is absent.
 
-Sanity check before writing a flag: read the reason field you are about to submit. If it describes finding the supporting data in the corpus and then disputing the assistant's word choice, granularity, or framing ("the data states X became Y on date D, not that it was 'Z' on D"), that is proof the claim IS grounded — drop the flag. The reason field exists to document a true grounding failure (entity/number/date/quote absent), not to log a wording disagreement.
+Sanity check before writing a flag: read the reason field you are about to submit. If it contains ANY of these affirmative phrases — "found X in query_Y", "is present", "phrase ... is present", "appears verbatim", "matches the corpus/data", "grounded in" — the claim IS grounded by your own admission. Drop the flag. There is no valid flag whose reason starts with "Searched corpus for X — found ..."; only "Searched corpus for X — not present" is a valid grounding failure.
+
+Specifically forbidden flag patterns, even if you feel something is "off":
+- Word-choice disputes when the entity + date + milestone are all in the corpus ("the data states X became Y on D, not that it was 'Z' on D"). The verb is the assistant's choice, not a fact.
+- Granularity disputes ("the data says April 1, 2026, not 'April 2026'"). Month-grain is a faithful summary of full-date.
+- Corpus-internal contradictions. If two fields in the corpus disagree (e.g., a structured \`clearance_date: '2026-02-26'\` plus a summary string saying "cleared April 9, 2026"), and the draft cites one of those values, the draft IS grounded — pick the value it cites and confirm presence, then stop. Do not flag the draft for a contradiction that lives inside the source data; that is a corpus integrity issue for a different surface, not a draft hallucination.
+- Cross-claim consistency disputes ("the draft says February 2026 but later says '3 months post-clearance' implying May"). The verifier checks whether each claim is in the corpus, not whether the assistant's prose is internally self-consistent.
 
 Two output categories:
 
@@ -873,6 +879,17 @@ Worked example (verb/event paraphrase). Suppose the corpus contains an ICP trigg
 The draft says:
   - Bunkerhill Health — CMS billing code established in April 2026
 Correct verifier output: empty flag array. The entity, the milestone (CMS billing code), and the month/year are all present in the corpus. "Established", "effective", and "took effect" are interchangeable verbs for this milestone, and "April 2026" is a faithful month-grain summary of "2026-04-01". Do NOT flag with reasons like "the data says effective April 1, not established" — that is wording quibbling, not a grounding failure.
+
+Worked example (corpus-internal contradiction). Suppose the corpus contains an ICP trigger row:
+  { account: "Sibel Health", clearance_date: "2026-02-26", summary: "Sibel Health received FDA 510(k) clearance on April 9, 2026 ..." }
+The draft says:
+  - Sibel Health received FDA clearance in February 2026
+Correct verifier output: empty flag array. The structured \`clearance_date\` field says 2026-02-26, which is February 2026 — the draft is faithful to that field. The fact that the \`summary\` text inside the same row contradicts itself with "April 9, 2026" is a data-quality problem in the source, not a draft hallucination. The verifier MUST NOT flag the draft for an inconsistency that exists inside the corpus; pick the value the draft cites, confirm it is present, and stop. Do not write reasons like "the corpus has two dates that disagree" or "these two dates contradict each other within the same source record" — those are observations about the data, not grounding failures of the draft.
+
+Worked example (cross-claim consistency). Same Sibel row above. The draft says:
+  - Sibel Health received FDA clearance in February 2026
+  - 3 months post-clearance (as of May 2026)
+Correct verifier output: empty flag array. The first line is grounded by \`clearance_date: 2026-02-26\`. The second line is the assistant doing arithmetic from today's date — it is not a claim about Sibel from the corpus, it is a derived recency descriptor. Do not flag either line, and especially do not flag the first one with reasoning that compares it to the second ("the draft says February but also says 3 months post-clearance as if written in May"). Each claim is checked against the corpus on its own.
 
 Be conservative. False positives are worse than missed edge cases — the user has explicitly asked for fewer false flags. Return empty arrays if nothing is wrong. When in doubt, don't flag.
 
@@ -943,6 +960,28 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
   // tag" — they are not grounding failures, they're style/citation gripes.
   // Haiku occasionally violates the rule anyway, so we enforce it here too.
   const BANNED_REASON = /\b(needs?|missing|add|lacks?|requires?|without|no)\s+(an?\s+)?(source|citation|reference|attribution)\s*(tag|link|url)?|doesn'?t\s+say\s+where|where\s+(the\s+)?(quote|claim|info(rmation)?)\s+came\s+from|missing\s+(a\s+)?source\s+tag\b/i;
+
+  // Drop flags whose reason field admits the claim IS grounded. The verifier
+  // is supposed to flag missing-from-corpus claims — if its own reason says
+  // "found X in query_Y" or "phrase ... is present" or "appears verbatim",
+  // that proves the claim is supported and the flag is a false positive.
+  // (This catches Haiku's habit of finding the data, then inventing a
+  // separate concern about word choice or corpus-internal contradictions.)
+  const isGroundedReason = (r: string): boolean => {
+    // "Phrase ... is present" — verifier explicitly confirms the draft phrase
+    // exists in the corpus.
+    if (/\bphrase\b[^.]{0,300}\bis\s+present\b/i.test(r)) return true;
+    // "appears verbatim" / "grounded in" — explicit confirmations.
+    if (/\bappears?\s+verbatim\b/i.test(r)) return true;
+    if (/\bgrounded\s+in\b/i.test(r)) return true;
+    // "found X in query_<tool>" — the verifier is admitting it located the
+    // value in a tool result, then inventing a side concern.
+    if (/\bfound\b[^.]{0,200}\bin\s+query_/i.test(r)) return true;
+    // "found X in the corpus / data / row / record".
+    if (/\bfound\b[^.]{0,200}\bin\s+the\s+(corpus|data|row|record|tool\s+output)\b/i.test(r)) return true;
+    return false;
+  };
+
   const beforeFlagFilter = flags.length;
   flags = flags.filter(f => {
     if (!f.reason) return true;
@@ -952,11 +991,17 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
       );
       return false;
     }
+    if (isGroundedReason(f.reason)) {
+      console.warn(
+        `[verifyClaims] dropped flag whose reason admits grounding: ${JSON.stringify(f.reason.slice(0, 200))}`,
+      );
+      return false;
+    }
     return true;
   });
   if (flags.length !== beforeFlagFilter) {
     console.warn(
-      `[verifyClaims] filtered ${beforeFlagFilter - flags.length} flag(s) with banned reasons`,
+      `[verifyClaims] filtered ${beforeFlagFilter - flags.length} flag(s) — banned or self-grounding reasons`,
     );
   }
 
