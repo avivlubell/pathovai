@@ -130,16 +130,25 @@ serve(async (req) => {
     const effectiveTitle =
       title || `${account.company_name} - ${channel} - ${effectiveDate}`;
 
-    // 1. Create the Notion touch page.
+    // 1. Create the Notion touch page. Date routing under post-2026-05-05
+    //    schema:
+    //    - sent=true → write Sent Touch Date, leave Touch Date null
+    //      (Touch Date is forward-looking only; a sent row has no plan)
+    //    - sent=false → write Touch Date as the planned send date,
+    //      leave Sent Touch Date null
     const touchProps: Record<string, any> = {
       Title: { title: [{ text: { content: effectiveTitle } }] },
       'Related Outreach': { relation: [{ id: oiPageId }] },
-      'Touch Date': { date: { start: effectiveDate } },
       Channel: { select: { name: channel } },
       Sent: { checkbox: sent },
       // Property name has a trailing space — preserved as-is to match the DB.
       'Message ': { rich_text: [{ text: { content: message } }] },
     };
+    if (sent) {
+      touchProps['Sent Touch Date'] = { date: { start: effectiveDate } };
+    } else {
+      touchProps['Touch Date'] = { date: { start: effectiveDate } };
+    }
     if (outcome) touchProps['Outcome'] = { select: { name: outcome } };
     if (Array.isArray(top_challenges) && top_challenges.length > 0) {
       touchProps['Top Challenges'] = {
@@ -226,7 +235,11 @@ serve(async (req) => {
           notion_url: touchUrl,
           title: effectiveTitle,
           channel,
-          touch_date: effectiveDate,
+          // touch_date is set only on unsent rows (planned date); sent rows
+          // populate sent_touch_date instead. effectiveDate carries the
+          // user-supplied date in either case.
+          touch_date: sent ? null : effectiveDate,
+          sent_touch_date: sent ? effectiveDate : null,
           sent,
         },
         account: {

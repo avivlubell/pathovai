@@ -20,7 +20,14 @@ create table if not exists public.touches (
   contact_notion_page_id text,
 
   title text,
+  -- Forward-looking: planned send date for unsent rows; null after send.
   touch_date date,
+  -- Actual send date; null until the row is marked sent.
+  sent_touch_date date,
+  -- Generated: actual send date if sent, else planned. Lets queries sort
+  -- and roll up by "the date this row is anchored to" without expressing
+  -- coalesce() in PostgREST.
+  effective_touch_date date generated always as (coalesce(sent_touch_date, touch_date)) stored,
   channel text,
   sent boolean default false,
   outcome text,
@@ -33,9 +40,17 @@ create table if not exists public.touches (
 
 create index if not exists touches_account_id_idx on public.touches(account_id);
 create index if not exists touches_touch_date_idx on public.touches(touch_date);
+create index if not exists touches_sent_touch_date_idx on public.touches(sent_touch_date);
+create index if not exists touches_effective_date_idx
+  on public.touches(effective_touch_date desc nulls last);
 create index if not exists touches_sent_idx on public.touches(sent);
 
 -- Open-touches view — the Quarterback's "what do I owe this week" query.
 create index if not exists touches_open_due_idx
   on public.touches(account_id, touch_date)
   where sent = false;
+
+-- Sent history — "what did we send in the last N days" queries.
+create index if not exists touches_sent_history_idx
+  on public.touches(account_id, sent_touch_date desc)
+  where sent = true;

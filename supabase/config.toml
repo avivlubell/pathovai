@@ -3,3 +3,6 @@ verify_jwt = false
 
 [functions.sync-companies]
 verify_jwt = false
+
+[functions.sync-touches]
+verify_jwt = false

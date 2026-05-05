@@ -78,11 +78,17 @@ export const NOTION_COMMS_CODE_VERSION = "v2-findprop";
 
 function mapPageToCommunication(page: any): Communication {
   const props = page.properties ?? {};
+  // Post-2026-05-05 schema: sent rows store the actual date in
+  // "Sent Touch Date"; unsent rows store the planned date in "Touch Date".
+  // Fall back from sent → planned so a single `date` field is meaningful
+  // for both states.
+  const sentDate = extractDate(findProp(props, "Sent Touch Date"));
+  const plannedDate = extractDate(findProp(props, "Touch Date"));
   return {
     id: page.id,
     url: page.url ?? "",
     title: extractText(findProp(props, "Title")) || extractText(findProp(props, "Name")),
-    date: extractDate(findProp(props, "Touch Date")),
+    date: sentDate ?? plannedDate,
     channel: extractSelect(findProp(props, "Channel")),
     outcome: extractSelect(findProp(props, "Outcome")),
     top_challenges: extractMultiSelect(findProp(props, "Top Challenges")),
@@ -150,7 +156,15 @@ export async function fetchCommunicationsForAccount(
             property: "Related Outreach",
             relation: { contains: notionPageId },
           },
-          sorts: [{ property: "Touch Date", direction: "descending" }],
+          // Sent rows surface first, ordered by their actual send date.
+          // Unsent drafts come last, ordered by their planned date.
+          // Single-key sort on Touch Date used to work pre-2026-05-05 when
+          // Touch Date doubled as both planned and actual; now sent rows
+          // have null Touch Date so they'd sink to the bottom otherwise.
+          sorts: [
+            { property: "Sent Touch Date", direction: "descending" },
+            { property: "Touch Date", direction: "descending" },
+          ],
           page_size: Math.min(limit, 100),
         }),
       },

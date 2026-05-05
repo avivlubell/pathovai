@@ -1,5 +1,19 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// Filter semantics under the post-2026-05-05 schema:
+//
+//   touch_date         = planned send date (unsent rows only; null once sent)
+//   sent_touch_date    = actual send date (sent rows only; null until sent)
+//   effective_touch_date = generated coalesce(sent_touch_date, touch_date)
+//
+// Filters route to the right column by intent:
+//   - due_within_days  → planned/upcoming work → touch_date + sent=false
+//   - sent_within_days → completed activity → sent_touch_date + sent=true
+//   - since_days       → any activity in the last N days (DEPRECATED but
+//                        preserved for backwards compat — maps to
+//                        effective_touch_date >= cutoff)
+//   - before_date / after_date → effective_touch_date (matches sent + planned)
+
 Deno.serve(async (req: Request) => {
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -26,41 +40,58 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // Apply identical filters to a query builder. Used twice: once for the
-  // detail row sample (with limit), once for the unbounded rollup.
   const today = new Date();
   const isoDate = (d: Date) => d.toISOString().slice(0, 10);
 
-  type QB = ReturnType<typeof supabase.from>;
   const applyFilters = (q: any) => {
     if (resolvedAccountId) q = q.eq('account_id', resolvedAccountId);
     if (typeof filter?.sent === 'boolean') q = q.eq('sent', filter.sent);
     if (filter?.channel) q = q.ilike('channel', `%${filter.channel}%`);
     if (filter?.outcome) q = q.ilike('outcome', `%${filter.outcome}%`);
+
+    // Forward-looking: planned touches due within N days. touch_date is
+    // populated only on unsent rows post-migration, so the sent=false
+    // clause is redundant but kept for clarity.
     if (typeof filter?.due_within_days === 'number') {
       const cutoff = new Date(today);
       cutoff.setDate(cutoff.getDate() + Math.max(0, filter.due_within_days));
       q = q.lte('touch_date', isoDate(cutoff)).eq('sent', false);
     }
+
+    // Backward-looking: actual sends in last N days. Routes to
+    // sent_touch_date. Implicitly sent=true since unsent rows have null
+    // sent_touch_date and the gte filter excludes them.
+    if (typeof filter?.sent_within_days === 'number') {
+      const cutoff = new Date(today);
+      cutoff.setDate(cutoff.getDate() - Math.max(0, filter.sent_within_days));
+      q = q.gte('sent_touch_date', isoDate(cutoff)).eq('sent', true);
+    }
+
+    // Combined: any activity (sent or planned) anchored in the last N days.
+    // Uses the generated effective_touch_date column.
     if (typeof filter?.since_days === 'number') {
       const cutoff = new Date(today);
       cutoff.setDate(cutoff.getDate() - Math.max(0, filter.since_days));
-      q = q.gte('touch_date', isoDate(cutoff));
+      q = q.gte('effective_touch_date', isoDate(cutoff));
     }
-    if (filter?.before_date) q = q.lte('touch_date', filter.before_date);
-    if (filter?.after_date) q = q.gte('touch_date', filter.after_date);
+
+    if (filter?.before_date) q = q.lte('effective_touch_date', filter.before_date);
+    if (filter?.after_date) q = q.gte('effective_touch_date', filter.after_date);
     return q;
   };
 
   // ---- 1. Detail rows (limited sample for context) ----
+  // Sort by effective_touch_date so sent rows surface alongside planned
+  // ones in the right chronological order. Old default sorted by
+  // touch_date desc, which buried sent rows at the bottom (null touch_date).
   const detailQuery = applyFilters(
     supabase
       .from('touches')
       .select(
-        'notion_page_id, notion_url, account_id, account_name, title, touch_date, channel, sent, outcome, top_challenges, message, updated_at',
+        'notion_page_id, notion_url, account_id, account_name, title, touch_date, sent_touch_date, effective_touch_date, channel, sent, outcome, top_challenges, message, updated_at',
         { count: 'exact' },
       )
-      .order('touch_date', { ascending: false, nullsFirst: false })
+      .order('effective_touch_date', { ascending: false, nullsFirst: false })
       .limit(effectiveLimit),
   );
 
@@ -73,12 +104,10 @@ Deno.serve(async (req: Request) => {
   }
 
   // ---- 2. Lightweight rollup query (no limit, minimal columns) ----
-  // This is what the LLM should rely on for "how many", "by account", etc.
-  // The detail rows above are a sample for narrative context only.
   const rollupQuery = applyFilters(
     supabase
       .from('touches')
-      .select('account_id, account_name, touch_date, sent, channel, outcome'),
+      .select('account_id, account_name, touch_date, sent_touch_date, effective_touch_date, sent, channel, outcome'),
   );
   const { data: allMatchingForRollup } = await rollupQuery;
 
@@ -96,14 +125,18 @@ Deno.serve(async (req: Request) => {
     return acc;
   }, {});
 
-  // Per-account rollup with oldest/newest touch dates so the LLM can spot
-  // long-stale drafts without scanning every row.
+  // Per-account rollup with oldest/newest dates so the LLM can spot
+  // long-stale drafts and identify recently-active accounts. Anchored on
+  // effective_touch_date (sent date for sent rows, planned for unsent).
   type AcctRoll = {
     account_id: string | null;
     account_name: string | null;
     count: number;
-    oldest_touch_date: string | null;
-    newest_touch_date: string | null;
+    sent_count: number;
+    oldest_date: string | null;
+    newest_date: string | null;
+    last_sent_date: string | null;
+    next_due_date: string | null;
     channels: Record<string, number>;
   };
   const byAccountMap = new Map<string, AcctRoll>();
@@ -115,17 +148,28 @@ Deno.serve(async (req: Request) => {
         account_id: r.account_id,
         account_name: r.account_name,
         count: 0,
-        oldest_touch_date: null,
-        newest_touch_date: null,
+        sent_count: 0,
+        oldest_date: null,
+        newest_date: null,
+        last_sent_date: null,
+        next_due_date: null,
         channels: {},
       } as AcctRoll);
     cur.count++;
-    if (r.touch_date) {
-      if (!cur.oldest_touch_date || r.touch_date < cur.oldest_touch_date) {
-        cur.oldest_touch_date = r.touch_date;
+    if (r.sent) cur.sent_count++;
+    const eff = r.effective_touch_date;
+    if (eff) {
+      if (!cur.oldest_date || eff < cur.oldest_date) cur.oldest_date = eff;
+      if (!cur.newest_date || eff > cur.newest_date) cur.newest_date = eff;
+    }
+    if (r.sent && r.sent_touch_date) {
+      if (!cur.last_sent_date || r.sent_touch_date > cur.last_sent_date) {
+        cur.last_sent_date = r.sent_touch_date;
       }
-      if (!cur.newest_touch_date || r.touch_date > cur.newest_touch_date) {
-        cur.newest_touch_date = r.touch_date;
+    }
+    if (!r.sent && r.touch_date) {
+      if (!cur.next_due_date || r.touch_date < cur.next_due_date) {
+        cur.next_due_date = r.touch_date;
       }
     }
     if (r.channel) cur.channels[r.channel] = (cur.channels[r.channel] || 0) + 1;
@@ -147,14 +191,28 @@ Deno.serve(async (req: Request) => {
         sent: sentCount,
         unsent: all.length - sentCount,
         accounts: byAccountMap.size,
+        // Anchored on effective_touch_date — actual send for sent, planned
+        // for unsent. "oldest_touch_date"/"newest_touch_date" kept as keys
+        // for backwards compat with any consumers reading the old shape.
         oldest_touch_date: all.reduce(
           (acc: string | null, r: any) =>
-            r.touch_date && (!acc || r.touch_date < acc) ? r.touch_date : acc,
+            r.effective_touch_date && (!acc || r.effective_touch_date < acc)
+              ? r.effective_touch_date
+              : acc,
           null,
         ),
         newest_touch_date: all.reduce(
           (acc: string | null, r: any) =>
-            r.touch_date && (!acc || r.touch_date > acc) ? r.touch_date : acc,
+            r.effective_touch_date && (!acc || r.effective_touch_date > acc)
+              ? r.effective_touch_date
+              : acc,
+          null,
+        ),
+        last_sent_date: all.reduce(
+          (acc: string | null, r: any) =>
+            r.sent && r.sent_touch_date && (!acc || r.sent_touch_date > acc)
+              ? r.sent_touch_date
+              : acc,
           null,
         ),
         by_channel: byChannel,

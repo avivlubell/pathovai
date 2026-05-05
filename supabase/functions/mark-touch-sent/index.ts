@@ -118,6 +118,7 @@ serve(async (req) => {
     const props = touchPage.properties || {};
     const channel = props['Channel']?.select?.name ?? null;
     const currentTouchDate = props['Touch Date']?.date?.start ?? null;
+    const currentSentTouchDate = props['Sent Touch Date']?.date?.start ?? null;
     const relatedOutreach = (props['Related Outreach']?.relation || []) as Array<{ id: string }>;
     const oiPageId = relatedOutreach[0]?.id ? dashify(relatedOutreach[0].id) : null;
 
@@ -125,12 +126,26 @@ serve(async (req) => {
       return error400('touch has no Related Outreach (parent account) — cannot advance OI');
     }
 
-    // 2. PATCH the touch: Sent=true, Touch Date <- sent_date if provided,
-    //    Outcome <- outcome if provided.
+    // 2. PATCH the touch under the post-2026-05-05 schema:
+    //    - Sent = true
+    //    - Sent Touch Date = sent_date (or fall back to whatever was in
+    //      Touch Date as the planned send date — that's the implicit
+    //      "you sent it on the day you planned" case)
+    //    - Touch Date = null (Touch Date is forward-looking only now;
+    //      keep it clean once a row is sent so views/filters that show
+    //      "upcoming" don't pick up sent rows)
+    //    - Outcome = outcome (if provided)
+    //
+    // currentSentTouchDate is included in the fallback chain so re-running
+    // mark-touch-sent on a row that's already marked is idempotent.
+    const effectiveSentDate = sent_date || currentSentTouchDate || currentTouchDate;
     const touchUpdates: Record<string, any> = {
       Sent: { checkbox: true },
+      'Touch Date': { date: null },
     };
-    if (sent_date) touchUpdates['Touch Date'] = { date: { start: sent_date } };
+    if (effectiveSentDate) {
+      touchUpdates['Sent Touch Date'] = { date: { start: effectiveSentDate } };
+    }
     if (outcome) touchUpdates['Outcome'] = { select: { name: outcome } };
 
     await notion(`/pages/${touchPageId}`, {
@@ -138,8 +153,6 @@ serve(async (req) => {
       body: JSON.stringify({ properties: touchUpdates }),
     });
     await syncTouch(touchPageId);
-
-    const effectiveSentDate = sent_date || currentTouchDate;
 
     // 3. Look up the parent account in Supabase to get the account UUID for
     //    the Next-Step lookup. (The Notion oiPageId is the page ID; account

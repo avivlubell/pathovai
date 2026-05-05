@@ -124,6 +124,10 @@ serve(async (req) => {
     const account = await resolveAccount(relatedOutreach);
 
     const pageIdStripped = stripDashes(page.id);
+    // Touch Date is now planned-only (forward-looking, cleared after send).
+    // Sent Touch Date is the actual send date (manual property as of the
+    // 2026-05-05 schema migration; previously a formula off Touch Date).
+    // Either can be null independently — sync them straight through.
     const record = {
       notion_page_id: pageIdStripped,
       notion_url: page.url ?? `https://notion.so/${pageIdStripped}`,
@@ -133,6 +137,7 @@ serve(async (req) => {
       contact_notion_page_id: contactRelation[0] ? stripDashes(contactRelation[0]) : null,
       title: getProp(props, "Title", "title"),
       touch_date: getProp(props, "Touch Date", "date"),
+      sent_touch_date: getProp(props, "Sent Touch Date", "date"),
       channel: getProp(props, "Channel", "select"),
       sent: getProp(props, "Sent", "checkbox") ?? false,
       outcome: getProp(props, "Outcome", "select"),
@@ -161,6 +166,7 @@ serve(async (req) => {
         account_name: record.account_name,
         sent: record.sent,
         touch_date: record.touch_date,
+        sent_touch_date: record.sent_touch_date,
       }),
       { headers: { "Content-Type": "application/json" } },
     );

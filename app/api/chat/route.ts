@@ -296,7 +296,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'query_touches',
     description:
-      'Query the Outreach Touches log — every email, LinkedIn DM, connection request, call, or meeting that has been drafted or sent for an account. Use this for "what have I sent to X?", "what is unsent?", "what is due this week?", or prior outreach history. Distinct from accounts (the company-level record).\n\nResponse shape (READ THIS — common LLM mistakes):\n- `total_matching`: TRUE total of rows matching the filters (use this for counts).\n- `total_returned`: number of rows in the `touches` array (capped by limit).\n- `truncated`: true when total_matching > total_returned. If true, do NOT claim you have shown everything.\n- `touches`: a SAMPLE of detail rows (most recent first). Use these for narrative quotes/examples, NOT for counting or rolling up.\n- `summary.by_account`: AUTHORITATIVE per-account rollup over ALL matching rows (NOT just the sample). Each entry: `{account_id, account_name, count, oldest_touch_date, newest_touch_date, channels}`. When the user asks "how many per account" or you are building a per-account table, use this — never count the `touches` array.\n- `summary.{accounts, sent, unsent, by_channel, by_outcome, oldest_touch_date, newest_touch_date}`: also unbounded.\n\nNever invent rows that aren\'t in the data. If by_account has 12 entries, your table has 12 rows. Do not pad with "Today (just drafted)" or any other synthetic entry — those will be flagged as fabrication.',
+      'Query the Outreach Touches log — every email, LinkedIn DM, connection request, call, or meeting that has been drafted or sent for an account. Use this for "what have I sent to X?", "what is unsent?", "what is due this week?", or prior outreach history. Distinct from accounts (the company-level record).\n\nDate model (post-2026-05-05 schema):\n- `touch_date`: planned send date — populated only on UNSENT rows. Cleared once a touch is sent.\n- `sent_touch_date`: actual send date — populated only on SENT rows.\n- `effective_touch_date`: the row\'s anchored date — sent_touch_date if sent, else touch_date. Use this for any "show me chronologically" or "oldest/newest" reasoning.\n\nResponse shape (READ THIS — common LLM mistakes):\n- `total_matching`: TRUE total of rows matching the filters (use this for counts).\n- `total_returned`: number of rows in the `touches` array (capped by limit).\n- `truncated`: true when total_matching > total_returned. If true, do NOT claim you have shown everything.\n- `touches`: a SAMPLE of detail rows (most recent first by effective_touch_date). Use these for narrative quotes/examples, NOT for counting or rolling up.\n- `summary.by_account`: AUTHORITATIVE per-account rollup over ALL matching rows (NOT just the sample). Each entry: `{account_id, account_name, count, sent_count, oldest_date, newest_date, last_sent_date, next_due_date, channels}`. When the user asks "how many per account" or you are building a per-account table, use this — never count the `touches` array.\n- `summary.{accounts, sent, unsent, by_channel, by_outcome, oldest_touch_date, newest_touch_date, last_sent_date}`: also unbounded. The `oldest_touch_date`/`newest_touch_date` keys are anchored on effective_touch_date despite the legacy names.\n\nNever invent rows that aren\'t in the data. If by_account has 12 entries, your table has 12 rows. Do not pad with "Today (just drafted)" or any other synthetic entry — those will be flagged as fabrication.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -309,10 +309,11 @@ const tools: Anthropic.Tool[] = [
             sent: { type: 'boolean', description: 'Filter to sent (true) or unsent/draft (false) only' },
             channel: { type: 'string', description: 'Substring match on channel: Email, LinkedIn, Phone, Intro, Meeting' },
             outcome: { type: 'string', description: 'Substring match on outcome: Meeting Booked, No Response, Disqualified, Warm Follow-up, Referred, Nurture, Connection Request Pending, Connected on LinkedIn' },
-            due_within_days: { type: 'number', description: 'Only unsent touches with touch_date within N days from today' },
-            since_days: { type: 'number', description: 'Only touches with touch_date in the last N days' },
-            before_date: { type: 'string', description: 'ISO date — only touches on or before this date' },
-            after_date: { type: 'string', description: 'ISO date — only touches on or after this date' },
+            due_within_days: { type: 'number', description: 'Only UNSENT touches with planned touch_date within N days from today (forward-looking; "what\'s due this week").' },
+            sent_within_days: { type: 'number', description: 'Only SENT touches with sent_touch_date in the last N days (backward-looking; "what did we send recently"). Prefer this over since_days when asking about completed activity.' },
+            since_days: { type: 'number', description: 'Any touches (sent OR planned) with effective_touch_date in the last N days. Combines sent activity and upcoming drafts.' },
+            before_date: { type: 'string', description: 'ISO date — only touches with effective_touch_date on or before this date' },
+            after_date: { type: 'string', description: 'ISO date — only touches with effective_touch_date on or after this date' },
           },
         },
         limit: { type: 'number', description: 'Max rows (default 50, max 200)' },
@@ -337,7 +338,7 @@ const tools: Anthropic.Tool[] = [
               channel: { type: 'string', description: 'Required. One of: Email, LinkedIn, Phone, Intro, Meeting.' },
               message: { type: 'string', description: 'Required. Full message body.' },
               sent: { type: 'boolean', description: 'Default false. true only if this touch went out.' },
-              touch_date: { type: 'string', description: 'ISO date YYYY-MM-DD. Defaults to today. For future drafts use a future date.' },
+              touch_date: { type: 'string', description: 'ISO date YYYY-MM-DD. The send date if sent=true, the planned date if sent=false. Defaults to today. Internally routes to Notion\'s Sent Touch Date or Touch Date based on sent.' },
               title: { type: 'string', description: 'Optional. Defaults to "{Company} - {Channel} - {Date}".' },
               outcome: { type: 'string', description: 'Optional. Meeting Booked, No Response, Disqualified, Warm Follow-up, Referred, Nurture, Connection Request Pending, Connected on LinkedIn.' },
               top_challenges: { type: 'array', items: { type: 'string' }, description: 'Optional discussion topics from Top Challenges multi_select.' },
@@ -359,7 +360,7 @@ const tools: Anthropic.Tool[] = [
       properties: {
         touch_id: { type: 'string', description: 'Notion page ID of the touch to mark sent (with or without dashes). You can get this from query_touches → notion_page_id.' },
         outcome: { type: 'string', description: 'Optional outcome at send-time: Meeting Booked, No Response, Disqualified, Warm Follow-up, Referred, Nurture, Connection Request Pending, Connected on LinkedIn. Sets Outcome on the touch.' },
-        sent_date: { type: 'string', description: 'ISO date YYYY-MM-DD when the touch actually went out. Defaults to the touch\'s existing Touch Date if omitted. Updates Touch Date if provided (use when the touch was sent on a different day than originally drafted).' },
+        sent_date: { type: 'string', description: 'ISO date YYYY-MM-DD when the touch actually went out. Defaults to the touch\'s planned Touch Date if omitted. Writes to Sent Touch Date and clears Touch Date (Touch Date is forward-looking only post-migration).' },
       },
       required: ['touch_id'],
     },
@@ -484,7 +485,7 @@ const tools: Anthropic.Tool[] = [
         channel: { type: 'string', description: 'Touch channel. Must be one of: Email, LinkedIn, Phone, Intro, Meeting.' },
         message: { type: 'string', description: 'Full message body for this touch.' },
         sent: { type: 'boolean', description: 'true if this touch went out, false if it is a draft.' },
-        touch_date: { type: 'string', description: 'ISO date (YYYY-MM-DD) of the touch. Defaults to today.' },
+        touch_date: { type: 'string', description: 'ISO date (YYYY-MM-DD). The send date if sent=true, the planned date if sent=false. Defaults to today.' },
         title: { type: 'string', description: 'Notion page title for the touch row. Defaults to "{Company} - {Channel} - {Date}".' },
         outcome: { type: 'string', description: 'Optional outcome.' },
         top_challenges: { type: 'array', items: { type: 'string' }, description: 'Optional discussion topics.' },

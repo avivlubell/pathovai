@@ -201,15 +201,23 @@ serve(async (req) => {
         continue;
       }
 
+      // Date routing under post-2026-05-05 schema: sent=true writes the
+      // actual send date to Sent Touch Date and leaves Touch Date null
+      // (Touch Date is forward-looking only). sent=false writes the
+      // planned date to Touch Date.
       const props: Record<string, any> = {
         Title: { title: [{ text: { content: t.title } }] },
         'Related Outreach': { relation: [{ id: oiPageId }] },
-        'Touch Date': { date: { start: t.touch_date } },
         Channel: { select: { name: t.channel } },
         Sent: { checkbox: t.sent },
         // Property name has a trailing space — preserved as-is to match the DB.
         'Message ': { rich_text: [{ text: { content: t.message } }] },
       };
+      if (t.sent) {
+        props['Sent Touch Date'] = { date: { start: t.touch_date } };
+      } else {
+        props['Touch Date'] = { date: { start: t.touch_date } };
+      }
       if (t.outcome) props['Outcome'] = { select: { name: t.outcome } };
       if (Array.isArray(t.top_challenges) && t.top_challenges.length > 0) {
         props['Top Challenges'] = {
@@ -231,7 +239,10 @@ serve(async (req) => {
           notion_page_id: created.id,
           notion_url: created.url,
           channel: t.channel,
-          touch_date: t.touch_date,
+          // touch_date populated only on unsent rows (planned date);
+          // sent rows populate sent_touch_date instead.
+          touch_date: t.sent ? null : t.touch_date,
+          sent_touch_date: t.sent ? t.touch_date : null,
           sent: t.sent,
           title: t.title,
         });
