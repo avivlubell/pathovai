@@ -147,14 +147,36 @@ function mapPageToRecord(
   };
 }
 
-Deno.serve(async (_req: Request) => {
+// Safety threshold for the prune pass: if more than this fraction of the
+// existing table would be deleted, abort and require an explicit override.
+// Notion partial-result bugs or auth issues could otherwise wipe the table.
+const MAX_PRUNE_RATIO = 0.5;
+
+Deno.serve(async (req: Request) => {
   const startedAt = new Date();
   let status = "success";
   let totalFound = 0;
   let syncedCount = 0;
   let skippedTrashed = 0;
+  let prunedCount = 0;
+  let pruneSkipped = false;
+  let pruneSkippedReason: string | null = null;
   let errorCount = 0;
   const errorDetails: string[] = [];
+
+  // Optional request body — allow callers to disable prune or override the
+  // safety threshold. Empty body = defaults (prune on, 50% guard).
+  let cleanupStale = true;
+  let forcePrune = false;
+  try {
+    const body = await req.json();
+    if (body && typeof body === "object") {
+      if (typeof body.cleanup_stale === "boolean") cleanupStale = body.cleanup_stale;
+      if (typeof body.force_prune === "boolean") forcePrune = body.force_prune;
+    }
+  } catch (_e) {
+    // No body or invalid JSON — use defaults.
+  }
 
   try {
     const accountIndex = await loadAccountIndex();
@@ -162,6 +184,7 @@ Deno.serve(async (_req: Request) => {
     totalFound = pages.length;
 
     const records: Record<string, any>[] = [];
+    const seenPageIds = new Set<string>();
     for (const page of pages) {
       try {
         const record = mapPageToRecord(page, accountIndex);
@@ -170,6 +193,7 @@ Deno.serve(async (_req: Request) => {
           continue;
         }
         records.push(cleanRecord(record));
+        seenPageIds.add(record.notion_page_id as string);
       } catch (e: any) {
         errorCount++;
         errorDetails.push(`map:${e.message}`);
@@ -187,6 +211,48 @@ Deno.serve(async (_req: Request) => {
       } else {
         syncedCount = records.length;
       }
+    }
+
+    // Prune pass: delete rows in Supabase whose notion_page_id is no longer
+    // in the live Notion data source (because they were trashed/archived
+    // there and Notion's query endpoint excludes them). Skipped if upsert
+    // failed, the sync returned zero rows, or the prune ratio exceeds the
+    // safety threshold without an explicit force_prune.
+    if (cleanupStale && status === "success" && totalFound > 0) {
+      const allRows = await supabase.from("touches").select("notion_page_id");
+      if (allRows.error) {
+        errorDetails.push(`prune-prefetch:${allRows.error.message}`);
+      } else if (allRows.data) {
+        const stale = allRows.data
+          .map((r: any) => r.notion_page_id as string)
+          .filter((id) => !seenPageIds.has(id));
+        const ratio = allRows.data.length > 0 ? stale.length / allRows.data.length : 0;
+        if (stale.length === 0) {
+          // Nothing to prune.
+        } else if (ratio > MAX_PRUNE_RATIO && !forcePrune) {
+          pruneSkipped = true;
+          pruneSkippedReason = `would delete ${stale.length}/${allRows.data.length} rows (${(ratio * 100).toFixed(1)}%) — exceeds ${MAX_PRUNE_RATIO * 100}% guard. Pass force_prune:true to override.`;
+        } else {
+          // Delete in chunks — Supabase REST has URL length limits on .in().
+          const CHUNK = 200;
+          for (let i = 0; i < stale.length; i += CHUNK) {
+            const batch = stale.slice(i, i + CHUNK);
+            const del = await supabase.from("touches").delete().in("notion_page_id", batch);
+            if (del.error) {
+              errorCount++;
+              errorDetails.push(`prune:${del.error.message}`);
+              break;
+            }
+            prunedCount += batch.length;
+          }
+        }
+      }
+    } else if (cleanupStale && totalFound === 0) {
+      pruneSkipped = true;
+      pruneSkippedReason = "totalFound=0 — refusing to prune; treating as a likely Notion API failure";
+    } else if (cleanupStale && status !== "success") {
+      pruneSkipped = true;
+      pruneSkippedReason = `upsert status=${status} — skipping prune to avoid amplifying upstream errors`;
     }
   } catch (e: any) {
     status = "error";
@@ -218,6 +284,9 @@ Deno.serve(async (_req: Request) => {
       total_found: totalFound,
       synced: syncedCount,
       skipped_trashed: skippedTrashed,
+      pruned: prunedCount,
+      prune_skipped: pruneSkipped,
+      prune_skipped_reason: pruneSkippedReason,
       errors: errorCount,
       error_details: errorDetails,
       duration_ms: durationMs,
