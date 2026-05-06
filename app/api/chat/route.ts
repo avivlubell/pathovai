@@ -96,6 +96,10 @@ function humanizeToolCall(
       return pickName() ? `Cancelling queued touches for ${pickName()}` : 'Cancelling queued touches';
     case 'list_calendar_events':
       return pickQuery() ? `Checking calendar for "${pickQuery()}"` : 'Checking your calendar';
+    case 'create_calendar_event':
+      return (input.summary as string | undefined)
+        ? `Scheduling "${input.summary}"`
+        : 'Creating calendar invite';
     case 'create_account':
       return pickName() ? `Creating account for ${pickName()}` : 'Creating account in Notion';
     case 'create_contact':

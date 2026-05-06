@@ -27,6 +27,42 @@ export const calendarTools: Anthropic.Tool[] = [
       },
     },
   },
+  {
+    name: 'create_calendar_event',
+    description:
+      'Create a Google Calendar event with a Google Meet link and send invites to attendees. Use when the user wants to schedule a call or meeting with a prospect or contact. Always confirm the details with the user before calling this tool. Returns the event link and Meet URL.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        summary: {
+          type: 'string',
+          description: 'Event title (e.g. "Intro call — Pathovai x Riverbend Heart")',
+        },
+        startDateTime: {
+          type: 'string',
+          description: 'Start time as ISO 8601 with UTC offset (e.g. "2026-05-10T10:00:00-05:00")',
+        },
+        endDateTime: {
+          type: 'string',
+          description: 'End time as ISO 8601 with UTC offset (e.g. "2026-05-10T10:30:00-05:00")',
+        },
+        timeZone: {
+          type: 'string',
+          description: 'IANA timezone name (e.g. "America/New_York", "America/Chicago"). Required.',
+        },
+        attendeeEmails: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Email addresses of attendees to invite (include the prospect and any internal team members)',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional agenda or notes to include in the invite body',
+        },
+      },
+      required: ['summary', 'startDateTime', 'endDateTime', 'timeZone', 'attendeeEmails'],
+    },
+  },
 ];
 
 async function listCalendarEvents(
@@ -83,7 +119,69 @@ async function listCalendarEvents(
   }
 }
 
-const CALENDAR_TOOL_NAMES = new Set(['list_calendar_events']);
+async function createCalendarEvent(
+  accessToken: string,
+  summary: string,
+  startDateTime: string,
+  endDateTime: string,
+  timeZone: string,
+  attendeeEmails: string[],
+  description: string | undefined
+): Promise<string> {
+  try {
+    const requestId = `pathovai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const body: Record<string, unknown> = {
+      summary,
+      start: { dateTime: startDateTime, timeZone },
+      end: { dateTime: endDateTime, timeZone },
+      attendees: attendeeEmails.map((email) => ({ email })),
+      conferenceData: {
+        createRequest: {
+          requestId,
+          conferenceSolutionKey: { type: 'hangoutsMeet' },
+        },
+      },
+    };
+    if (description) body.description = description;
+
+    const res = await fetch(
+      'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }
+    );
+    if (!res.ok) {
+      const errText = await res.text();
+      return JSON.stringify({
+        error: `Calendar create failed (${res.status}). User may need to sign out and reconnect Google to grant Calendar access.`,
+        details: errText.slice(0, 300),
+      });
+    }
+    const event = await res.json();
+    const meetLink = (event.conferenceData?.entryPoints || []).find(
+      (ep: any) => ep.entryPointType === 'video'
+    )?.uri;
+    return JSON.stringify({
+      success: true,
+      eventId: event.id,
+      summary: event.summary,
+      start: event.start?.dateTime,
+      end: event.end?.dateTime,
+      attendees: (event.attendees || []).map((a: any) => a.email),
+      meetLink: meetLink || null,
+      htmlLink: event.htmlLink,
+    });
+  } catch (err: any) {
+    return JSON.stringify({ error: `Calendar create error: ${err.message}` });
+  }
+}
+
+const CALENDAR_TOOL_NAMES = new Set(['list_calendar_events', 'create_calendar_event']);
 
 export async function executeCalendarTool(
   toolName: string,
@@ -104,6 +202,16 @@ export async function executeCalendarTool(
         toolInput.timeMin as string | undefined,
         toolInput.timeMax as string | undefined,
         (toolInput.maxResults as number) || 20
+      );
+    case 'create_calendar_event':
+      return createCalendarEvent(
+        accessToken,
+        toolInput.summary as string,
+        toolInput.startDateTime as string,
+        toolInput.endDateTime as string,
+        toolInput.timeZone as string,
+        toolInput.attendeeEmails as string[],
+        toolInput.description as string | undefined
       );
     default:
       return null;
