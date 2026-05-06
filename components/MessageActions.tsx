@@ -35,7 +35,7 @@ export default function MessageActions({
   >('idle');
   const copyTimeoutRef = useRef<number | null>(null);
 
-  function flashCopied(kind: 'plain' | 'email') {
+  function flashCopied(kind: 'plain') {
     setCopiedKind(kind);
     if (copyTimeoutRef.current) window.clearTimeout(copyTimeoutRef.current);
     copyTimeoutRef.current = window.setTimeout(() => setCopiedKind(null), 1500);
