@@ -9,6 +9,7 @@ import { buildConversationContext } from '../../../lib/contextPrompt';
 import { authOptions } from '../../../lib/authOptions';
 import { gmailTool, executeGmailTool } from './gmail-tools';
 import { driveTools, executeDriveTool } from './drive-tools';
+import { calendarTools, executeCalendarTool } from './calendar-tools';
 import { loadSkill, SKILL_INDEX } from '../../../lib/skills';
 
 const anthropic = new Anthropic({
@@ -93,6 +94,8 @@ function humanizeToolCall(
       return 'Marking touch as sent in Notion';
     case 'cancel_queued_touches':
       return pickName() ? `Cancelling queued touches for ${pickName()}` : 'Cancelling queued touches';
+    case 'list_calendar_events':
+      return pickQuery() ? `Checking calendar for "${pickQuery()}"` : 'Checking your calendar';
     case 'create_account':
       return pickName() ? `Creating account for ${pickName()}` : 'Creating account in Notion';
     case 'create_contact':
@@ -668,6 +671,7 @@ const tools: Anthropic.Tool[] = [
   },
   gmailTool,
   ...driveTools,
+  ...calendarTools,
 ];
 
 async function callEdgeFunction(
@@ -717,6 +721,9 @@ async function executeTool(
 
   const driveResult = await executeDriveTool(toolName, toolInput, gmailAccessToken);
   if (driveResult !== null) return driveResult;
+
+  const calendarResult = await executeCalendarTool(toolName, toolInput, gmailAccessToken);
+  if (calendarResult !== null) return calendarResult;
 
   if (toolName === 'load_skill') {
     return loadSkill(toolInput.skill as string);
