@@ -56,9 +56,27 @@ export default function MessageActions({
     const text = markdownToEmail(content);
     const subjectMatch = text.match(/^subject:\s*(.+)$/im);
     const subject = subjectMatch ? subjectMatch[1].trim() : '';
-    const body = subjectMatch
+    let body = subjectMatch
       ? text.replace(/^subject:\s*.+\n?/im, '').trim()
       : text;
+
+    // Strip agent commentary that follows the email body.
+    // The agent appends short conversational lines after a blank line
+    // (e.g. "Clean. Ready to send, or anything else to adjust?").
+    // Split into paragraphs and drop trailing ones that look like dialogue.
+    const agentOutroRe =
+      /^(clean\b|ready to send|let me know|anything else|want me to|should i|shall i|feel free|happy to|does this|looks good|one note|quick note|note:|p\.?s\.?\s)/i;
+    const paragraphs = body.split(/\n\n+/);
+    while (paragraphs.length > 1) {
+      const last = paragraphs[paragraphs.length - 1].trim();
+      if (agentOutroRe.test(last)) {
+        paragraphs.pop();
+      } else {
+        break;
+      }
+    }
+    body = paragraphs.join('\n\n').trim();
+
     const url =
       'https://mail.google.com/mail/?view=cm&fs=1' +
       (subject ? `&su=${encodeURIComponent(subject)}` : '') +
