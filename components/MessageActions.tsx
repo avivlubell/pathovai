@@ -26,7 +26,7 @@ export default function MessageActions({
   onRegenerate,
   onDownload,
 }: Props) {
-  const [copiedKind, setCopiedKind] = useState<null | 'plain' | 'email'>(null);
+  const [copiedKind, setCopiedKind] = useState<null | 'plain'>(null);
   const [rating, setRating] = useState<Rating>(null);
   const [showReason, setShowReason] = useState(false);
   const [reasonDraft, setReasonDraft] = useState('');
@@ -52,14 +52,18 @@ export default function MessageActions({
     }
   }
 
-  async function handleCopyEmail() {
+  function handleOpenGmail() {
     const text = markdownToEmail(content);
-    try {
-      await navigator.clipboard.writeText(text);
-      flashCopied('email');
-    } catch (err) {
-      console.error('Copy-as-email failed', err);
-    }
+    const subjectMatch = text.match(/^subject:\s*(.+)$/im);
+    const subject = subjectMatch ? subjectMatch[1].trim() : '';
+    const body = subjectMatch
+      ? text.replace(/^subject:\s*.+\n?/im, '').trim()
+      : text;
+    const url =
+      'https://mail.google.com/mail/?view=cm&fs=1' +
+      (subject ? `&su=${encodeURIComponent(subject)}` : '') +
+      `&body=${encodeURIComponent(body)}`;
+    window.open(url, 'gmail-compose', 'width=900,height=700,resizable=yes,scrollbars=yes');
   }
 
   async function sendFeedback(next: 'up' | 'down', reason?: string) {
@@ -129,12 +133,12 @@ export default function MessageActions({
 
         <button
           type="button"
-          onClick={handleCopyEmail}
-          aria-label="Copy as email"
-          title={copiedKind === 'email' ? 'Copied' : 'Copy as email'}
+          onClick={handleOpenGmail}
+          aria-label="Open in Gmail"
+          title="Open in Gmail"
           className={btnClass}
         >
-          {copiedKind === 'email' ? <CheckIcon /> : <MailIcon />}
+          <MailIcon />
         </button>
 
         <button
