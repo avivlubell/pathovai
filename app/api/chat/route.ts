@@ -124,6 +124,10 @@ function humanizeToolCall(
       return 'Logging action to audit trail';
     case 'process_document':
       return 'Processing document';
+    case 'search_kb':
+      return pickQuery()
+        ? `Searching knowledge base for "${pickQuery()}"`
+        : 'Searching knowledge base';
     case 'ingest_to_kb': {
       const title = typeof input.title === 'string' ? input.title : null;
       return title ? `Saving "${title}" to knowledge base` : 'Saving to knowledge base';
@@ -179,6 +183,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   log_agent_run: 'log-agent-run',
   process_document: 'process-document',
   ingest_to_kb: 'ingest-to-kb',
+  search_kb: 'search-kb',
   store_learning: 'store-learning',
 };
 
@@ -540,12 +545,13 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'invoke_outreach_drafter',
-    description: 'Outreach Drafter specialist agent. Takes an ACCOUNT (company) and produces a diagnosis-first PIC (Prospect Intelligence Card) then a 3-touch sequence (LinkedIn + 2 emails) to a single target person AT that company, grounded in evidence and QA-checked. You do NOT need a contact/person id -- the drafter picks the best target from the account data. The drafter auto-pulls prior outreach history from Notion so it avoids repeating angles. ALWAYS pass company_name alongside account_id so the drafter can verify the UUID resolves to the right company; if there is any doubt about the UUID, pass company_name only and let the drafter resolve it. Optionally pass `macro_context` (industry intelligence rows from query_industry_intelligence — paraphrasable news/events) and/or `voice_of_buyer` (podcast signal rows from query_podcast_signals — must be quoted verbatim with attribution). The drafter handles each block differently per its prompt.',
+    description: 'Outreach Drafter specialist agent. Takes an ACCOUNT (company) and produces a diagnosis-first PIC (Prospect Intelligence Card) then a 3-touch sequence (LinkedIn + 2 emails) to a single target person AT that company, grounded in evidence and QA-checked. You do NOT need a contact/person id -- the drafter picks the best target from the account\'s contacts. If the conversation has identified a specific non-primary target, pass target_contact_name (their full name) to pin that person; without it the drafter may default to the primary contact. The drafter auto-pulls prior outreach history from Notion so it avoids repeating angles. ALWAYS pass company_name alongside account_id so the drafter can verify the UUID resolves to the right company; if there is any doubt about the UUID, pass company_name only and let the drafter resolve it. Optionally pass `macro_context` (industry intelligence rows from query_industry_intelligence — paraphrasable news/events) and/or `voice_of_buyer` (podcast signal rows from query_podcast_signals — must be quoted verbatim with attribution). The drafter handles each block differently per its prompt.',
     input_schema: {
       type: 'object' as const,
       properties: {
         account_id: { type: 'string', description: 'Company UUID from accounts table (NOT a contact/person id). Optional if company_name is provided.' },
         company_name: { type: 'string', description: 'Company name. Used to verify account_id resolves to the right company, or to resolve the account when UUID is unknown. Pass this whenever you have it.' },
+        target_contact_name: { type: 'string', description: 'Optional. Full name of a specific contact to target. Pass this when the conversation has identified a non-primary contact (e.g. a CCO instead of the CEO). Without this the drafter selects the best target from the account\'s contacts, which may default to the primary contact.' },
         macro_context: {
           type: 'array',
           description: 'Optional. Up to 5 industry intelligence rows from query_industry_intelligence to anchor a dated macro hook in the opener. Each item should carry {title, signal_type, urgency_window, source_publication, source_date, so_what, what_happened, source_url}. The drafter paraphrases these with attribution.',
@@ -645,6 +651,20 @@ const tools: Anthropic.Tool[] = [
         source_url: { type: 'string', description: 'Optional original source URL' },
       },
       required: ['title', 'content', 'document_type'],
+    },
+  },
+  {
+    name: 'search_kb',
+    description: 'Search the Pathova knowledge base. Use this to retrieve saved research notes, triage results, intel, and documents. For morning triage: call with document_type="research_note" and tags=["morning-triage"]. For general KB search: pass a query string. Results are ordered by most recent first.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Optional text search across title and content.' },
+        document_type: { type: 'string', description: 'Optional filter by type: research_note, competitive_intel, battle_card, case_study, white_paper, general_document.' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Optional tag filter — returns rows whose tags overlap with this list. Use ["morning-triage"] to retrieve triage results.' },
+        created_after: { type: 'string', description: 'Optional ISO 8601 datetime — only return entries created after this point.' },
+        limit: { type: 'number', description: 'Max results to return. Default 5, max 20.' },
+      },
     },
   },
   {
