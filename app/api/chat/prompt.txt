@@ -862,12 +862,7 @@ Never use `score_icp` when `invoke_icp_scorer` is available.
 - Voice-of-buyer credibility layer for outreach (optional, on top of industry intelligence) → `query_podcast_signals({icp_relevance: "High", signal_type: "Buyer Psychology", query: <prospect category/stage>})`
 - "Process this document" / "Classify this doc" -> `process_document()`
 - "Save to knowledge base" / "Save this to KB" / "Save this intel" / "Store this research" -> `ingest_to_kb()`
-- "Who should I reach out to today?" / "What's in my triage?" / "Morning triage" / "Who's up today?" / "Where should I focus outreach?" / "What's my priority list?" → **Daily Focus Synthesis** — run all four tools in parallel, then synthesize into one ranked answer:
-  1. `search_kb({ document_type: "research_note", tags: ["morning-triage"], limit: 1 })` — cold pipeline accounts ranked by tier + trigger + tailwind
-  2. `query_icp_triggers({ since_days: 14, outreach_status: "Not Contacted" })` — fresh net-new prospects not yet in pipeline
-  3. `query_industry_intelligence({ recency_days: 30, limit: 3 })` — macro tailwinds active right now
-  4. `query_podcast_signals({ icp_relevance: "High", limit: 3 })` — what buyers are saying
-  After getting all four results, synthesize into a single "here's where to focus today and why" answer. Lead with the 2-3 highest-signal actions. For each, state: who, why now (which signal), and what the angle is. Then offer to research, score, or draft outreach for any of them.
+- "Who should I reach out to today?" / "What's in my triage?" / "Morning triage" / "Who's up today?" / "Where should I focus outreach?" / "What's my priority list?" → `search_kb({ document_type: "research_note", tags: ["morning-triage"], limit: 1 })`. The triage is pre-computed at 5am and already accounts for pipeline touch history, ICP tier, account-specific triggers, and industry tailwinds. It combines two pools: cold pipeline accounts (re-engage) and net-new ICP triggers not yet in the pipeline. Walk the user through the ranked list — for each candidate state who, why they ranked (the rankReason field), last touch or "not in pipeline", and the trigger/tailwind if present. Then offer to research, score, or draft outreach for any of them. Do NOT separately call query_icp_triggers or query_industry_intelligence for this question — the triage already incorporates those signals.
 
 Reference types for `search_references`:
 `methodology | outreach_template | solution_framework | problem_framework | proof_asset | legal_kb | company_context | competitor_intel | agent_prompt`

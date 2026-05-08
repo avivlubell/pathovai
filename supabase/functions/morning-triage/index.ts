@@ -50,14 +50,29 @@ function fmtDate(iso: string | null): string {
   });
 }
 
-function buildBlocks(candidates: any[], date: string, totalQualified: number): any[] {
+// Normalize icp_tier strings from either the OI or Trigger Monitor database.
+function normTierScore(tier: string | null): number {
+  const t = (tier ?? "").toLowerCase();
+  if (t.includes("tier 1") || t.includes("priority") || t.includes("highest")) return 1000;
+  if (t.includes("tier 2") || t.includes("qualified") || t.includes("strong")) return 500;
+  return 0;
+}
+
+function buildBlocks(candidates: any[], date: string, totalPool: number): any[] {
   const blocks: any[] = [];
 
-  const headerNote = totalQualified === 0
-    ? "No net-new candidates today — all eligible accounts touched within 90 days."
-    : totalQualified < 7
-    ? `${totalQualified} candidate(s) qualify today (fewer than 7 — showing all).`
-    : `Top 7 of ${totalQualified} qualified candidates.`;
+  const pipelineCount = candidates.filter((c: any) => c.source === "pipeline").length;
+  const triggerCount = candidates.filter((c: any) => c.source === "trigger").length;
+
+  let headerNote: string;
+  if (totalPool === 0) {
+    headerNote = "No candidates today — pipeline is fully active and no fresh triggers outside it.";
+  } else {
+    const parts: string[] = [];
+    if (pipelineCount > 0) parts.push(`${pipelineCount} re-engage`);
+    if (triggerCount > 0) parts.push(`${triggerCount} new trigger`);
+    headerNote = `Top ${candidates.length} of ${totalPool} candidates (${parts.join(", ")}).`;
+  }
 
   blocks.push({
     type: "heading_1",
@@ -72,9 +87,10 @@ function buildBlocks(candidates: any[], date: string, totalQualified: number): a
   for (let i = 0; i < candidates.length; i++) {
     const c = candidates[i];
     const icpStr = c.icp_score != null ? String(c.icp_score) : "—";
+    const sourceLabel = c.source === "trigger" ? "New Trigger" : "Re-engage";
     const lastTouchStr = c.last_touch_date
       ? `${c.days_cold} days ago (${fmtDate(c.last_touch_date)})`
-      : "Never contacted";
+      : c.source === "trigger" ? "Not in pipeline" : "Never contacted";
     const contactStr = c.primaryContactName
       ? `${c.primaryContactName}${c.primaryContactTitle ? ", " + c.primaryContactTitle : ""}`
       : "No contact on file";
@@ -82,7 +98,7 @@ function buildBlocks(candidates: any[], date: string, totalQualified: number): a
     blocks.push({
       type: "heading_3",
       heading_3: {
-        rich_text: [rt(`${i + 1}. ${c.company_name} (${c.tier}) — ICP ${icpStr}`)],
+        rich_text: [rt(`${i + 1}. ${c.company_name} (${c.tier ?? "—"}) — ICP ${icpStr} · ${sourceLabel}`)],
       },
     });
     blocks.push({
@@ -130,14 +146,12 @@ function buildBlocks(candidates: any[], date: string, totalQualified: number): a
 async function clearPageContent(pageId: string): Promise<void> {
   let cursor: string | undefined;
   const blockIds: string[] = [];
-
   do {
     const params = cursor ? `?start_cursor=${cursor}` : "";
     const data = await notionFetch(`/blocks/${dashify(pageId)}/children${params}`);
     for (const block of data.results ?? []) blockIds.push(block.id);
     cursor = data.has_more ? data.next_cursor : undefined;
   } while (cursor);
-
   for (const id of blockIds) {
     await notionFetch(`/blocks/${id}`, { method: "DELETE" });
   }
@@ -152,22 +166,49 @@ Deno.serve(async (_req) => {
   }
 
   const today = new Date().toISOString().split("T")[0];
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    .toISOString().split("T")[0];
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
   try {
-    // ── 1. Eligible accounts ─────────────────────────────────────────────────
-    const { data: accs, error: accErr } = await supabase
-      .from("accounts")
-      .select("id, notion_page_id, company_name, tier, icp_score, engage_decision, company_notion_page_id")
-      .in("tier", ["Tier 1: Priority", "Tier 2: Qualified"])
-      .in("engage_decision", ["Proceed", "Monitor"]);
-    if (accErr) throw new Error(`accounts: ${accErr.message}`);
+    // ── 1. Fetch in parallel: OI accounts + all account names + triggers ────────
+    const [accsResult, allNamesResult, triggersResult] = await Promise.all([
+      supabase
+        .from("accounts")
+        .select("id, notion_page_id, company_name, tier, icp_score, engage_decision, company_notion_page_id")
+        .in("tier", ["Tier 1: Priority", "Tier 2: Qualified"])
+        .in("engage_decision", ["Proceed", "Monitor"]),
+      // All account company names for dedup — prevents surfacing companies
+      // already in the pipeline (any tier) as net-new triggers.
+      supabase
+        .from("accounts")
+        .select("company_name")
+        .not("company_name", "is", null),
+      supabase
+        .from("icp_triggers")
+        .select("company_name, icp_tier, icp_score, trigger_types, summary, date_found, founder_name, founder_role, outreach_status")
+        .gte("date_found", thirtyDaysAgo)
+        .neq("outreach_status", "Disqualified")
+        .order("date_found", { ascending: false }),
+    ]);
 
-    let candidates: any[] = [];
+    if (accsResult.error) throw new Error(`accounts: ${accsResult.error.message}`);
 
-    if (accs && accs.length > 0) {
-      // ── 2. Last sent touch per account ──────────────────────────────────────
+    const accs = accsResult.data ?? [];
+    const allAccountNames = new Set(
+      (allNamesResult.data ?? []).map((a: any) => a.company_name?.toLowerCase()).filter(Boolean)
+    );
+    const allTriggers = triggersResult.data ?? [];
+
+    // Build trigger lookup: company_name → trigger (most recent per company)
+    const triggerMap = new Map<string, any>();
+    for (const t of allTriggers) {
+      const key = t.company_name?.toLowerCase();
+      if (key && !triggerMap.has(key)) triggerMap.set(key, t);
+    }
+
+    // ── 2. Pool 1: cold pipeline accounts ────────────────────────────────────
+    let pipelineCandidates: any[] = [];
+
+    if (accs.length > 0) {
       const { data: touchRows } = await supabase
         .from("touches")
         .select("account_id, effective_touch_date")
@@ -181,21 +222,22 @@ Deno.serve(async (_req) => {
         if (!lastTouchMap.has(t.account_id)) lastTouchMap.set(t.account_id, t.effective_touch_date);
       }
 
-      // ── 3. Filter: >= 90 days cold ──────────────────────────────────────────
-      candidates = accs
+      pipelineCandidates = accs
         .map((a: any) => {
           const lastTouch = lastTouchMap.get(a.id) ?? null;
           const daysCold = lastTouch
             ? Math.floor((Date.now() - new Date(lastTouch).getTime()) / 86400000)
             : null;
+          const trig = triggerMap.get(a.company_name?.toLowerCase());
           return {
             ...a,
+            source: "pipeline",
             last_touch_date: lastTouch,
             days_cold: daysCold,
             therapeutic_area: [] as string[],
-            hasFreshTrigger: false,
-            triggerSummary: null as string | null,
-            triggerDate: null as string | null,
+            hasFreshTrigger: !!trig,
+            triggerSummary: trig ? (trig.summary || trig.trigger_types?.join(", ") || "Trigger event") : null,
+            triggerDate: trig?.date_found ?? null,
             hasTailwind: false,
             tailwindTitle: null as string | null,
             tailwindDate: null as string | null,
@@ -208,30 +250,9 @@ Deno.serve(async (_req) => {
         .filter((a: any) => a.days_cold === null || a.days_cold >= 90);
     }
 
-    if (candidates.length > 0) {
-      // ── 4. Account-specific triggers (last 30 days) ──────────────────────────
-      const { data: triggers } = await supabase
-        .from("icp_triggers")
-        .select("company_name, trigger_types, summary, date_found")
-        .gte("date_found", thirtyDaysAgo)
-        .order("date_found", { ascending: false });
-
-      const triggerMap = new Map<string, any>();
-      for (const t of triggers ?? []) {
-        const key = t.company_name?.toLowerCase();
-        if (key && !triggerMap.has(key)) triggerMap.set(key, t);
-      }
-      for (const c of candidates) {
-        const trig = triggerMap.get(c.company_name?.toLowerCase());
-        if (trig) {
-          c.hasFreshTrigger = true;
-          c.triggerSummary = trig.summary || trig.trigger_types?.join(", ") || "Trigger event";
-          c.triggerDate = trig.date_found;
-        }
-      }
-
-      // ── 5. Therapeutic area → industry tailwinds ─────────────────────────────
-      const companyIds = candidates.map((c: any) => c.company_notion_page_id).filter(Boolean);
+    // ── 3. Tailwinds for Pool 1 ──────────────────────────────────────────────
+    if (pipelineCandidates.length > 0) {
+      const companyIds = pipelineCandidates.map((c: any) => c.company_notion_page_id).filter(Boolean);
       if (companyIds.length > 0) {
         const { data: companies } = await supabase
           .from("companies")
@@ -242,14 +263,14 @@ Deno.serve(async (_req) => {
         for (const co of companies ?? []) {
           if (co.therapeutic_area?.length) cMap.set(co.notion_page_id, co.therapeutic_area);
         }
-        for (const c of candidates) {
+        for (const c of pipelineCandidates) {
           if (c.company_notion_page_id) {
             c.therapeutic_area = cMap.get(c.company_notion_page_id) ?? [];
           }
         }
       }
 
-      const allTas = [...new Set(candidates.flatMap((c: any) => c.therapeutic_area as string[]))];
+      const allTas = [...new Set(pipelineCandidates.flatMap((c: any) => c.therapeutic_area as string[]))];
       if (allTas.length > 0) {
         const { data: tailwinds } = await supabase
           .from("industry_intelligence")
@@ -264,7 +285,7 @@ Deno.serve(async (_req) => {
             if (!taTailwindMap.has(ta)) taTailwindMap.set(ta, tw);
           }
         }
-        for (const c of candidates) {
+        for (const c of pipelineCandidates) {
           for (const ta of c.therapeutic_area) {
             const tw = taTailwindMap.get(ta);
             if (tw) {
@@ -276,12 +297,14 @@ Deno.serve(async (_req) => {
           }
         }
       }
+    }
 
-      // ── 6. Primary contacts ──────────────────────────────────────────────────
+    // ── 4. Contacts for Pool 1 ───────────────────────────────────────────────
+    if (pipelineCandidates.length > 0) {
       const { data: contactRows } = await supabase
         .from("contacts")
         .select("account_id, full_name, title, contact_type")
-        .in("account_id", candidates.map((c: any) => c.id))
+        .in("account_id", pipelineCandidates.map((c: any) => c.id))
         .not("account_id", "is", null);
 
       const contactMap = new Map<string, any>();
@@ -295,43 +318,80 @@ Deno.serve(async (_req) => {
           if (np !== -1 && (ep === -1 || np < ep)) contactMap.set(ct.account_id, ct);
         }
       }
-      for (const c of candidates) {
+      for (const c of pipelineCandidates) {
         const ct = contactMap.get(c.id);
         if (ct) {
           c.primaryContactName = ct.full_name;
           c.primaryContactTitle = ct.title || ct.contact_type;
         }
       }
-
-      // ── 7. Rank ──────────────────────────────────────────────────────────────
-      // Tier (1 > 2) > fresh trigger > industry tailwind > ICP score.
-      // Scores are spaced so Tier 1 always outranks Tier 2 (ICP assumed 0–100).
-      for (const c of candidates) {
-        const tierScore = c.tier === "Tier 1: Priority" ? 1000 : 0;
-        const trigScore = c.hasFreshTrigger ? 200 : 0;
-        const tailScore = c.hasTailwind ? 100 : 0;
-        const icpScore = Number(c.icp_score) || 0;
-        c.rankScore = tierScore + trigScore + tailScore + icpScore;
-
-        const parts: string[] = [c.tier];
-        if (c.hasFreshTrigger) parts.push("fresh trigger");
-        if (c.hasTailwind) parts.push("industry tailwind");
-        parts.push(`ICP ${icpScore}`);
-        c.rankReason = parts.join(" · ");
-      }
-      candidates.sort((a: any, b: any) => b.rankScore - a.rankScore);
     }
 
-    const top7 = candidates.slice(0, 7);
+    // ── 5. Pool 2: net-new triggers not already in any OI account ────────────
+    const triggerCandidates: any[] = [];
+    for (const t of allTriggers) {
+      const key = t.company_name?.toLowerCase();
+      if (!key || allAccountNames.has(key)) continue; // already in pipeline
+      // De-duplicate: one candidate per company
+      const alreadyAdded = triggerCandidates.some(
+        (c: any) => c.company_name?.toLowerCase() === key
+      );
+      if (alreadyAdded) continue;
 
-    // ── 8. Idempotency + Notion write ────────────────────────────────────────
+      triggerCandidates.push({
+        id: null,
+        notion_page_id: null,
+        company_name: t.company_name,
+        tier: t.icp_tier ?? null,
+        icp_score: parseFloat(t.icp_score) || null,
+        source: "trigger",
+        last_touch_date: null,
+        days_cold: null,
+        therapeutic_area: [],
+        hasFreshTrigger: true,
+        triggerSummary: t.summary || t.trigger_types?.join(", ") || "Trigger event",
+        triggerDate: t.date_found,
+        hasTailwind: false,
+        tailwindTitle: null,
+        tailwindDate: null,
+        rankScore: 0,
+        rankReason: "",
+        primaryContactName: t.founder_name ?? null,
+        primaryContactTitle: t.founder_role ?? null,
+      });
+    }
+
+    // ── 6. Unified ranking ───────────────────────────────────────────────────
+    // Tier (1 > 2) > fresh trigger > industry tailwind > ICP score.
+    // normTierScore handles both OI and Trigger Monitor vocabulary.
+    const allCandidates = [...pipelineCandidates, ...triggerCandidates];
+
+    for (const c of allCandidates) {
+      const tierScore = normTierScore(c.tier);
+      const trigScore = c.hasFreshTrigger ? 200 : 0;
+      const tailScore = c.hasTailwind ? 100 : 0;
+      const icpScore = Number(c.icp_score) || 0;
+      c.rankScore = tierScore + trigScore + tailScore + icpScore;
+
+      const parts: string[] = [c.tier ?? "Untiered"];
+      if (c.source === "trigger") parts.push("new trigger");
+      else if (c.hasFreshTrigger) parts.push("fresh trigger");
+      if (c.hasTailwind) parts.push("industry tailwind");
+      parts.push(`ICP ${icpScore || "—"}`);
+      c.rankReason = parts.join(" · ");
+    }
+
+    allCandidates.sort((a: any, b: any) => b.rankScore - a.rankScore);
+    const top7 = allCandidates.slice(0, 7);
+
+    // ── 7. Idempotency + Notion write ────────────────────────────────────────
     const { data: existingRun } = await supabase
       .from("triage_runs")
       .select("notion_page_id")
       .eq("run_date", today)
       .maybeSingle();
 
-    const blocks = buildBlocks(top7, today, candidates.length);
+    const blocks = buildBlocks(top7, today, allCandidates.length);
     let notionPageId: string;
 
     if (existingRun?.notion_page_id) {
@@ -351,7 +411,7 @@ Deno.serve(async (_req) => {
         body: JSON.stringify({
           parent: { page_id: dashify(DAILY_TRIAGE_PARENT_ID) },
           properties: {
-            title: { title: [{ text: { content: `Net-new candidates — ${today}` } }] },
+            title: { title: [{ text: { content: `Morning Triage — ${today}` } }] },
           },
           children: blocks,
         }),
@@ -364,16 +424,23 @@ Deno.serve(async (_req) => {
       });
     }
 
-    // ── 9. Knowledge base entry (direct insert — avoids inter-function JWT issue) ──
+    // ── 8. Knowledge base entry ───────────────────────────────────────────────
     if (top7.length > 0) {
-      const kbLines = top7.map((c: any, i: number) =>
-        `${i + 1}. ${c.company_name} (${c.tier}, ICP ${c.icp_score ?? "—"}) — ${c.rankReason}. ` +
-        `Last touch: ${c.days_cold != null ? c.days_cold + " days ago" : "never"}.` +
-        (c.hasFreshTrigger ? ` Trigger: ${c.triggerSummary}.` : "") +
-        (c.hasTailwind ? ` Tailwind: ${c.tailwindTitle}.` : "")
-      );
+      const kbLines = top7.map((c: any, i: number) => {
+        const sourceTag = c.source === "trigger" ? "[New Trigger]" : "[Re-engage]";
+        return (
+          `${i + 1}. ${c.company_name} ${sourceTag} (${c.tier ?? "—"}, ICP ${c.icp_score ?? "—"}) — ${c.rankReason}. ` +
+          `Last touch: ${c.days_cold != null ? c.days_cold + " days ago" : c.source === "trigger" ? "not in pipeline" : "never"}.` +
+          (c.hasFreshTrigger ? ` Trigger: ${c.triggerSummary}.` : "") +
+          (c.hasTailwind ? ` Tailwind: ${c.tailwindTitle}.` : "") +
+          (c.primaryContactName ? ` Contact: ${c.primaryContactName}${c.primaryContactTitle ? ", " + c.primaryContactTitle : ""}.` : "")
+        );
+      });
+
       const kbContent =
-        `Morning Triage ${today}: ${top7.length} candidate(s) surfaced.\n` +
+        `Morning Triage ${today}: ${top7.length} candidate(s) — ` +
+        `${pipelineCandidates.filter((c: any) => top7.includes(c)).length} pipeline re-engage, ` +
+        `${triggerCandidates.filter((c: any) => top7.includes(c)).length} new triggers.\n\n` +
         kbLines.join("\n");
 
       await supabase.from("knowledge_base").insert({
@@ -396,7 +463,8 @@ Deno.serve(async (_req) => {
         success: true,
         date: today,
         candidates_shown: top7.length,
-        total_qualified: candidates.length,
+        pipeline_candidates: pipelineCandidates.length,
+        trigger_candidates: triggerCandidates.length,
         notion_page_id: notionPageId!,
       }),
       { headers: { "Content-Type": "application/json" } }
