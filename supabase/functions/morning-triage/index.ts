@@ -160,8 +160,8 @@ Deno.serve(async (_req) => {
     const { data: accs, error: accErr } = await supabase
       .from("accounts")
       .select("id, notion_page_id, company_name, tier, icp_score, engage_decision, company_notion_page_id")
-      .in("tier", ["Tier 1", "Tier 2"])
-      .in("engage_decision", ["Proceed", "Monitor with trigger"]);
+      .in("tier", ["Tier 1: Priority", "Tier 2: Qualified"])
+      .in("engage_decision", ["Proceed", "Monitor"]);
     if (accErr) throw new Error(`accounts: ${accErr.message}`);
 
     let candidates: any[] = [];
@@ -307,7 +307,7 @@ Deno.serve(async (_req) => {
       // Tier (1 > 2) > fresh trigger > industry tailwind > ICP score.
       // Scores are spaced so Tier 1 always outranks Tier 2 (ICP assumed 0–100).
       for (const c of candidates) {
-        const tierScore = c.tier === "Tier 1" ? 1000 : 0;
+        const tierScore = c.tier === "Tier 1: Priority" ? 1000 : 0;
         const trigScore = c.hasFreshTrigger ? 200 : 0;
         const tailScore = c.hasTailwind ? 100 : 0;
         const icpScore = Number(c.icp_score) || 0;
