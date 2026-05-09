@@ -147,6 +147,22 @@ function humanizeToolCall(
       return pickQuery() ? `Searching Drive for "${pickQuery()}"` : 'Searching Drive';
     case 'drive_read':
       return 'Reading Drive file';
+    case 'search_clinical_trials':
+      return pickQuery() ? `Searching ClinicalTrials for "${pickQuery()}"` : 'Searching ClinicalTrials.gov';
+    case 'search_cms_coverage':
+      return pickQuery() ? `Searching CMS Coverage for "${pickQuery()}"` : 'Searching CMS Coverage database';
+    case 'search_icd10': {
+      const terms = input.terms as string | undefined;
+      return terms ? `Looking up ICD-10 codes for "${terms}"` : 'Looking up ICD-10 codes';
+    }
+    case 'invoke_signal_brief':
+      return pickName()
+        ? `Building Signal Brief for ${pickName()}`
+        : 'Building Signal Brief';
+    case 'search_fda_devices':
+      return pickName()
+        ? `Searching FDA device database for ${pickName()}`
+        : 'Searching FDA device database';
     default: {
       const pretty = toolName.replace(/^invoke_/, '').replace(/_/g, ' ');
       return `Running ${pretty}`;
@@ -155,6 +171,7 @@ function humanizeToolCall(
 }
 
 const TOOL_ENDPOINT_MAP: Record<string, string> = {
+  invoke_signal_brief: 'signal-brief',
   invoke_icp_scorer: 'icp-scorer',
   invoke_prospect_researcher: 'prospect-researcher',
   invoke_outreach_drafter: 'outreach-drafter',
@@ -603,6 +620,38 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'invoke_signal_brief',
+    description: `Cross-source signal synthesis. Queries multiple intelligence sources IN PARALLEL and returns a structured Signal Brief: convergence themes (where 2+ sources agree), the strongest outreach hook, credibility anchors, and gaps. Use INSTEAD of calling individual signal tools when you need multi-source synthesis — e.g., before drafting outreach, building a dossier, or answering "what's the best angle on this company?"
+
+YOU select which sources to include in \`sources[]\` based on context:
+- "icp_triggers"       — include when company may have a trigger row (Tier 1/2 prospect, recently spotted)
+- "industry_intelligence" — include when macro context matters (reimbursement, regulatory, market timing)
+- "podcast_signals"    — include when buyer psychology or persona framing is needed (outreach, persona Q&A)
+- "clinical_trials"    — include when company has known/suspected trial activity, or indication pipeline matters
+- "cms_coverage"       — include when reimbursement/VAC angle is relevant (CFO/procurement buyer, post-clearance company)
+- "icd10"              — include when the indication needs to be resolved to billing codes for payer analysis
+- "fda_clearances"     — include for any company where regulatory status matters (pre/post-clearance, what was cleared, when, under what product code)
+
+Do NOT use this tool when only ONE source is needed — call that tool directly instead.
+Pass \`device_keyword\` alongside \`company_name\` for fda_clearances when you want to narrow by device type.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        company_name: { type: 'string', description: 'Target company name (required)' },
+        sources: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Sources to query. Select from: icp_triggers, industry_intelligence, podcast_signals, clinical_trials, cms_coverage, icd10, fda_clearances',
+        },
+        indication: { type: 'string', description: 'Clinical indication or device category (e.g. "cardiac monitoring", "atrial fibrillation") — used for clinical_trials, cms_coverage, icd10 queries' },
+        topic: { type: 'string', description: 'Topic keyword for industry_intelligence and podcast_signals (e.g. "RAPID pathway", "ambient AI") — defaults to indication if omitted' },
+        therapeutic_area: { type: 'array', items: { type: 'string' }, description: 'Optional therapeutic area filter for industry_intelligence (e.g. ["cardiovascular", "AI diagnostics"])' },
+        cms_type: { type: 'string', description: '"ncd" (national, default) or "lcd" (local/regional) for cms_coverage source' },
+      },
+      required: ['company_name', 'sources'],
+    },
+  },
+  {
     name: 'invoke_risk_assessor',
     description: 'Risk Assessor specialist agent. Evaluates regulatory, financial, ICP fit, market timing risks for a COMPANY.',
     input_schema: {
@@ -693,6 +742,69 @@ const tools: Anthropic.Tool[] = [
       required: ['skill'],
     },
   },
+  {
+    name: 'search_fda_devices',
+    description: `Search the FDA device database via openFDA. Covers 510(k) clearances (default), PMA approvals (Class III), and device recalls. Use to confirm regulatory status, find clearance dates, identify what a company has cleared, or map competitors who cleared similar devices.
+
+Common use cases:
+- "Is [company] FDA cleared?" → search by company_name, type=510k
+- "What has [company] cleared?" → search by company_name, type=510k
+- "Who else cleared an AI cardiac device?" → search by device_name keyword, type=510k
+- "Does [company] have a PMA?" → search by company_name, type=pma
+- "Any recalls for [company]?" → search by company_name, type=recall
+
+Decision field values: "SUBSTANTIALLY EQUIVALENT" = cleared; "NOT SUBSTANTIALLY EQUIVALENT" = denied.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        company_name: { type: 'string', description: 'Applicant / company name to search (e.g. "Butterfly Network", "iRhythm Technologies")' },
+        device_name: { type: 'string', description: 'Device name keyword to search (e.g. "AI cardiac monitoring", "continuous glucose")' },
+        product_code: { type: 'string', description: 'FDA product code for exact category lookup (e.g. "DXN", "MYN")' },
+        type: { type: 'string', description: '"510k" (default, premarket notification), "pma" (premarket approval, Class III), or "recall"' },
+        limit: { type: 'number', description: 'Number of results (default 5, max 20)' },
+      },
+    },
+  },
+  {
+    name: 'search_icd10',
+    description: 'Search ICD-10-CM diagnosis codes by plain-language term or code prefix. Use to resolve pathology/clinical concepts into billable codes for reimbursement analysis, VAC positioning, and prospect dossiers. Examples: "atrial fibrillation" → I48.* codes; "C18" → malignant colon neoplasm codes.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        terms: { type: 'string', description: 'Plain-language clinical concept (e.g. "atrial fibrillation") or ICD-10 code prefix (e.g. "C18")' },
+        limit: { type: 'number', description: 'Number of results (default 15, max 50)' },
+      },
+      required: ['terms'],
+    },
+  },
+  {
+    name: 'search_clinical_trials',
+    description: 'Search ClinicalTrials.gov for active or completed clinical trials. Use to map competitor pipelines, identify PI/site networks, track indication expansion, and surface trial-registration ICP triggers. Returns trial status, phase, sponsor, conditions, enrollment, and completion dates.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        condition: { type: 'string', description: 'Disease or condition (e.g. "atrial fibrillation", "Type 2 diabetes")' },
+        intervention: { type: 'string', description: 'Drug, device, or procedure name' },
+        sponsor: { type: 'string', description: 'Lead sponsor / company name' },
+        term: { type: 'string', description: 'General keyword search across all fields' },
+        status: { type: 'string', description: 'Trial status filter. Common values: RECRUITING, ACTIVE_NOT_RECRUITING, COMPLETED, NOT_YET_RECRUITING. Comma-separate for multiple.' },
+        phase: { type: 'string', description: 'Phase filter: EARLY_PHASE1, PHASE1, PHASE2, PHASE3, PHASE4, NA' },
+        limit: { type: 'number', description: 'Number of results (default 10, max 25)' },
+      },
+    },
+  },
+  {
+    name: 'search_cms_coverage',
+    description: 'Search the CMS Medicare Coverage Database for National Coverage Determinations (NCDs) and Local Coverage Determinations (LCDs). Use to assess reimbursement status, VAC/payer angle, and coverage policy for a device category or indication. NCDs are national policy; LCDs are contractor-level (regional).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Search term — device category, procedure, or indication (e.g. "cardiac monitoring", "continuous glucose monitoring")' },
+        type: { type: 'string', description: '"ncd" for National Coverage Determinations (default) or "lcd" for Local Coverage Determinations' },
+        limit: { type: 'number', description: 'Number of results (default 10, max 25)' },
+      },
+    },
+  },
   gmailTool,
   ...driveTools,
   ...calendarTools,
@@ -735,6 +847,130 @@ async function callEdgeFunction(
   }
 }
 
+async function executeFdaDevices(input: Record<string, unknown>): Promise<string> {
+  const type = String(input.type || '510k').toLowerCase();
+  const limit = Math.min(Number(input.limit) || 5, 20);
+  const endpoint = type === 'pma'
+    ? 'https://api.fda.gov/device/pma.json'
+    : type === 'recall'
+    ? 'https://api.fda.gov/device/recall.json'
+    : 'https://api.fda.gov/device/510k.json';
+
+  const clauses: string[] = [];
+  if (input.company_name) clauses.push(`applicant:"${String(input.company_name).replace(/"/g, '')}"`);
+  if (input.device_name) clauses.push(`device_name:"${String(input.device_name).replace(/"/g, '')}"`);
+  if (input.product_code) clauses.push(`product_code:"${String(input.product_code).replace(/"/g, '')}"`);
+
+  if (clauses.length === 0) return JSON.stringify({ error: 'At least one of company_name, device_name, or product_code is required' });
+
+  const params = new URLSearchParams({ search: clauses.join('+AND+'), limit: String(limit) });
+  try {
+    const res = await fetch(`${endpoint}?${params}`);
+    if (res.status === 404) return JSON.stringify({ total: 0, results: [] });
+    if (!res.ok) return JSON.stringify({ error: `FDA API error: ${res.status}` });
+    const json = await res.json() as any;
+    const results = (json.results || []).map((r: any) => ({
+      k_number: r.k_number || r.pma_number || r.res_event_number,
+      applicant: r.applicant || r.applicant_full_name,
+      device_name: r.device_name || r.generic_name,
+      decision_date: r.decision_date || r.decision_date,
+      decision: r.decision_description || r.decision_code,
+      product_code: r.product_code,
+      specialty: r.advisory_committee_description || r.openfda?.medical_specialty_description,
+      clearance_type: r.clearance_type,
+      summary: (r.statement_or_summary || r.recall_reason_description || '').slice(0, 300),
+    }));
+    return JSON.stringify({ type, total: json.meta?.results?.total, returned: results.length, results });
+  } catch (err: any) {
+    return JSON.stringify({ error: `FDA fetch failed: ${err.message}` });
+  }
+}
+
+async function executeIcd10Search(input: Record<string, unknown>): Promise<string> {
+  const terms = String(input.terms || '').trim();
+  if (!terms) return JSON.stringify({ error: 'terms is required' });
+  const limit = Math.min(Number(input.limit) || 15, 50);
+  const params = new URLSearchParams({ terms, maxList: String(limit), sf: 'code,name', df: 'code,name', cf: 'code' });
+  try {
+    const res = await fetch(`https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?${params}`);
+    if (!res.ok) return JSON.stringify({ error: `ICD-10 API error: ${res.status}` });
+    const [total, codes, , displayPairs] = await res.json() as [number, string[], null, string[][]];
+    const results = (codes || []).map((code: string, i: number) => ({
+      code,
+      description: displayPairs?.[i]?.[1] ?? '',
+    }));
+    return JSON.stringify({ total_matching: total, returned: results.length, results });
+  } catch (err: any) {
+    return JSON.stringify({ error: `ICD-10 fetch failed: ${err.message}` });
+  }
+}
+
+async function executeClinicalTrials(input: Record<string, unknown>): Promise<string> {
+  const params = new URLSearchParams({
+    format: 'json',
+    pageSize: String(Math.min(Number(input.limit) || 10, 25)),
+    fields: 'NCTId|BriefTitle|OverallStatus|Phase|StartDate|CompletionDate|LeadSponsorName|BriefSummary|EnrollmentCount|Condition|LocationCountry',
+  });
+  if (input.condition) params.set('query.cond', String(input.condition));
+  if (input.intervention) params.set('query.intr', String(input.intervention));
+  if (input.sponsor) params.set('query.lead', String(input.sponsor));
+  if (input.term) params.set('query.term', String(input.term));
+  if (input.status) params.set('filter.overallStatus', String(input.status));
+  if (input.phase) params.set('filter.phase', String(input.phase));
+  try {
+    const res = await fetch(`https://clinicaltrials.gov/api/v2/studies?${params}`);
+    if (!res.ok) return JSON.stringify({ error: `ClinicalTrials API error: ${res.status}` });
+    const json = await res.json() as any;
+    const studies = (json.studies || []).map((s: any) => {
+      const p = s.protocolSection || {};
+      const id = p.identificationModule || {};
+      const st = p.statusModule || {};
+      const design = p.designModule || {};
+      const sponsor = p.sponsorCollaboratorsModule || {};
+      const desc = p.descriptionModule || {};
+      const cond = p.conditionsModule || {};
+      return {
+        nct_id: id.nctId,
+        title: id.briefTitle,
+        status: st.overallStatus,
+        phase: design.phases,
+        start_date: st.startDateStruct?.date,
+        completion_date: st.completionDateStruct?.date,
+        sponsor: sponsor.leadSponsor?.name,
+        conditions: cond.conditions,
+        enrollment: design.enrollmentInfo?.count,
+        summary: (desc.briefSummary || '').slice(0, 400),
+      };
+    });
+    return JSON.stringify({ total_count: json.totalCount, studies });
+  } catch (err: any) {
+    return JSON.stringify({ error: `ClinicalTrials fetch failed: ${err.message}` });
+  }
+}
+
+async function executeCmsCoverage(input: Record<string, unknown>): Promise<string> {
+  const type = String(input.type || 'ncd').toLowerCase();
+  const limit = Math.min(Number(input.limit) || 10, 25);
+  const endpoint = type === 'lcd'
+    ? 'https://api.coverage.cms.gov/v1/reports/local-coverage-final-lcds/'
+    : 'https://api.coverage.cms.gov/v1/reports/national-coverage-ncd/';
+  const params = new URLSearchParams({ page_size: String(limit) });
+  if (input.query) params.set('search', String(input.query));
+  try {
+    const res = await fetch(`${endpoint}?${params}`);
+    if (!res.ok) return JSON.stringify({ error: `CMS Coverage API error: ${res.status}` });
+    const json = await res.json() as any;
+    return JSON.stringify({
+      type,
+      count: (json.data || []).length,
+      has_more: !!json.meta?.next_token,
+      results: json.data || [],
+    });
+  } catch (err: any) {
+    return JSON.stringify({ error: `CMS Coverage fetch failed: ${err.message}` });
+  }
+}
+
 async function executeTool(
   toolName: string,
   toolInput: Record<string, unknown>,
@@ -751,6 +987,22 @@ async function executeTool(
 
   if (toolName === 'load_skill') {
     return loadSkill(toolInput.skill as string);
+  }
+
+  if (toolName === 'search_fda_devices') {
+    return executeFdaDevices(toolInput);
+  }
+
+  if (toolName === 'search_icd10') {
+    return executeIcd10Search(toolInput);
+  }
+
+  if (toolName === 'search_clinical_trials') {
+    return executeClinicalTrials(toolInput);
+  }
+
+  if (toolName === 'search_cms_coverage') {
+    return executeCmsCoverage(toolInput);
   }
 
   const endpoint = TOOL_ENDPOINT_MAP[toolName];
