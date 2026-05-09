@@ -382,6 +382,10 @@ serve(async (req: Request) => {
     // draft for the wrong company.
     const account_id: string | undefined = body?.account_id ?? body?.prospect_id;
     const inputName: string | undefined = body?.company_name;
+    const targetContactName: string | undefined =
+      typeof body?.target_contact_name === "string" && body.target_contact_name.trim()
+        ? body.target_contact_name.trim()
+        : undefined;
     const macroContextItems: any[] = Array.isArray(body?.macro_context)
       ? body.macro_context
       : Array.isArray(body?.macro_context?.items)
@@ -467,21 +471,32 @@ serve(async (req: Request) => {
     // writes, not whatever was passed in.
     const resolvedAccountId: string = account.id;
 
-    const { data: research } = await supabase
-      .from("research_results")
-      .select("*")
-      .eq("prospect_id", resolvedAccountId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    const { data: icpScore } = await supabase
-      .from("icp_scores")
-      .select("*")
-      .eq("prospect_id", resolvedAccountId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
+    const [
+      { data: research },
+      { data: icpScore },
+      { data: contacts },
+    ] = await Promise.all([
+      supabase
+        .from("research_results")
+        .select("*")
+        .eq("prospect_id", resolvedAccountId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single(),
+      supabase
+        .from("icp_scores")
+        .select("*")
+        .eq("prospect_id", resolvedAccountId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single(),
+      supabase
+        .from("contacts")
+        .select("id, full_name, title, email, linkedin_url, contact_type, is_primary")
+        .eq("account_id", resolvedAccountId)
+        .order("is_primary", { ascending: false })
+        .limit(10),
+    ]);
 
     const learningsSection = await fetchLearnings(supabase);
 
@@ -532,9 +547,24 @@ serve(async (req: Request) => {
         }`
       : null;
 
+    const contactsSection = contacts && contacts.length > 0
+      ? `=== CONTACTS (use these for target selection) ===\n${
+          contacts.map((c: any) => {
+            const parts = [c.full_name];
+            if (c.title) parts.push(`Title: ${c.title}`);
+            if (c.contact_type) parts.push(`Type: ${c.contact_type}`);
+            if (c.email) parts.push(`Email: ${c.email}`);
+            if (c.linkedin_url) parts.push(`LinkedIn: ${c.linkedin_url}`);
+            if (c.is_primary) parts.push("(primary contact)");
+            return parts.join(" | ");
+          }).join("\n")
+        }`
+      : null;
+
     const accountContext = [
       `Company: ${account.company_name}`,
       account.website ? `Website: ${account.website}` : null,
+      contactsSection,
       research?.research_data ? `Research Intelligence: ${JSON.stringify(research.research_data)}` : null,
       icpScore?.score_data ? `ICP Score Data: ${JSON.stringify(icpScore.score_data)}` : null,
       `=== PRIOR OUTREACH HISTORY (most recent first) ===\n${commsSection}`,
@@ -553,8 +583,14 @@ serve(async (req: Request) => {
       systemBlocks.push({ type: "text", text: learningsSection });
     }
 
+    // If the caller pinned a specific target, inject a hard constraint so
+    // the drafter can't default to whoever happens to be in research data.
+    const targetConstraint = targetContactName
+      ? `\n\nREQUIRED TARGET: You MUST draft this sequence for "${targetContactName}" at this company. Do not select a different person, even if you judge another contact to be higher-leverage. If "${targetContactName}" is not in the CONTACTS list above, use their name as provided and note in personalization_notes that the contact record was not found in the DB.`
+      : "";
+
     // First draft.
-    const firstUserMessage = `Draft personalized outreach for this account:\n\n${accountContext}`;
+    const firstUserMessage = `Draft personalized outreach for this account:\n\n${accountContext}${targetConstraint}`;
     const first = await callClaude(systemBlocks, firstUserMessage, anthropicKey);
     let draft = parseDraftJson(first.text);
     let qa: QaReport = draft
@@ -602,6 +638,8 @@ serve(async (req: Request) => {
     console.info("[outreach-drafter] done", {
       account_id: resolvedAccountId,
       resolved_from: account_id && account_id !== resolvedAccountId ? `uuid_overridden_by_name:${inputName}` : (inputName ? `name:${inputName}` : "uuid"),
+      target_contact_name: targetContactName ?? null,
+      contacts_found: contacts?.length ?? 0,
       qa_passed: qa.passed,
       retried,
       failures: qa.failures,
@@ -616,6 +654,7 @@ serve(async (req: Request) => {
         qa_passed: qa.passed,
         retried,
         match_info: matchInfo,
+        target_contact_name_requested: targetContactName ?? null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
