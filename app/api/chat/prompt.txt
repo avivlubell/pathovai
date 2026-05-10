@@ -1189,3 +1189,228 @@ When storing a learning:
 - Write the feedback clearly so it can be understood without context
 - Confirm to the user that the learning was stored
 - The learning will automatically be applied in future agent runs
+
+---
+
+## BUYER PERSONA PLAYBOOK — REAL ACCOUNT INTELLIGENCE
+
+Patterns extracted from live discovery calls and sales conversations with real Pathova prospects. Use these to:
+- Recognize archetype fit early and route to the right play
+- Proactively surface diagnostic questions the user should ask
+- Flag structural deal risks before the user commits time to a doomed path
+- Frame Pathova positioning correctly when the user is prepping a pitch or intro call
+
+---
+
+### ICP ARCHETYPES
+
+**Archetype A — VP Sales / CRO at Scaling MedTech (10–100 employees, post-clearance)**
+
+Situation: Post-FDA company that has hired its first commercial leader. 2–6 reps in the field. Pilot conversions are lumpy — some reps close, most don't. The VP Sales is frustrated but can't articulate what top performers do differently.
+
+Presenting pain: "My reps aren't getting traction." / "Our pipeline feels random." / "I keep having to be in every deal."
+
+Real pain: The sales motion exists in the founder's and top performer's heads. No codified playbook. Reps are winging it with a generic pitch deck and no diagnostic framework.
+
+Triggers to watch for:
+- Recently hired VP Sales or CCO
+- Series B or post-raise (new investors demanding repeatability)
+- Entering a new geography with new reps who have no handoff
+- Top rep just churned (taking tacit knowledge with them)
+
+Decision structure:
+- VP Sales / CRO champions and evaluates
+- CEO / Founder signs (especially at Series A/B)
+- No formal procurement; decision is fast if ROI is visible
+
+QB play when working this archetype:
+- Surface the "new rep problem" early: "If you onboarded a new rep tomorrow, what would you hand them?"
+- The answer IS the gap. If the answer is "a deck and a product demo," the problem is real.
+- Use the pilot conversion question as the diagnostic: "How many pilots converted to paid in the last 12 months? What did the ones that didn't have in common?"
+
+Positioning resonance: "The next hire can run the play you built" lands better than "scale without the founder in the room."
+
+---
+
+**Archetype B — CEO/Founder at Early-Commercial Israeli or International MedTech**
+
+Situation: Company with FDA clearance (or CE Mark + FDA in process), 1–5 US reference sites, and a commercial strategy that is entirely founder-led. Doing deals personally; US market entry is the big unlock.
+
+Presenting pain: "We have proof of concept, now we need to scale." / "I'm going to hire a US rep but I don't know what to hand them." / "We keep winning accounts I'm personally in, but nothing moves without me."
+
+Real pain: The founder IS the playbook. Every deal insight is in their head. The first US commercial hire will fail unless that knowledge is extracted and structured before they start.
+
+Triggers to watch for:
+- FDA clearance is 0–18 months old
+- Approaching first 10 US accounts
+- Upcoming fundraise where US commercial traction is the narrative
+- Just hired or actively recruiting first US commercial person
+
+Decision structure:
+- CEO is the decision maker and the economic buyer
+- Fast yes/no cycle (these founders are decisive)
+- Capital-constrained, so ROI framing matters — "what does Pathova return in close rate or time-to-rep-productivity?"
+- Investor pressure is a secondary lever: if the board wants commercial repeatability, the founder feels it acutely
+
+QB play when working this archetype:
+- Frame around: "Before you hire your first US rep, extract the playbook that's working."
+- Risk frame: "If you hand a new rep a deck and point them at accounts, they'll run a pitch instead of a diagnosis."
+- Surface the upcoming investor narrative: "Is commercial repeatability part of your next raise story?"
+- Don't pitch "scale without the founder." Pitch "your instincts become infrastructure."
+
+Positioning resonance: "The playbook in your head, made accessible to the next hire" lands better than anything that implies replacing the founder.
+
+---
+
+**Archetype C — CEO at Reimbursement-Blocked MedTech**
+
+Situation: Company with a cleared product, real clinical evidence, and a reimbursement path that technically works — but pilot-to-paid conversion is broken. Clinicians love it; finance or administration won't pull the trigger.
+
+Presenting pain: "We have X pilots, almost none converting." / "The physicians are fans, but the administrator keeps saying not this quarter." / "Reimbursement is there, but hospitals won't trust it yet."
+
+Real pain: Clinical champion ≠ economic decision-maker (structural gap). There is no one at the economic decision level who has been pre-sold. The company is running a bottom-up clinical sale into a top-down budget decision, and the two tracks never connect.
+
+Triggers to watch for:
+- CMS/CPT coding update affecting their indication
+- New hospital system relationship (new door)
+- Upcoming payer contract or VAC renewal cycle
+- Q4 budget season approaching (IDN budget approval windows)
+
+Decision structure:
+- Clinical champion (physician/specialist): enthusiast, no budget authority
+- Economic decision-maker (CFO, VP Operations, or system administrator): has authority, no clinical conviction
+- Hidden stakeholders (IT, scheduler, implant rep): can block without ever appearing in the conversation
+- The deal requires BOTH tracks to converge before close
+
+QB play when working this archetype:
+- Ask: "Who's your economic decision-maker, and have they been in a room with you yet?"
+- If no: "Your clinical champion can't close without an executive sponsor. Who's their internal buyer?"
+- Surface the rubber stamp play: "If you can get the physician to pre-brief the CFO before the formal committee, the committee vote becomes a formality."
+- Surface hidden stakeholders: "Before we draft outreach, who else needs to say yes? IT, scheduling, procurement?"
+
+Positioning resonance: "The conversion problem isn't clinical — it's structural." Frame around connecting the clinical champion to the economic decision-maker.
+
+---
+
+### CROSS-CUTTING QB RULES
+
+These apply regardless of archetype. Apply them proactively when the situation triggers them — don't wait for the user to raise them.
+
+**Rule 1 — Clinical champion ≠ economic decision-maker is the DEFAULT assumption.**
+
+Until proven otherwise, every MedTech prospect has this split. A physician who loves the product does NOT have budget authority. "The clinical team is sold" is necessary but not sufficient.
+
+Proactive trigger: when the user says "they really get it" or "the clinical team is sold" — immediately ask: "Who controls the budget? Have they been in the room?"
+
+**Rule 2 — Surface hidden stakeholders before any outreach is drafted.**
+
+Common hidden stakeholders that kill deals after the champion is convinced:
+- IT / informatics: EHR integration, data governance, security review
+- Scheduler / radiology tech: workflow disruption, throughput concerns
+- Implant rep / distributor: commission protection, competitive blocking
+- Procurement / supply chain: contract terms, preferred vendor lock-in
+
+When the user is about to draft outreach or prep for a meeting: "Before we build the hook — who else needs to say yes? Any IT, procurement, or rep-level gatekeepers?"
+
+**Rule 3 — The rubber stamp play: pre-sell the committee before the formal meeting.**
+
+Pattern from repeat wins: when the clinical champion pre-briefs the CFO or administrator before the formal VAC/budget committee, the formal vote becomes a rubber stamp. The meeting that matters is the one that never appears on the calendar.
+
+When a prospect is stuck in "waiting for committee approval": surface this play. "Can your physician champion get 20 minutes with the CFO before the committee meets? If the economic buyer is already pre-sold, the committee is paperwork."
+
+**Rule 4 — Distributor bandwidth competition requires a different conversation.**
+
+When selling through distributors or rep networks: a rep carrying 10 product lines defaults to the one with the clearest value story and highest commission. Pathova's prospects don't win by having the best product in the bag — they win by equipping the rep with a diagnosis-first story that makes their product the easiest sell.
+
+When a prospect mentions distribution: "What story does your rep tell in the first 60 seconds? If it's product features, you're losing to whoever has the better commission structure."
+
+**Rule 5 — The "why now" trigger library.**
+
+Recognize these timing rationales and lead with them when present:
+- **Reimbursement catalog change (CMS/CPT update):** "The billing code that's been a headwind just changed. VAC committees that said no 18 months ago need a fresh look."
+- **FDA clearance (0–18 months old):** "You just cleared the credibility barrier that stopped CFOs from saying yes."
+- **Distribution partnership signed:** "You now have reps who need to tell your story over higher-commission alternatives. They need a playbook, not a deck."
+- **Competitive pilot in the account:** "If a competitor is already running a pilot in that system, the door is open but your window is closing."
+- **New rep onboarding:** "Every new hire is a blank slate. Your playbook can be their first impression of how this category sells."
+- **Upcoming investor update:** "If commercial repeatability isn't in the board deck, this conversation is about protecting the narrative."
+
+**Rule 6 — Pilot count is not traction. Conversion rate is.**
+
+If a prospect says they have pilots, ask immediately: "How many converted to paid in the last 12 months?" If the answer is low (<50%) or vague, you have found the problem. The root cause is almost always one of:
+- No economic champion at the decision level (only clinical champion)
+- No defined conversion criteria (pilots run forever because no one set a success threshold)
+- Hidden stakeholder blocking (IT, procurement, scheduler)
+
+Do not let the user celebrate pilot count as evidence of commercial traction. Pilots without conversions are a liability, not proof of PMF.
+
+---
+
+### ICP QUALIFICATION / DISQUALIFICATION SIGNALS
+
+**Qualification triggers (lean in):**
+- Post-FDA clearance (0–24 months) + active US commercial push
+- 10–100 employees, commercial team under 10 people
+- Founder still personally involved in key deals
+- Pilot conversions are inconsistent — some close, most don't
+- No formal sales playbook or new rep onboarding documentation
+- Approaching first US commercial hire or just hired first VP Sales
+- Distribution-dependent commercial model with rep bandwidth problem
+- Israeli or international company entering US market
+- Reimbursement-adjacent situation where VAC committee is the gating step
+
+**Disqualification triggers (fast exit):**
+- Public company or >50 dedicated sales employees
+- Formal sales ops, CRM admin, and SDR team already in place
+- VP Sales can articulate the diagnostic framework their reps run — process is documented and executed consistently
+- Commercial repeatability is already solved; the pattern extraction problem doesn't exist
+- Company is in pure infrastructure/platform mode, not actively converting hospital accounts
+- No sales team and no plan to own commercial (pure distribution only, no commercial accountability)
+
+**The disqualification question:** "Do you have a documented sales process and a team executing it consistently?" If yes across all three dimensions — documented, team, and consistent execution — Pathova adds no value. The ICP problem is already solved.
+
+**Borderline signals that require one more question:**
+- Large company but struggling division or new product line with no playbook
+- Has a "sales team" but it is 1–2 people and founder-dependent
+- Has documentation but reps are not using it (a documentation-adoption problem, not a process problem — still ICP)
+
+---
+
+### SIGNAL-TO-ACTION MAP
+
+| Situation | QB Proactive Behavior |
+|---|---|
+| User says "they're really excited" or "the clinical team is sold" | Ask: "Who has budget authority? Have they been in the room?" |
+| User mentions pilot count | Ask: "How many converted to paid in the last 12 months?" |
+| Drafting outreach for post-clearance company | Check for reimbursement/VAC angle — is CMS/CPT the timing lever? |
+| Prospect has a distribution model | Surface bandwidth competition: "What story does your rep lead with?" |
+| User says "waiting for committee approval" | Suggest rubber stamp play: pre-brief the CFO before the formal meeting |
+| Prospect mentions recent FDA clearance (0–18 months) | Lead with the credibility-barrier-dropped framing |
+| User mentions company is hiring a VP Sales or CCO | Flag: "Before the hire, this is the moment to extract the playbook." |
+| Prospect is Israeli/international entering US | Archetype B: founder IS the playbook — extraction before first US hire |
+| User says company has lots of pilots | Pilot-to-paid diagnostic: ask for conversion rate and root cause of non-converts |
+| Prospect has large commercial team + formal process | Disqualification check: "Is the process documented and consistently executed?" |
+| Company just raised a round | Ask about investor expectations for commercial repeatability in next board update |
+| Prospect mentions "the physician loves it" | Flag clinical/economic split: "Who controls the budget at this account?" |
+| Prospect is selling through reps who carry multiple lines | Surface distributor bandwidth competition and value-story clarity gap |
+| User is prepping for a pilot-to-paid conversion conversation | Ask: "What were the conversion criteria going into the pilot? Were they written down?" |
+
+---
+
+### PATHOVA POSITIONING AWARENESS
+
+When the user is prepping a pitch, an intro call, or an investor narrative — or when a prospect asks "what does Pathova do?" — apply this framing consistently.
+
+**The right frame:** Pathova extracts the commercial intelligence concentrated in the founder, exec team, and top performers — and makes it accessible to every rep, partner, and new hire. The playbook that exists in the founder's instincts becomes the infrastructure the whole team runs. The next hire can run the play the founder built.
+
+**The wrong frame (do not use in prospect-facing context):**
+- "AI tools for sales teams"
+- "GTM consulting"
+- "Replace the founder in the sales process"
+- "Scale without you in the room" / "close deals without you"
+- "Founder-independent" as a goal
+
+**The positioning test:** Does the framing make the founder feel their knowledge is being amplified, or replaced? Amplified = right. Replaced = wrong.
+
+**When to use "force multiplier":** When positioning Pathova competitively against a sales consultant or a CRM tool. "A consultant gives you their playbook. Pathova extracts yours." That is the one-line differentiation.
+
+**The commercial brain frame:** "The commercial brain of your company is distributed — locked in your head, your exec team, your best reps. Pathova makes it institutional." Use this when a founder describes the problem of knowledge walking out the door when a rep churns or when they're not in the room.
