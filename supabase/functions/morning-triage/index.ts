@@ -58,7 +58,7 @@ function normTierScore(tier: string | null): number {
   return 0;
 }
 
-function buildBlocks(candidates: any[], date: string, totalPool: number): any[] {
+function buildBlocks(candidates: any[], date: string, totalPool: number, midSequenceAlerts: any[]): any[] {
   const blocks: any[] = [];
 
   const pipelineCount = candidates.filter((c: any) => c.source === "pipeline").length;
@@ -140,6 +140,55 @@ function buildBlocks(candidates: any[], date: string, totalPool: number): any[] 
     }
   }
 
+  // Mid-sequence alerts section — active sequences with new signals since last touch
+  if (midSequenceAlerts.length > 0) {
+    blocks.push({ type: "divider", divider: {} });
+    blocks.push({
+      type: "heading_2",
+      heading_2: { rich_text: [rt("Mid-Sequence Alerts")] },
+    });
+    blocks.push({
+      type: "paragraph",
+      paragraph: {
+        rich_text: [rt(`${midSequenceAlerts.length} active sequence${midSequenceAlerts.length > 1 ? "s" : ""} received a new signal since last touch.`)],
+      },
+    });
+    for (const a of midSequenceAlerts) {
+      const icpStr = a.icp_score != null ? String(a.icp_score) : "—";
+      const lastTouchStr = `${a.days_cold} days ago (${fmtDate(a.last_touch_date)})`;
+      const alertTypeLabel = a.alertType === "trigger" ? "Trigger" : "Hiring signal";
+      const alertStr = [a.alertSummary, a.alertDate ? `(${fmtDate(a.alertDate)})` : ""]
+        .filter(Boolean).join(" ");
+      blocks.push({
+        type: "heading_3",
+        heading_3: {
+          rich_text: [rt(`${a.company_name} (${a.tier ?? "—"}) — ICP ${icpStr} · Active sequence`)],
+        },
+      });
+      blocks.push({
+        type: "bulleted_list_item",
+        bulleted_list_item: {
+          rich_text: [rt("Last touch: ", true), rt(lastTouchStr)],
+        },
+      });
+      blocks.push({
+        type: "bulleted_list_item",
+        bulleted_list_item: {
+          rich_text: [rt(`${alertTypeLabel}: `, true), rt(alertStr)],
+        },
+      });
+      if (a.primaryContactName) {
+        const contactStr = `${a.primaryContactName}${a.primaryContactTitle ? ", " + a.primaryContactTitle : ""}`;
+        blocks.push({
+          type: "bulleted_list_item",
+          bulleted_list_item: {
+            rich_text: [rt("Primary contact: ", true), rt(contactStr)],
+          },
+        });
+      }
+    }
+  }
+
   return blocks;
 }
 
@@ -169,8 +218,8 @@ Deno.serve(async (_req) => {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
   try {
-    // ── 1. Fetch in parallel: OI accounts + all account names + triggers ────────
-    const [accsResult, allNamesResult, triggersResult] = await Promise.all([
+    // ── 1. Fetch in parallel: OI accounts + all account names + triggers + hiring signals ─
+    const [accsResult, allNamesResult, triggersResult, hiringResult] = await Promise.all([
       supabase
         .from("accounts")
         .select("id, notion_page_id, company_name, tier, icp_score, engage_decision, company_notion_page_id")
@@ -188,6 +237,12 @@ Deno.serve(async (_req) => {
         .gte("date_found", thirtyDaysAgo)
         .neq("outreach_status", "Disqualified")
         .order("date_found", { ascending: false }),
+      supabase
+        .from("hiring_signals")
+        .select("company, icp_signal, seniority, name, role, date_found, run_date, notes")
+        .in("icp_signal", ["Strong fit", "Possible fit"])
+        .gte("run_date", thirtyDaysAgo)
+        .order("run_date", { ascending: false }),
     ]);
 
     if (accsResult.error) throw new Error(`accounts: ${accsResult.error.message}`);
@@ -205,8 +260,16 @@ Deno.serve(async (_req) => {
       if (key && !triggerMap.has(key)) triggerMap.set(key, t);
     }
 
+    // Build hiring signal lookup: company → most recent signal per company
+    const hiringSignalMap = new Map<string, any>();
+    for (const h of hiringResult.data ?? []) {
+      const key = h.company?.toLowerCase();
+      if (key && !hiringSignalMap.has(key)) hiringSignalMap.set(key, h);
+    }
+
     // ── 2. Pool 1: cold pipeline accounts ────────────────────────────────────
     let pipelineCandidates: any[] = [];
+    const midSequenceAlerts: any[] = [];
 
     if (accs.length > 0) {
       const { data: touchRows } = await supabase
@@ -222,22 +285,46 @@ Deno.serve(async (_req) => {
         if (!lastTouchMap.has(t.account_id)) lastTouchMap.set(t.account_id, t.effective_touch_date);
       }
 
-      pipelineCandidates = accs
-        .map((a: any) => {
+      const allPipelineCandidates = accs.map((a: any) => {
           const lastTouch = lastTouchMap.get(a.id) ?? null;
           const daysCold = lastTouch
             ? Math.floor((Date.now() - new Date(lastTouch).getTime()) / 86400000)
             : null;
-          const trig = triggerMap.get(a.company_name?.toLowerCase());
+          const key = a.company_name?.toLowerCase();
+          const trig = triggerMap.get(key);
+          const hiring = hiringSignalMap.get(key);
+          // Show whichever fresh signal is most recent
+          const hasFreshTrig = !!trig;
+          const hasFreshHiring = !!hiring;
+          const hasFreshTrigger = hasFreshTrig || hasFreshHiring;
+          let triggerSummary: string | null = null;
+          let triggerDate: string | null = null;
+          if (hasFreshTrig && hasFreshHiring) {
+            const trigDate = trig.date_found ?? "";
+            const hirDate = hiring.run_date ?? hiring.date_found ?? "";
+            if (trigDate >= hirDate) {
+              triggerSummary = trig.summary || trig.trigger_types?.join(", ") || "Trigger event";
+              triggerDate = trig.date_found ?? null;
+            } else {
+              triggerSummary = `Hiring: ${hiring.name || hiring.role} (${hiring.seniority || ""})`;
+              triggerDate = hiring.run_date ?? hiring.date_found ?? null;
+            }
+          } else if (hasFreshTrig) {
+            triggerSummary = trig.summary || trig.trigger_types?.join(", ") || "Trigger event";
+            triggerDate = trig.date_found ?? null;
+          } else if (hasFreshHiring) {
+            triggerSummary = `Hiring: ${hiring.name || hiring.role} (${hiring.seniority || ""})`;
+            triggerDate = hiring.run_date ?? hiring.date_found ?? null;
+          }
           return {
             ...a,
             source: "pipeline",
             last_touch_date: lastTouch,
             days_cold: daysCold,
             therapeutic_area: [] as string[],
-            hasFreshTrigger: !!trig,
-            triggerSummary: trig ? (trig.summary || trig.trigger_types?.join(", ") || "Trigger event") : null,
-            triggerDate: trig?.date_found ?? null,
+            hasFreshTrigger,
+            triggerSummary,
+            triggerDate,
             hasTailwind: false,
             tailwindTitle: null as string | null,
             tailwindDate: null as string | null,
@@ -246,8 +333,42 @@ Deno.serve(async (_req) => {
             primaryContactName: null as string | null,
             primaryContactTitle: null as string | null,
           };
-        })
-        .filter((a: any) => a.days_cold === null || a.days_cold >= 90);
+        });
+
+      pipelineCandidates = allPipelineCandidates.filter(
+        (a: any) => a.days_cold === null || a.days_cold >= 90
+      );
+
+      // Pool 3: active sequences (< 90 days cold) with signals newer than last touch
+      const activeSequenceCandidates = allPipelineCandidates.filter(
+        (a: any) => a.days_cold !== null && a.days_cold < 90
+      );
+      for (const a of activeSequenceCandidates) {
+        const key = a.company_name?.toLowerCase();
+        const trig = triggerMap.get(key);
+        const hiring = hiringSignalMap.get(key);
+        const lastTouch = a.last_touch_date ?? null;
+        const trigFresh = trig && (!lastTouch || trig.date_found > lastTouch);
+        const hiringFresh = hiring && (!lastTouch || (hiring.run_date ?? hiring.date_found ?? "") > lastTouch);
+        if (!trigFresh && !hiringFresh) continue;
+        // Pick the most recent signal type
+        let alertType: "trigger" | "hiring";
+        if (trigFresh && hiringFresh) {
+          alertType = (trig.date_found ?? "") >= (hiring.run_date ?? hiring.date_found ?? "") ? "trigger" : "hiring";
+        } else {
+          alertType = trigFresh ? "trigger" : "hiring";
+        }
+        midSequenceAlerts.push({
+          ...a,
+          alertType,
+          alertSummary: alertType === "trigger"
+            ? (trig.summary || trig.trigger_types?.join(", ") || "Trigger event")
+            : `Hiring: ${hiring.name || hiring.role} (${hiring.seniority || ""})`,
+          alertDate: alertType === "trigger"
+            ? (trig.date_found ?? null)
+            : (hiring.run_date ?? hiring.date_found ?? null),
+        });
+      }
     }
 
     // ── 3. Tailwinds for Pool 1 ──────────────────────────────────────────────
@@ -299,12 +420,16 @@ Deno.serve(async (_req) => {
       }
     }
 
-    // ── 4. Contacts for Pool 1 ───────────────────────────────────────────────
-    if (pipelineCandidates.length > 0) {
+    // ── 4. Contacts for Pool 1 + mid-sequence alerts ────────────────────────
+    const contactTargets = [
+      ...pipelineCandidates,
+      ...midSequenceAlerts,
+    ].filter((c: any) => c.id);
+    if (contactTargets.length > 0) {
       const { data: contactRows } = await supabase
         .from("contacts")
         .select("account_id, full_name, title, contact_type")
-        .in("account_id", pipelineCandidates.map((c: any) => c.id))
+        .in("account_id", contactTargets.map((c: any) => c.id))
         .not("account_id", "is", null);
 
       const contactMap = new Map<string, any>();
@@ -318,7 +443,7 @@ Deno.serve(async (_req) => {
           if (np !== -1 && (ep === -1 || np < ep)) contactMap.set(ct.account_id, ct);
         }
       }
-      for (const c of pipelineCandidates) {
+      for (const c of contactTargets) {
         const ct = contactMap.get(c.id);
         if (ct) {
           c.primaryContactName = ct.full_name;
@@ -391,7 +516,8 @@ Deno.serve(async (_req) => {
       .eq("run_date", today)
       .maybeSingle();
 
-    const blocks = buildBlocks(top7, today, allCandidates.length);
+    const alertsToShow = midSequenceAlerts.slice(0, 3);
+    const blocks = buildBlocks(top7, today, allCandidates.length, alertsToShow);
     let notionPageId: string;
 
     if (existingRun?.notion_page_id) {
@@ -437,11 +563,19 @@ Deno.serve(async (_req) => {
         );
       });
 
+      const alertLines = alertsToShow.map((a: any) => {
+        const alertTypeLabel = a.alertType === "trigger" ? "Trigger" : "Hiring signal";
+        return `[Mid-sequence alert] ${a.company_name} (${a.tier ?? "—"}, ICP ${a.icp_score ?? "—"}) — ` +
+          `last touch ${a.days_cold} days ago. ${alertTypeLabel}: ${a.alertSummary}.`;
+      });
+
       const kbContent =
         `Morning Triage ${today}: ${top7.length} candidate(s) — ` +
         `${pipelineCandidates.filter((c: any) => top7.includes(c)).length} pipeline re-engage, ` +
-        `${triggerCandidates.filter((c: any) => top7.includes(c)).length} new triggers.\n\n` +
-        kbLines.join("\n");
+        `${triggerCandidates.filter((c: any) => top7.includes(c)).length} new triggers.` +
+        (alertsToShow.length > 0 ? ` ${alertsToShow.length} mid-sequence alert(s).` : "") +
+        "\n\n" + kbLines.join("\n") +
+        (alertLines.length > 0 ? "\n\n" + alertLines.join("\n") : "");
 
       await supabase.from("knowledge_base").insert({
         title: `Morning Triage ${today}`,
@@ -465,6 +599,7 @@ Deno.serve(async (_req) => {
         candidates_shown: top7.length,
         pipeline_candidates: pipelineCandidates.length,
         trigger_candidates: triggerCandidates.length,
+        mid_sequence_alerts: alertsToShow.length,
         notion_page_id: notionPageId!,
       }),
       { headers: { "Content-Type": "application/json" } }

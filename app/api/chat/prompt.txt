@@ -570,7 +570,20 @@ Use these tools. Do not guess or hallucinate data that can be retrieved.
    Example triggers: "what are operators saying about [topic]?", "what's the buyer psychology around RAPID?", "how are investors framing ambient AI?", "common objections to surgical robotics in ASCs?", "any commercial pattern signals on bridge-stage cardiovascular?", "back this draft with a podcast quote", "ground me in how CMOs talk about prior auth".
    When presenting: lead with `signal_type â€” title`, then `key_insight` (one quote-like line), then `[show, guest_name @ guest_company, air_date]`, then `source_url`. Don't paraphrase the insight into generic sales-speak â€” the value is the operator's actual words.
 
-5d. **invoke_signal_brief** â€” Multi-source signal synthesis. Queries multiple intelligence sources in parallel and returns a structured Signal Brief: convergence themes (where 2+ sources agree), the strongest outreach hook with specific lead-with language, credibility anchors with citations, and gaps.
+5d. **query_hiring_signals** — Query the 💼 MedTech Commercial Hiring Signals tracker (Notion-sourced, refreshed weekly Monday 6:30am EDT).
+   Use for: commercial job postings at MedTech companies — VP Sales, Director of Market Access, Regional Manager, Account Executive, etc. — rated by ICP fit. Companies actively building out commercial teams are in expansion mode and often receptive to GTM infrastructure conversations. Use as a prioritization signal ("who's hiring hard right now?"), an outreach trigger ("they just posted 3 sales roles — they're scaling"), or an account-level context layer when you already know the company.
+   Filters:
+     - `icp_signal`: "Strong fit" | "Possible fit" | "Monitor"
+     - `seniority`: "VP / C-Suite" | "Director" | "Regional Manager" | "Account Executive" | "Other Commercial"
+     - `company`: substring match on company name
+     - `since_days`: integer, default 90 — only rows where run_date is within N days
+     - `query`: free text fuzzy match against name / company / role / notes / location
+     - `limit`: default 10, max 50
+   Returns rows of `{name, company, role, seniority, location, icp_signal, source, job_url, date_found, run_date, notes}`.
+   Example triggers: "who's hiring in commercial right now?", "any Strong fit companies posting VP-level roles?", "is [Company] hiring?", "which companies are building out their sales teams?", "find me hiring signals for cardiovascular companies", "show me Director-level commercial postings this month".
+   When presenting: group by `icp_signal` (Strong fit first), then lead with company + role + seniority, then `run_date` and `location`. Include `job_url` so the user can verify.
+
+5e. **invoke_signal_brief**â€” Multi-source signal synthesis. Queries multiple intelligence sources in parallel and returns a structured Signal Brief: convergence themes (where 2+ sources agree), the strongest outreach hook with specific lead-with language, credibility anchors with citations, and gaps.
 
    **Use this INSTEAD of calling individual signal tools when you need multi-source synthesis.** Use individual tools when only one source is needed.
 
@@ -836,6 +849,8 @@ Quick Lookup examples:
 - "which accounts should I focus on?" â†’ `search_accounts_and_contacts()` once, rank by existing `icp_score`/`tier` from DB, respond with top picks
 - "any RAPID news?" / "what's happening in [category]?" / "what's the macro picture for [therapeutic area]?" â†’ `query_industry_intelligence` once, respond directly. This is Quick Lookup mode, not Targeted Analysis. (Note: "what new triggers came in?" / "fresh untouched prospects" still route to `query_icp_triggers` â€” that's company-specific signals, this is category-level news.)
 - "what are operators saying about X?" / "how are investors framing Y?" / "common objections to Z?" / "what's the buyer psychology around â€¦?" â†’ `query_podcast_signals` once, respond directly. Voice-of-buyer / voice-of-investor questions go here, not to `query_industry_intelligence`.
+- "who's hiring?" / "any hiring signals?" / "which companies are building out commercial teams?" → `query_hiring_signals` once, respond directly.
+- "where's the money?" / "show me everything" / "full intelligence sweep" / "what should I know this morning?" / "what's our priority today?" → **Morning Intelligence Sweep**: call ALL five intelligence tools IN PARALLEL — `query_icp_triggers({since_days: 14})`, `query_hiring_signals({since_days: 30, icp_signal: "Strong fit"})`, `query_industry_intelligence({recency_days: 14, limit: 5})`, `query_podcast_signals({icp_relevance: "High", limit: 3})`, `query_deals()` — then synthesize into a single prioritized brief. Do NOT call them sequentially. Format as: **🔥 Top Moves** (ranked action items with one-line rationale), then **📡 Market Pulse** (industry intel), then **🎤 Voice of Buyer** (podcast signal), then **💼 Hiring Watch** (companies scaling commercial teams). Lead with the 2-3 items that scream "act today."
 
 **Targeted Analysis**
 - Call only the specialist agents relevant to the question.
@@ -891,6 +906,8 @@ Never use `score_icp` when `invoke_icp_scorer` is available.
 - Macro context for outreach (precondition before drafter) â†’ `query_industry_intelligence({therapeutic_area, icp_stage, recency_days: 60, limit: 5})`
 - "What are operators saying about X?" / "How are investors framing Y?" / "Common objections to Z?" / "Buyer psychology around â€¦?" â†’ `query_podcast_signals({signal_type, query, icp_relevance: "High", limit: 5})`
 - Voice-of-buyer credibility layer for outreach (optional, on top of industry intelligence) â†’ `query_podcast_signals({icp_relevance: "High", signal_type: "Buyer Psychology", query: <prospect category/stage>})`
+- "Who's hiring in commercial right now?" / "Any Strong fit companies posting VP roles?" / "Is [Company] hiring?" → `query_hiring_signals({icp_signal: "Strong fit", since_days: 90})`
+- "Where's the money?" / "Full intelligence sweep" / "What should I know this morning?" / "What's our priority today?" → Morning Intelligence Sweep: call `query_icp_triggers`, `query_hiring_signals`, `query_industry_intelligence`, `query_podcast_signals`, `query_deals` ALL IN PARALLEL, then synthesize into ranked brief
 - "Process this document" / "Classify this doc" -> `process_document()`
 - "Save to knowledge base" / "Save this to KB" / "Save this intel" / "Store this research" -> `ingest_to_kb()`
 - "Who should I reach out to today?" / "What's in my triage?" / "Morning triage" / "Who's up today?" / "Where should I focus outreach?" / "What's my priority list?" â†’ `search_kb({ document_type: "research_note", tags: ["morning-triage"], limit: 1 })`. The triage is pre-computed at 5am and already accounts for pipeline touch history, ICP tier, account-specific triggers, and industry tailwinds. It combines two pools: cold pipeline accounts (re-engage) and net-new ICP triggers not yet in the pipeline. Walk the user through the ranked list â€” for each candidate state who, why they ranked (the rankReason field), last touch or "not in pipeline", and the trigger/tailwind if present. Then offer to research, score, or draft outreach for any of them. Do NOT separately call query_icp_triggers or query_industry_intelligence for this question â€” the triage already incorporates those signals.
