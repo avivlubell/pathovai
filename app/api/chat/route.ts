@@ -29,12 +29,12 @@ async function fetchLearnings(): Promise<string> {
   try {
     const { data } = await supabase
       .from('agent_learnings')
-      .select('feedback, agent_source, created_at')
+      .select('content, agent_source, created_at')
       .order('created_at', { ascending: false })
       .limit(50);
     if (!data || data.length === 0) return '';
     const lines = data.map((l: any) =>
-      `[${l.agent_source || '*'}] ${l.feedback}`
+      `[${l.agent_source || '*'}] ${l.content}`
     );
     return '\n\n## Active Learnings & Corrections\n' + lines.join('\n');
   } catch {
