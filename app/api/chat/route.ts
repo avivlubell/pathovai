@@ -84,6 +84,8 @@ function humanizeToolCall(
       return 'Querying market intelligence briefings';
     case 'query_podcast_signals':
       return 'Querying podcast signal feed';
+    case 'query_hiring_signals':
+      return 'Querying hiring signals';
     case 'query_touches':
       return pickName() ? `Pulling touches for ${pickName()}` : 'Pulling outreach touches';
     case 'log_outreach_touch':
@@ -181,6 +183,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   query_icp_triggers: 'query-icp-triggers',
   query_industry_intelligence: 'query-industry-intelligence',
   query_podcast_signals: 'query-podcast-signals',
+  query_hiring_signals: 'query-hiring-signals',
   query_touches: 'query-touches',
   log_outreach_touch: 'log-outreach-touch',
   log_outreach_sequence: 'log-outreach-sequence',
@@ -319,6 +322,21 @@ const tools: Anthropic.Tool[] = [
         recency_days: { type: 'number', description: 'Only rows where air_date is within the last N days. Default 180 (podcasts age slower than news). Pass 0 for no recency filter.' },
         query: { type: 'string', description: 'Free-text fuzzy match against title / key_insight / content_angle / guest_company.' },
         limit: { type: 'number', description: 'Max rows to return (default 5, max 25).' },
+      },
+    },
+  },
+  {
+    name: 'query_hiring_signals',
+    description: 'Query the MedTech Commercial Hiring Signals tracker — job postings for commercial roles (VP Sales, Director of Market Access, Regional Manager, Account Executive, etc.) at MedTech companies, rated by ICP fit. Use when the user asks about hiring activity at a company, wants to find companies expanding their commercial team, or needs a hiring-based trigger for outreach ("they just posted 3 sales roles"). Returns rows of {name, company, role, seniority, location, icp_signal, source, job_url, date_found, run_date, notes}.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        icp_signal: { type: 'string', description: 'Single-select. One of: "Strong fit", "Possible fit", "Monitor".' },
+        seniority: { type: 'string', description: 'Single-select. One of: "VP / C-Suite", "Director", "Regional Manager", "Account Executive", "Other Commercial".' },
+        company: { type: 'string', description: 'Substring match on company name.' },
+        since_days: { type: 'number', description: 'Only rows where run_date is within the last N days. Default 90. Pass 0 for no recency filter.' },
+        query: { type: 'string', description: 'Free-text fuzzy match against name / company / role / notes / location.' },
+        limit: { type: 'number', description: 'Max rows to return (default 10, max 50).' },
       },
     },
   },
@@ -1303,6 +1321,7 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
     query_icp_triggers: 'ICP Trigger Monitor',
     query_industry_intelligence: 'Industry Intelligence (Market Intelligence Briefings)',
     query_podcast_signals: 'Podcast Intelligence — Signal Feed',
+    query_hiring_signals: 'MedTech Commercial Hiring Signals',
     query_deals: 'Motions & Deals',
     sync_account_content: 'Outreach Intelligence',
     search_references: 'Pathova Reference Library',
