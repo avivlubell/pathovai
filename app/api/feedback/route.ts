@@ -60,6 +60,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Failed to save feedback' }, { status: 500 });
     }
 
+    // Promote thumbs-down with a reason into agent_learnings so the QB sees
+    // it next session. Fire-and-forget — don't fail the feedback save if this write fails.
+    if (rating === 'down' && reason) {
+      const learningText = `User marked a response unhelpful. Their note: "${reason}"`;
+      getSupabase()
+        .from('agent_learnings')
+        .insert({
+          created_by: user_id,
+          agent_source: null,
+          learning_type: 'correction',
+          content: learningText,
+          applies_to: ['*'],
+          relevance_tags: ['user-feedback'],
+          active: true,
+        })
+        .then(({ error: lErr }) => {
+          if (lErr) console.error('agent_learnings insert failed', lErr);
+        });
+    }
+
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('feedback error', err);
