@@ -114,6 +114,13 @@ serve(async (req) => {
       return error400('message is required');
     }
     if (typeof sent !== 'boolean') return error400('sent (boolean) is required');
+    const effectiveDateForValidation = touch_date || todayIso();
+    if (sent && effectiveDateForValidation > todayIso()) {
+      return error400(
+        `sent cannot be true for a future touch_date (${effectiveDateForValidation} > today ${todayIso()}). ` +
+        `Set sent=false for planned future touches — Sent=true is reserved for touches already executed.`,
+      );
+    }
     if (next_touch_channel && !VALID_NEXT_STEPS.includes(next_touch_channel)) {
       return error400(`next_touch_channel must be one of ${VALID_NEXT_STEPS.join(', ')}`);
     }
