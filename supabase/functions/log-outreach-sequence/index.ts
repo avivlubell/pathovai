@@ -155,6 +155,12 @@ serve(async (req) => {
       if (t.touch_date && !/^\d{4}-\d{2}-\d{2}$/.test(t.touch_date)) {
         return error400(`touches[${i}].touch_date must be ISO date YYYY-MM-DD`);
       }
+      if (t.sent && t.touch_date && t.touch_date > todayIso()) {
+        return error400(
+          `touches[${i}].sent cannot be true for a future touch_date (${t.touch_date} > today ${todayIso()}). ` +
+          `Set sent=false for planned future touches — Sent=true is reserved for touches already executed.`,
+        );
+      }
     }
 
     const account = await resolveAccount({ account_id, company_name });
