@@ -277,12 +277,19 @@ Deno.serve(async (_req) => {
         .select("account_id, effective_touch_date")
         .in("account_id", accs.map((a: any) => a.id))
         .eq("sent", true)
-        .not("effective_touch_date", "is", null)
-        .order("effective_touch_date", { ascending: false });
+        .order("effective_touch_date", { ascending: false, nullsFirst: false });
 
+      // lastTouchMap: account_id → most recent dated send (for days_cold calc)
+      // hasSentTouchSet: account_ids with any sent touch, even undated ones —
+      // prevents accounts from showing as "never contacted" when Sent Touch Date
+      // wasn't filled in Notion.
       const lastTouchMap = new Map<string, string>();
+      const hasSentTouchSet = new Set<string>();
       for (const t of touchRows ?? []) {
-        if (!lastTouchMap.has(t.account_id)) lastTouchMap.set(t.account_id, t.effective_touch_date);
+        hasSentTouchSet.add(t.account_id);
+        if (t.effective_touch_date && !lastTouchMap.has(t.account_id)) {
+          lastTouchMap.set(t.account_id, t.effective_touch_date);
+        }
       }
 
       const allPipelineCandidates = accs.map((a: any) => {
@@ -321,6 +328,7 @@ Deno.serve(async (_req) => {
             source: "pipeline",
             last_touch_date: lastTouch,
             days_cold: daysCold,
+            hasSentTouch: hasSentTouchSet.has(a.id),
             therapeutic_area: [] as string[],
             hasFreshTrigger,
             triggerSummary,
@@ -335,8 +343,12 @@ Deno.serve(async (_req) => {
           };
         });
 
+      // Include if: truly never contacted (no sent touches at all)
+      // OR last dated touch was 90+ days ago.
+      // Exclude if: has any sent touch with no date — those aren't "never contacted",
+      // the user just didn't fill Sent Touch Date in Notion.
       pipelineCandidates = allPipelineCandidates.filter(
-        (a: any) => a.days_cold === null || a.days_cold >= 90
+        (a: any) => (a.days_cold === null && !a.hasSentTouch) || a.days_cold >= 90
       );
 
       // Pool 3: active sequences (< 90 days cold) with signals newer than last touch
