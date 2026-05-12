@@ -224,7 +224,7 @@ Deno.serve(async (_req) => {
         .from("accounts")
         .select("id, notion_page_id, company_name, tier, icp_score, engage_decision, company_notion_page_id")
         .in("tier", ["Tier 1: Priority", "Tier 2: Qualified"])
-        .in("engage_decision", ["Proceed", "Monitor"]),
+        .or("engage_decision.in.(Proceed,Monitor),engage_decision.is.null"),
       // All account company names for dedup — prevents surfacing companies
       // already in the pipeline (any tier) as net-new triggers.
       supabase
