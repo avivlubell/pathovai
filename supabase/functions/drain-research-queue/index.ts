@@ -138,14 +138,27 @@ async function fetchViaPerplexity(prompt: string): Promise<{ ok: boolean; conten
   }
 }
 
+function toSearchQuery(field: string, cometPrompt: string): string {
+  const cleaned = cometPrompt
+    .replace(/^(?:Go to|Open|Navigate to|Visit|Access)\s+[^\n.]+[\n.]\s*/gi, "")
+    .replace(/\bExtract[:\s]+/gi, "")
+    .replace(/\bReturn[:\s]+/gi, "")
+    .replace(/\bList[:\s]+/gi, "")
+    .replace(/\(\d+\)\s*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (cleaned.length > 20 ? cleaned : field).slice(0, 400);
+}
+
 async function resolveGap(gap: GapTask): Promise<{ field: string; content: string; source: string }> {
+  const searchQuery = toSearchQuery(gap.field, gap.prompt);
   if (isLinkedIn(gap.url)) {
-    const r = await fetchViaPerplexity(gap.prompt);
+    const r = await fetchViaPerplexity(searchQuery);
     return { field: gap.field, content: r.content, source: r.ok ? "perplexity" : "failed" };
   }
   const jina = await fetchViaJina(gap.url);
   if (jina.ok) return { field: gap.field, content: jina.content, source: "jina" };
-  const px = await fetchViaPerplexity(gap.prompt);
+  const px = await fetchViaPerplexity(searchQuery);
   return { field: gap.field, content: px.content, source: px.ok ? "perplexity" : "failed" };
 }
 

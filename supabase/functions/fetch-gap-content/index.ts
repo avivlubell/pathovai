@@ -78,6 +78,21 @@ async function fetchViaJina(
   }
 }
 
+// Convert a Comet browser instruction into a clean Perplexity search query.
+// comet_prompts are written for a logged-in browser ("Go to LinkedIn and extract..."),
+// not for a search engine. Stripping the navigation layer leaves the factual ask.
+function toSearchQuery(field: string, cometPrompt: string): string {
+  const cleaned = cometPrompt
+    .replace(/^(?:Go to|Open|Navigate to|Visit|Access)\s+[^\n.]+[\n.]\s*/gi, "")
+    .replace(/\bExtract[:\s]+/gi, "")
+    .replace(/\bReturn[:\s]+/gi, "")
+    .replace(/\bList[:\s]+/gi, "")
+    .replace(/\(\d+\)\s*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (cleaned.length > 20 ? cleaned : field).slice(0, 400);
+}
+
 async function fetchViaPerplexity(
   prompt: string
 ): Promise<{ ok: boolean; content: string }> {
@@ -118,9 +133,11 @@ async function fetchViaPerplexity(
 }
 
 async function resolveGap(gap: GapTask): Promise<GapResult> {
+  const searchQuery = toSearchQuery(gap.field, gap.prompt);
+
   // LinkedIn: skip Jina entirely — always gated behind login
   if (isLinkedIn(gap.url)) {
-    const result = await fetchViaPerplexity(gap.prompt);
+    const result = await fetchViaPerplexity(searchQuery);
     return {
       id: gap.id,
       field: gap.field,
@@ -143,8 +160,8 @@ async function resolveGap(gap: GapTask): Promise<GapResult> {
     };
   }
 
-  // Jina failed — fall back to Perplexity search using comet_prompt
-  const perplexity = await fetchViaPerplexity(gap.prompt);
+  // Jina failed — fall back to Perplexity with cleaned search query
+  const perplexity = await fetchViaPerplexity(searchQuery);
   return {
     id: gap.id,
     field: gap.field,
