@@ -157,6 +157,10 @@ function humanizeToolCall(
       const terms = input.terms as string | undefined;
       return terms ? `Looking up ICD-10 codes for "${terms}"` : 'Looking up ICD-10 codes';
     }
+    case 'fetch_gap_content': {
+      const count = Array.isArray(input.gaps) ? input.gaps.length : 0;
+      return count > 1 ? `Fetching ${count} research gaps` : 'Fetching research gap';
+    }
     case 'invoke_signal_brief':
       return pickName()
         ? `Building Signal Brief for ${pickName()}`
@@ -185,6 +189,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   query_podcast_signals: 'query-podcast-signals',
   query_hiring_signals: 'query-hiring-signals',
   query_touches: 'query-touches',
+  fetch_gap_content: 'fetch-gap-content',
   log_outreach_touch: 'log-outreach-touch',
   log_outreach_sequence: 'log-outreach-sequence',
   mark_touch_sent: 'mark-touch-sent',
@@ -821,6 +826,30 @@ Decision field values: "SUBSTANTIALLY EQUIVALENT" = cleared; "NOT SUBSTANTIALLY 
         type: { type: 'string', description: '"ncd" for National Coverage Determinations (default) or "lcd" for Local Coverage Determinations' },
         limit: { type: 'number', description: 'Number of results (default 10, max 25)' },
       },
+    },
+  },
+  {
+    name: 'fetch_gap_content',
+    description: `Resolve research gaps by fetching URLs automatically. Call this immediately after invoke_prospect_researcher returns <<<GAP>>> blocks — before showing any gaps to the user. Parse each GAP block into a task using the go_to_url as "url" and comet_prompt as "prompt". Returns extracted content for each gap with a source tag ("jina" = URL fetched directly, "perplexity" = fell back to search, "failed" = nothing found). Incorporate resolved content into the research summary. Only surface failed gaps to the user as manual Comet handoffs.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        gaps: {
+          type: 'array',
+          description: 'Gap tasks parsed from <<<GAP>>> blocks in prospect_researcher output',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Unique slug for this gap, e.g. "4_1_linkedin_count"' },
+              field: { type: 'string', description: 'The field name from the GAP block, e.g. "4.1 LinkedIn employee count"' },
+              url: { type: 'string', description: 'The go_to_url from the GAP block' },
+              prompt: { type: 'string', description: 'The comet_prompt from the GAP block — used as Perplexity search if URL fetch fails' },
+            },
+            required: ['id', 'field', 'url', 'prompt'],
+          },
+        },
+      },
+      required: ['gaps'],
     },
   },
   gmailTool,
