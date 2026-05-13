@@ -161,6 +161,11 @@ function humanizeToolCall(
       const count = Array.isArray(input.gaps) ? input.gaps.length : 0;
       return count > 1 ? `Fetching ${count} research gaps` : 'Fetching research gap';
     }
+    case 'queue_research': {
+      const cos = input.companies as string[] | undefined;
+      const count = Array.isArray(cos) ? cos.length : 0;
+      return count > 1 ? `Queuing overnight research for ${count} companies` : 'Queuing overnight research';
+    }
     case 'invoke_signal_brief':
       return pickName()
         ? `Building Signal Brief for ${pickName()}`
@@ -190,6 +195,7 @@ const TOOL_ENDPOINT_MAP: Record<string, string> = {
   query_hiring_signals: 'query-hiring-signals',
   query_touches: 'query-touches',
   fetch_gap_content: 'fetch-gap-content',
+  queue_research: 'queue-research',
   log_outreach_touch: 'log-outreach-touch',
   log_outreach_sequence: 'log-outreach-sequence',
   mark_touch_sent: 'mark-touch-sent',
@@ -826,6 +832,25 @@ Decision field values: "SUBSTANTIALLY EQUIVALENT" = cleared; "NOT SUBSTANTIALLY 
         type: { type: 'string', description: '"ncd" for National Coverage Determinations (default) or "lcd" for Local Coverage Determinations' },
         limit: { type: 'number', description: 'Number of results (default 10, max 25)' },
       },
+    },
+  },
+  {
+    name: 'queue_research',
+    description: `Queue one or more companies for overnight background research. Use when the user asks to research multiple companies at once, or wants to pre-screen a batch before the morning brief. Results land in the knowledge base with tag "auto-research" and surface in the next morning brief. The queue drains nightly — jobs queued today appear in tomorrow's brief. Deduplicates automatically (re-queuing a company already pending is a no-op).`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        companies: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Company names to queue for research (max 20)',
+        },
+        triggered_by: {
+          type: 'string',
+          description: 'Source context: "manual" (user requested), "icp_trigger" (from trigger monitor), "industry_news". Defaults to "manual".',
+        },
+      },
+      required: ['companies'],
     },
   },
   {
