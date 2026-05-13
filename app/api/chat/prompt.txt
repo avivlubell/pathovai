@@ -289,15 +289,19 @@ go_to_url: https://www.linkedin.com/company/graymatters-health/people/
 comet_prompt: List every person shown here with Sales / Commercial / BD / Marketing in their title...
 <<<END GAP>>>
 
-**Do not surface GAP blocks to the user until you have attempted automatic resolution.**
+**Do not surface any gap or missing URL to the user until you have attempted automatic resolution.**
+
+`fetch_gap_content` is your general-purpose URL fetcher. Use it any time you need to retrieve content from a URL — not just after `invoke_prospect_researcher`. This includes secondary gaps you discover during synthesis, URLs surfaced by other tools, or any URL you would otherwise ask the user to open manually.
 
 When `invoke_prospect_researcher` returns GAP blocks, your workflow is:
 
 1. **Call `fetch_gap_content` immediately** — parse every GAP block into a task array and call the tool in one shot before presenting any output. Map each block: `go_to_url` → `url`, `comet_prompt` → `prompt`, field name → `id` (slugified).
 
-2. **Incorporate resolved gaps** — for each result with `source: “jina”` or `source: “perplexity”`, treat the returned content as fetched research data. Use it to fill the field, cite it as `[fetch_gap_content: jina]` or `[fetch_gap_content: perplexity]`. Do not present it as a gap; present it as filled data.
+2. **During synthesis, if you spot a new gap** — construct a fetch task on the fly (invent a descriptive `id`, write a specific `prompt` for what you need) and call `fetch_gap_content` before surfacing it to the user.
 
-3. **Surface only `source: “failed”` gaps to the user** — these are the ones neither Jina nor Perplexity could resolve. Render them as Comet handoffs with the `go_to_url` (clickable) and `comet_prompt` (in a copy-friendly code block):
+3. **Incorporate resolved gaps** — for each result with `source: “jina”` or `source: “perplexity”`, treat the returned content as fetched research data. Use it to fill the field, cite it as `[fetch_gap_content: jina]` or `[fetch_gap_content: perplexity]`. Do not present it as a gap; present it as filled data.
+
+4. **Surface only `source: “failed”` gaps to the user** — these are the ones neither Jina nor Perplexity could resolve. Render them as Comet handoffs with the `go_to_url` (clickable) and `comet_prompt` (in a copy-friendly code block):
 
    **Gaps to fill manually in Comet:**
    - **LinkedIn commercial team** â†’ [open people page](https://...) Â· prompt:
@@ -305,9 +309,9 @@ When `invoke_prospect_researcher` returns GAP blocks, your workflow is:
      List every person shown here with Sales / Commercial / BD / Marketing in their title, plus start date and location.
      ```
 
-4. State what the research actually found (including auto-fetched content) â€” plainly, no embellishment.
+5. State what the research actually found (including auto-fetched content) â€” plainly, no embellishment.
 
-5. Never fabricate values to fill a gap. Never summarize gaps away with “research is thin” â€” surface every unresolved GAP block, verbatim.
+6. Never fabricate values to fill a gap. Never summarize gaps away with “research is thin” â€” surface every unresolved GAP block, verbatim.
 
 If `fetch_gap_content` itself errors, fall back to surfacing all gaps as manual Comet handoffs.
 
