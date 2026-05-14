@@ -562,7 +562,46 @@ Deno.serve(async (_req) => {
       });
     }
 
-    // ── 8. Knowledge base entry ───────────────────────────────────────────────
+    // ── 8. Overnight auto-research results ───────────────────────────────────
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: autoResearch } = await supabase
+      .from("knowledge_base")
+      .select("id, title, content, created_at, tags")
+      .contains("tags", ["auto-research", "pending-review"])
+      .gte("created_at", yesterday)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (autoResearch && autoResearch.length > 0) {
+      blocks.push({ type: "divider", divider: {} });
+      blocks.push({
+        type: "heading_2",
+        heading_2: { rich_text: [rt("Overnight Research")] },
+      });
+      blocks.push({
+        type: "paragraph",
+        paragraph: {
+          rich_text: [rt(`${autoResearch.length} compan${autoResearch.length === 1 ? "y" : "ies"} researched overnight. Ask the QB about any of these for the full brief.`)],
+        },
+      });
+      for (const r of autoResearch) {
+        // Extract ICP hypothesis line if present
+        const hypothesisMatch = r.content?.match(/6\.\s*ICP_HYPOTHESIS[\s\S]{0,20}?\n([\s\S]{0,400}?)(?:\n\n|\n<<<|$)/i);
+        const snippet = hypothesisMatch?.[1]?.trim().slice(0, 300) ?? r.content?.slice(0, 200)?.trim();
+        const companyName = r.title?.replace("Auto-Research: ", "") ?? "Unknown";
+        blocks.push({
+          type: "bulleted_list_item",
+          bulleted_list_item: {
+            rich_text: [
+              rt(`${companyName}: `, true),
+              rt(snippet ?? "Research complete — ask QB for summary."),
+            ],
+          },
+        });
+      }
+    }
+
+    // ── 9. Knowledge base entry ───────────────────────────────────────────────
     if (top7.length > 0) {
       const kbLines = top7.map((c: any, i: number) => {
         const sourceTag = c.source === "trigger" ? "[New Trigger]" : "[Re-engage]";
@@ -581,13 +620,22 @@ Deno.serve(async (_req) => {
           `last touch ${a.days_cold} days ago. ${alertTypeLabel}: ${a.alertSummary}.`;
       });
 
+      const overnightLines = (autoResearch ?? []).map((r: any) => {
+        const companyName = r.title?.replace("Auto-Research: ", "") ?? "Unknown";
+        const hypothesisMatch = r.content?.match(/6\.\s*ICP_HYPOTHESIS[\s\S]{0,20}?\n([\s\S]{0,300}?)(?:\n\n|\n<<<|$)/i);
+        const snippet = hypothesisMatch?.[1]?.trim().slice(0, 200) ?? "";
+        return `[Overnight Research] ${companyName}${snippet ? ": " + snippet : " — research complete, ask QB for full brief"}`;
+      });
+
       const kbContent =
         `Morning Triage ${today}: ${top7.length} candidate(s) — ` +
         `${pipelineCandidates.filter((c: any) => top7.includes(c)).length} pipeline re-engage, ` +
         `${triggerCandidates.filter((c: any) => top7.includes(c)).length} new triggers.` +
         (alertsToShow.length > 0 ? ` ${alertsToShow.length} mid-sequence alert(s).` : "") +
+        (overnightLines.length > 0 ? ` ${overnightLines.length} overnight research result(s).` : "") +
         "\n\n" + kbLines.join("\n") +
-        (alertLines.length > 0 ? "\n\n" + alertLines.join("\n") : "");
+        (alertLines.length > 0 ? "\n\n" + alertLines.join("\n") : "") +
+        (overnightLines.length > 0 ? "\n\n" + overnightLines.join("\n") : "");
 
       await supabase.from("knowledge_base").insert({
         title: `Morning Triage ${today}`,

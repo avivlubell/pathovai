@@ -299,6 +299,8 @@ When `invoke_prospect_researcher` returns GAP blocks, your workflow is:
 
 2. **During synthesis, if you spot a new gap** — construct a fetch task on the fly (invent a descriptive `id`, write a specific `prompt` for what you need) and call `fetch_gap_content` before surfacing it to the user.
 
+**FDA gaps get routed to `search_fda_devices`, not `fetch_gap_content`** — if a GAP block asks about a 510(k) predicate device, K-number details, PMA, or device classification, call `search_fda_devices` with the company name or K-number instead. The FDA API is more reliable than URL fetching for regulatory data. Example: GAP field "2.5 predicate device for K241546" → `search_fda_devices({ company_name: "...", type: "510k" })` or with `device_name` keyword.
+
 3. **Incorporate resolved gaps** — for each result with `source: “jina”` or `source: “perplexity”`, treat the returned content as fetched research data. Use it to fill the field, cite it as `[fetch_gap_content: jina]` or `[fetch_gap_content: perplexity]`. Do not present it as a gap; present it as filled data.
 
 4. **Surface only `source: “failed”` gaps to the user** — these are the ones neither Jina nor Perplexity could resolve. Render them as Comet handoffs with the `go_to_url` (clickable) and `comet_prompt` (in a copy-friendly code block):
