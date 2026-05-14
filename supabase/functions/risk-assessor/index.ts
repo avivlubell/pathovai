@@ -118,15 +118,21 @@ Deno.serve(async (req) => {
       .or("title.ilike.%pattern%,title.ilike.%risk%,title.ilike.%playbook%")
       .limit(3);
 
-        // Fetch agent learnings
+    // Fetch agent learnings — wildcard is '*', not 'all'
     const { data: learnings } = await supabase
       .from('agent_learnings')
-      .select('content')
+      .select('content, severity')
       .eq('active', true)
-      .or('applies_to.cs.{risk-assessor},applies_to.cs.{all}');
-    const lessonsBlock = learnings && learnings.length > 0
-      ? '\n\n=== LESSONS LEARNED ===\n' + learnings.map(l => '- ' + l.content).join('\n')
-      : '';
+      .eq('status', 'canonical')
+      .or('applies_to.cs.{risk-assessor},applies_to.cs.{*}');
+    let lessonsBlock = '';
+    if (learnings && learnings.length > 0) {
+      const hard = learnings.filter(l => l.severity === 'hard_rule').map(l => '- ' + l.content);
+      const soft = learnings.filter(l => l.severity !== 'hard_rule').map(l => '- ' + l.content);
+      lessonsBlock = '\n\n=== LESSONS LEARNED ===';
+      if (hard.length) lessonsBlock += '\n\n[HARD RULES — never violate]\n' + hard.join('\n');
+      if (soft.length) lessonsBlock += '\n\n[PREFERENCES]\n' + soft.join('\n');
+    }
 
     
     const userMessage = `## ACCOUNT DATA
