@@ -243,6 +243,17 @@ serve(async (req) => {
       return error400('at least one of property_updates or body_update is required');
     }
 
+    // ---- 0. Supabase-only fields (not mirrored to Notion) ----
+    const supabaseOnlyApplied: string[] = [];
+    if (property_updates && typeof property_updates.exclude_from_brief === 'boolean') {
+      const { error: flagErr } = await supabase
+        .from('accounts')
+        .update({ exclude_from_brief: property_updates.exclude_from_brief })
+        .eq('id', account.id);
+      if (flagErr) throw new Error(`exclude_from_brief update: ${flagErr.message}`);
+      supabaseOnlyApplied.push('exclude_from_brief');
+    }
+
     // ---- 1. Property updates ----
     const propsApplied: string[] = [];
     if (property_updates) {
@@ -314,7 +325,7 @@ serve(async (req) => {
           company_name: account.company_name,
           notion_page_id: stripDashes(oiPageId),
         },
-        properties_updated: propsApplied,
+        properties_updated: [...propsApplied, ...supabaseOnlyApplied],
         body_blocks_appended: blocksAppended,
       }),
       { headers: { 'Content-Type': 'application/json' } },

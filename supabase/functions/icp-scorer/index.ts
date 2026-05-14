@@ -108,14 +108,39 @@ Deno.serve(async (req) => {
       );
     }
 
-    // --- Load ICP framework from reference_library ---
-    const { data: icpRefs } = await supabase
-      .from("reference_library")
-      .select("content")
-      .eq("reference_type", "methodology")
-      .ilike("title", "%ICP%");
+    // --- Load ICP framework and learnings in parallel ---
+    const [{ data: icpRefs }, { data: rawLearnings }] = await Promise.all([
+      supabase
+        .from("reference_library")
+        .select("content")
+        .eq("reference_type", "methodology")
+        .ilike("title", "%ICP%"),
+      supabase
+        .from("agent_learnings")
+        .select("learning_type, content, severity")
+        .eq("active", true)
+        .eq("status", "canonical")
+        .or("applies_to.cs.{icp-scorer},applies_to.cs.{*}")
+        .order("created_at", { ascending: false })
+        .limit(25),
+    ]);
 
     const icpFramework = icpRefs?.map((r: any) => r.content).join("\n\n") || "";
+
+    // Build learnings block: hard rules first, then preferences.
+    let learningsSection = "";
+    if (rawLearnings && rawLearnings.length > 0) {
+      const hard: string[] = [];
+      const soft: string[] = [];
+      for (const l of rawLearnings) {
+        const line = `- [${l.learning_type.toUpperCase()}] ${l.content}`;
+        if (l.severity === "hard_rule") hard.push(line);
+        else soft.push(line);
+      }
+      learningsSection = "\n\n=== LESSONS LEARNED (from previous corrections) ===";
+      if (hard.length) learningsSection += "\n\n[HARD RULES — never violate]\n" + hard.join("\n");
+      if (soft.length) learningsSection += "\n\n[PREFERENCES — apply where appropriate]\n" + soft.join("\n");
+    }
 
     // --- Build account data for Claude ---
     const researchData = account.research_output || account.research_summary || "No research data available";
@@ -139,6 +164,13 @@ ${icpFramework}
 
 Answer the 4 classification questions based ONLY on the above data.`;
 
+    const systemBlocks: { type: "text"; text: string; cache_control?: { type: "ephemeral" } }[] = [
+      { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+    ];
+    if (learningsSection) {
+      systemBlocks.push({ type: "text", text: learningsSection });
+    }
+
     // --- Call Claude ---
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -150,13 +182,7 @@ Answer the 4 classification questions based ONLY on the above data.`;
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 2000,
-        system: [
-          {
-            type: "text",
-            text: SYSTEM_PROMPT,
-            cache_control: { type: "ephemeral" },
-          },
-        ],
+        system: systemBlocks,
         messages: [{ role: "user", content: accountContext }],
       }),
     });

@@ -43,6 +43,8 @@ Return valid JSON with these fields:
 - content: the learning stated clearly and concisely as an instruction the agent should follow
 - applies_to: array of function names this applies to, or ["*"] if universal. Known functions: "icp-scorer", "outreach-drafter", "prospect-researcher", "risk-assessor"
 - relevance_tags: array of short lowercase tags for semantic filtering (e.g., ["vac", "hospital_procurement", "outreach_framing"])
+- severity: one of "hard_rule" (must never violate — score math, named entities, banned phrases), "preference" (style/framing guidance, apply where appropriate), "observation" (informational, no direct behavioral impact)
+- context: one sentence describing the specific situation where this rule applies (e.g., "When scoring companies with no commercial headcount", "When drafting InMail for VP Sales or CRO personas"). Be concrete — this is used to decide whether to surface the rule at inference time.
 
 Return ONLY the JSON object, no explanation.`,
           messages: [
@@ -71,9 +73,11 @@ Return ONLY the JSON object, no explanation.`,
           agent_source: body.agent_source || null,
           learning_type: structured.learning_type,
           content: structured.content,
-          context: body.context || null,
+          context: body.context || structured.context || null,
           applies_to: structured.applies_to,
           relevance_tags: structured.relevance_tags || [],
+          severity: structured.severity || "preference",
+          status: "canonical",
           active: true,
         })
         .select()
@@ -87,7 +91,7 @@ Return ONLY the JSON object, no explanation.`,
       );
     } else {
       // Structured mode: direct insert
-      const { learning_type, content, applies_to, relevance_tags, agent_source, context, created_by } = body;
+      const { learning_type, content, applies_to, relevance_tags, agent_source, context, created_by, severity } = body;
 
       if (!learning_type || !content) {
         throw new Error("Required fields: learning_type, content");
@@ -103,6 +107,8 @@ Return ONLY the JSON object, no explanation.`,
           context: context || null,
           applies_to: applies_to || ["*"],
           relevance_tags: relevance_tags || [],
+          severity: severity || (learning_type === "correction" || learning_type === "banned_phrase" ? "hard_rule" : "preference"),
+          status: "canonical",
           active: true,
         })
         .select()

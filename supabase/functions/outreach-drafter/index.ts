@@ -208,28 +208,33 @@ A three-touch sequence to the one target:
 
 Return ONLY this JSON object. No prose before or after.`;
 
-// Fetch active learnings relevant to this function.
+// Fetch active canonical learnings relevant to this function, hard rules first.
 async function fetchLearnings(supabase: any): Promise<string> {
   const { data: learnings, error } = await supabase
     .from("agent_learnings")
-    .select("learning_type, content, relevance_tags")
+    .select("learning_type, content, severity")
     .eq("active", true)
+    .eq("status", "canonical")
     .or("applies_to.cs.{outreach-drafter},applies_to.cs.{*}")
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(25);
 
   if (error || !learnings || learnings.length === 0) return "";
 
-  const grouped: Record<string, string[]> = {};
+  const hard: string[] = [];
+  const soft: string[] = [];
   for (const l of learnings) {
-    if (!grouped[l.learning_type]) grouped[l.learning_type] = [];
-    if (grouped[l.learning_type].length < 5) grouped[l.learning_type].push(l.content);
+    const line = `- [${l.learning_type.toUpperCase()}] ${l.content}`;
+    if (l.severity === "hard_rule") hard.push(line);
+    else soft.push(line);
   }
 
-  let section = "\n\n=== LESSONS LEARNED (from previous corrections — follow strictly) ===";
-  for (const [type, items] of Object.entries(grouped)) {
-    section += `\n[${type.toUpperCase()}]`;
-    for (const item of items) section += `\n- ${item}`;
+  let section = "\n\n=== LESSONS LEARNED (from previous corrections) ===";
+  if (hard.length) {
+    section += "\n\n[HARD RULES — never violate]\n" + hard.join("\n");
+  }
+  if (soft.length) {
+    section += "\n\n[PREFERENCES — apply where appropriate]\n" + soft.join("\n");
   }
   return section;
 }
