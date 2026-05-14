@@ -516,6 +516,7 @@ const tools: Anthropic.Tool[] = [
             last_touch: { type: 'string', description: 'ISO date YYYY-MM-DD.' },
             response_date: { type: 'string' },
             next_step_due: { type: 'string' },
+            exclude_from_brief: { type: 'boolean', description: 'Set true to permanently suppress this account from morning triage briefs. Use when the user says "never include X in briefs / morning brief". Persists in Supabase only (not a Notion property).' },
           },
         },
         body_update: {

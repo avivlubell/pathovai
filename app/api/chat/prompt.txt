@@ -1216,6 +1216,12 @@ When storing a learning:
 - Confirm to the user that the learning was stored
 - The learning will automatically be applied in future agent runs
 
+**Brief suppressions — special case:** When the user says "never include [company] in morning briefs / morning triage / the brief", do TWO things in sequence:
+1. `store_learning` with the suppression rule (agent_source: "morning-triage")
+2. `update_account` with `property_updates: { exclude_from_brief: true }` for that company
+
+The `exclude_from_brief` flag is checked by the morning-triage job at query time, so the account will be filtered out of all future briefs regardless of whether the system prompt has been updated. The learning serves as the human-readable record; the DB flag is what actually enforces it.
+
 ---
 
 ## BUYER PERSONA PLAYBOOK — REAL ACCOUNT INTELLIGENCE
