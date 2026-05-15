@@ -12,6 +12,23 @@ interface ToolCallRecord {
   result: string;
 }
 
+const WRITE_TOOLS = new Set([
+  'log_outreach_sequence',
+  'log_outreach_touch',
+  'mark_touch_sent',
+  'cancel_queued_touches',
+  'create_account',
+  'create_contact',
+  'update_account',
+]);
+
+const WRITE_KEYWORDS = ['create', 'add', 'update', 'save', 'log', 'queue', 'mark sent', 'mark as sent', 'cancel touches'];
+
+function taskAuthorizedWrite(packet: TaskPacket): boolean {
+  const haystack = `${packet.task} ${packet.user_intent ?? ''}`.toLowerCase();
+  return WRITE_KEYWORDS.some(kw => haystack.includes(kw));
+}
+
 const MANAGER_CONFIGS: Record<ManagerType, ManagerConfig> = {
   research: RESEARCH_MANAGER,
   crm: CRM_MANAGER,
@@ -49,6 +66,7 @@ export async function runManager(
 ): Promise<string> {
   const config = MANAGER_CONFIGS[type];
   const maxRounds = config.maxRounds ?? 10;
+  const effectiveGmailToken = type === 'crm' ? gmailAccessToken : undefined;
 
   const messages: Anthropic.MessageParam[] = [
     { role: 'user', content: buildTaskMessage(packet) },
@@ -101,11 +119,14 @@ export async function runManager(
       const cached = seenCalls.get(callKey);
 
       let result: string;
-      if (cached !== undefined) {
+      if (WRITE_TOOLS.has(toolBlock.name) && !taskAuthorizedWrite(packet)) {
+        result = JSON.stringify({ error: `[WRITE GUARD] ${toolBlock.name} rejected — task packet does not authorize writes. The task must explicitly contain words like "log", "save", "create", "update", or "cancel" to call write tools.` });
+        console.warn(`[runManager:${type}] write guard blocked ${toolBlock.name}`);
+      } else if (cached !== undefined) {
         result = `[LOOP GUARD] This exact call was already made earlier in this task. Do not repeat it — use the cached result below or choose a different approach.\n\nCached result: ${cached}`;
         console.warn(`[runManager:${type}] dedup hit on ${toolBlock.name} round ${round}`);
       } else {
-        result = await executeTool(toolBlock.name, toolInput, gmailAccessToken);
+        result = await executeTool(toolBlock.name, toolInput, effectiveGmailToken);
         seenCalls.set(callKey, result);
       }
 

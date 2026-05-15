@@ -365,6 +365,47 @@ function transformNotFoundToGaps(text: string, account: Record<string, any>): st
   });
 }
 
+// Strips lines from scraped/LLM-synthesized content that match classic
+// indirect prompt injection patterns. Operates on the raw Perplexity output
+// before it is stored or injected into any agent context.
+const INJECTION_PATTERNS = [
+  /ignore\s+(all\s+|your\s+|previous\s+|prior\s+)?instructions/i,
+  /ignore\s+(all\s+|your\s+|previous\s+|prior\s+)?rules/i,
+  /disregard\s+(all\s+|your\s+|previous\s+)?instructions/i,
+  /forget\s+(everything|all|your\s+instructions)/i,
+  /you\s+are\s+now\s+/i,
+  /new\s+instructions\s*:/i,
+  /\[SYSTEM\]/i,
+  /\[INST\]/i,
+  /system\s+prompt/i,
+  /override\s+(your\s+)?(instructions|rules|guidelines)/i,
+  /act\s+as\s+(if\s+you\s+(are|were)|a\s+)/i,
+  /pretend\s+(you\s+are|to\s+be)/i,
+  /from\s+now\s+on\s*,?\s+you\s+(must|should|will|are)/i,
+];
+
+function sanitizeExternalContent(text: string, source: string): string {
+  if (!text) return text;
+  const lines = text.split("\n");
+  const stripped: string[] = [];
+  let removedCount = 0;
+
+  for (const line of lines) {
+    const matched = INJECTION_PATTERNS.some(p => p.test(line));
+    if (matched) {
+      stripped.push(`[REDACTED: potential injection pattern removed by sanitizer]`);
+      removedCount++;
+    } else {
+      stripped.push(line);
+    }
+  }
+
+  if (removedCount > 0) {
+    console.warn(`[sanitizer:${source}] removed ${removedCount} line(s) matching injection patterns`);
+  }
+  return stripped.join("\n");
+}
+
 function extractFields(research: string, deepDive: string) {
   const clean = (s: string) => s.replace(/\[\d+\]/g, "").replace(/\s*Source URL.*/i, "").trim();
   const match = (pattern: RegExp, text: string) => {
@@ -485,17 +526,21 @@ Deno.serve(async (req: Request) => {
       console.error(`Deep-dive failed for ${company_name}:`, ddErr);
     }
 
+    // Sanitize external content before any further processing or storage.
+    const sanitizedResearch = sanitizeExternalContent(research, "research");
+    const sanitizedDeepDive = deepDive ? sanitizeExternalContent(deepDive, "deepdive") : "";
+
     // Extract structured fields from the RAW research text (before gap
     // transformation) so the existing "skip if NOT FOUND" regex paths
     // keep working unchanged.
-    const fields = extractFields(research, deepDive);
+    const fields = extractFields(sanitizedResearch, sanitizedDeepDive);
 
     // Transform every remaining "NOT FOUND" line into a proper <<<GAP>>>
     // block with a per-field-type URL and Comet prompt. Done in code so
     // the output is deterministic regardless of whether Perplexity
     // followed the prompt's GAP instructions.
-    const researchWithGaps = transformNotFoundToGaps(research, account);
-    const deepDiveWithGaps = deepDive ? transformNotFoundToGaps(deepDive, account) : "";
+    const researchWithGaps = transformNotFoundToGaps(sanitizedResearch, account);
+    const deepDiveWithGaps = sanitizedDeepDive ? transformNotFoundToGaps(sanitizedDeepDive, account) : "";
 
     // Build update object
     const updateData: Record<string, any> = {

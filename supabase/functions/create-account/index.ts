@@ -128,6 +128,7 @@ serve(async (req) => {
       source,
       notes,
       icp_score,
+      therapeutic_area,
       force_create,
     } = input as Record<string, any>;
 
@@ -232,6 +233,9 @@ serve(async (req) => {
     if (source) props['Source'] = { select: { name: source } };
     if (notes) props['Notes'] = { rich_text: [{ text: { content: notes } }] };
     if (typeof icp_score === 'number') props['ICP Score'] = { number: icp_score };
+    if (Array.isArray(therapeutic_area) && therapeutic_area.length > 0) {
+      props['Therapeutic Area'] = { multi_select: therapeutic_area.map((n: string) => ({ name: n })) };
+    }
 
     // ---- Create the Notion page ----
     const created = await notion('/pages', {
@@ -266,6 +270,7 @@ serve(async (req) => {
     if (product_category) accountRow.product_category = product_category;
     if (icp_tier) accountRow.tier = icp_tier;
     if (typeof icp_score === 'number') accountRow.icp_score = icp_score;
+    if (Array.isArray(therapeutic_area) && therapeutic_area.length > 0) accountRow.therapeutic_area = therapeutic_area;
 
     const { data: inserted, error: insertErr } = await supabase
       .from('accounts')

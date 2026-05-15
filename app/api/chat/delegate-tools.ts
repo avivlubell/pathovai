@@ -61,6 +61,51 @@ export const delegateTools: Anthropic.Tool[] = [
     input_schema: TASK_PACKET_SCHEMA,
   },
   {
+    name: 'invoke_ai_imaging_operator',
+    description:
+      'AI Imaging Operator — invoke when the prospect company is in the AI diagnostic imaging space (TA tag = "AI Imaging" or similar). Returns a structured commercial brief: failure mode diagnosis, timing urgency, outreach hook, signal basis, and gaps. Invoke BEFORE generating any signal brief or outreach draft for AI imaging companies. Pass everything the QB already knows about the company in the context object.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        company_name: {
+          type: 'string',
+          description: 'Company name',
+        },
+        context: {
+          type: 'object',
+          description: 'All known company data from research, ICP scoring, and CRM lookup this session',
+          properties: {
+            funding_stage: { type: 'string', description: 'e.g. "Series A", "Seed", "bootstrapped"' },
+            headcount: { type: 'number', description: 'Employee count from LinkedIn or research' },
+            fda_status: { type: 'string', description: 'e.g. "510(k) cleared Feb 2025", "Pre-submission", "Pending"' },
+            public_signals: { type: 'string', description: 'Plain-text summary of public signals from research, ICP triggers, or market intel' },
+            pilot_announcements: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Each announced pilot with the named stakeholders, e.g. "Pilot at Mass General — only Dr. Smith (radiologist) named in press release"',
+            },
+            hiring_signals: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Commercial hiring signals, e.g. "VP Sales posted on LinkedIn 3 days ago"',
+            },
+            research_summary: { type: 'string', description: 'The research_summary field from the account record if available' },
+            indication: {
+              type: 'string',
+              description: 'Primary AI imaging indication, e.g. "stroke", "mammography", "chest CT", "PE", "cardiac CT", "lung nodule". Derive from fda_status or research. Used to pull targeted reimbursement and competitive intelligence from the knowledge layer.',
+            },
+            institution_type: {
+              type: 'string',
+              enum: ['amc', 'large_idn', 'community_hospital'],
+              description: 'Target institution type if known. "amc" = academic medical center, "large_idn" = IDN/health system, "community_hospital". Used to filter procurement intelligence.',
+            },
+          },
+        },
+      },
+      required: ['company_name'],
+    },
+  },
+  {
     name: 'store_learning',
     description:
       'Store a learning, correction, or preference for the system to remember. Use when the user provides feedback, corrections, or teaches the system something new.',

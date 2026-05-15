@@ -230,6 +230,7 @@ serve(async (req) => {
       outreach_status: getProp(props, "Outreach Status", "select") || getProp(props, "Status", "select"),
       owner: getProp(props, "Owner", "select"),
       competitors: getProp(props, "Competitors", "multi_select"),
+      therapeutic_area: getProp(props, "Therapeutic Area", "multi_select"),
       // Content from page body
       research_output: researchRaw,
       research_status: researchParts.length > 0 ? "complete" : "pending",
