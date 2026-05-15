@@ -578,7 +578,7 @@ export async function POST(req: Request) {
                 session_id: chatId,
                 flag_count: flagCount,
                 strip_count: stripCount,
-              }).catch(() => {});
+              }).then(null, () => {});
               send('done', { reply: verifiedReply, sources });
               controller.close();
               return;
@@ -637,7 +637,7 @@ export async function POST(req: Request) {
                 tool_name: toolBlock.name,
                 duration_ms: durationMs,
                 success: !result.startsWith('Error'),
-              }).catch(() => {});
+              }).then(null, () => {});
 
               toolResults.push({
                 type: 'tool_result',
