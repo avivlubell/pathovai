@@ -19,6 +19,7 @@ function getProp(props, name, type) {
     case "url": return prop.url || null;
     case "email": return prop.email || null;
     case "people": return prop.people ? prop.people.map(function(p) { return p.name; }).join(", ") : null;
+    case "multi_select": return prop.multi_select ? prop.multi_select.map(function(s) { return s.name; }) : [];
     case "relation": return prop.relation ? prop.relation.map(function(r) { return r.id.replace(/-/g, ""); }) : [];
     default: return null;
   }
@@ -94,6 +95,7 @@ function mapPageToRecord(page, knownCompanyIds) {
     research_status: getProp(props, "Research Status", "select"),
     outreach_status: getProp(props, "Status", "status"),
     owner: getProp(props, "Owner", "people") || getProp(props, "Owner", "select"),
+    therapeutic_area: getProp(props, "Therapeutic Area", "multi_select"),
     updated_at: now,
     last_synced_at: now
   };

@@ -42,6 +42,7 @@ export const TOOL_ENDPOINT_MAP: Record<string, string> = {
   ingest_to_kb: 'ingest-to-kb',
   search_kb: 'search-kb',
   store_learning: 'store-learning',
+  invoke_ai_imaging_operator: 'ai-imaging-operator',
 };
 
 export async function callEdgeFunction(
@@ -263,6 +264,8 @@ export function humanizeToolCall(
       return pickName() ? `Drafting outreach for ${pickName()}` : 'Drafting outreach';
     case 'invoke_risk_assessor':
       return pickName() ? `Assessing risk for ${pickName()}` : 'Assessing risk';
+    case 'invoke_ai_imaging_operator':
+      return pickName() ? `Running AI imaging diagnosis for ${pickName()}` : 'Running AI imaging operator';
     case 'get_communications':
       return pickName() ? `Pulling prior touches for ${pickName()}` : 'Pulling prior outreach history';
     case 'query_deals':

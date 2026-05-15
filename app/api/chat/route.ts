@@ -27,6 +27,7 @@ async function fetchLearnings(): Promise<{ text: string; tokenEstimate: number }
       .from('v_canonical_learnings')
       .select('content, agent_source, severity')
       .in('severity', ['hard_rule', 'preference'])
+      .or('agent_source.eq.*,agent_source.eq.quarterback,agent_source.is.null')
       .order('created_at', { ascending: false })
       .limit(30);
     if (!data || data.length === 0) return { text: '', tokenEstimate: 0 };
