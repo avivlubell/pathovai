@@ -7,1107 +7,44 @@ import { SYSTEM_PROMPT } from './system-prompt';
 import { createClient } from '@supabase/supabase-js';
 import { buildConversationContext } from '../../../lib/contextPrompt';
 import { authOptions } from '../../../lib/authOptions';
-import { gmailTool, executeGmailTool } from './gmail-tools';
-import { driveTools, executeDriveTool } from './drive-tools';
-import { calendarTools, executeCalendarTool } from './calendar-tools';
-import { loadSkill, SKILL_INDEX } from '../../../lib/skills';
+import { delegateTools } from './delegate-tools';
+import { executeTool, humanizeToolCall } from './tool-executor';
+import { runManager } from './managers/runner';
+import type { ManagerType, TaskPacket } from './managers/types';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const SUPABASE_FUNCTIONS_BASE = 'https://urmgbmfvjuozvhigflqt.supabase.co/functions/v1';
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
-
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-async function fetchLearnings(): Promise<string> {
+async function fetchLearnings(): Promise<{ text: string; tokenEstimate: number }> {
   try {
     const { data } = await supabase
-      .from('agent_learnings')
-      .select('content, agent_source, created_at')
+      .from('v_canonical_learnings')
+      .select('content, agent_source, severity')
+      .in('severity', ['hard_rule', 'preference'])
       .order('created_at', { ascending: false })
-      .limit(50);
-    if (!data || data.length === 0) return '';
+      .limit(30);
+    if (!data || data.length === 0) return { text: '', tokenEstimate: 0 };
     const lines = data.map((l: any) =>
-      `[${l.agent_source || '*'}] ${l.content}`
+      `[${l.agent_source || '*'}][${l.severity}] ${l.content}`
     );
-    return '\n\n## Active Learnings & Corrections\n' + lines.join('\n');
+    const text = '\n\n## Active Learnings & Corrections\n' + lines.join('\n');
+    return { text, tokenEstimate: Math.ceil(text.length / 4) };
   } catch {
-    return '';
+    return { text: '', tokenEstimate: 0 };
   }
 }
 
-function humanizeToolCall(
-  toolName: string,
-  input: Record<string, unknown>
-): string {
-  const pickName = (): string | null => {
-    const v =
-      (input.company_name as string | undefined) ||
-      (input.account_name as string | undefined) ||
-      (input.name as string | undefined) ||
-      null;
-    return v && typeof v === 'string' && v.trim() ? v.trim() : null;
-  };
-  const pickQuery = (): string | null => {
-    const v = input.query;
-    if (typeof v !== 'string' || !v.trim()) return null;
-    const s = v.trim();
-    return s.length > 60 ? s.slice(0, 57) + '…' : s;
-  };
-
-  switch (toolName) {
-    case 'invoke_prospect_researcher':
-    case 'prospect_researcher_batch':
-      return pickName() ? `Researching ${pickName()}` : 'Researching the account';
-    case 'invoke_icp_scorer':
-    case 'score_icp':
-      return pickName() ? `Scoring ICP fit for ${pickName()}` : 'Scoring ICP fit';
-    case 'invoke_outreach_drafter':
-      return pickName() ? `Drafting outreach for ${pickName()}` : 'Drafting outreach';
-    case 'invoke_risk_assessor':
-      return pickName() ? `Assessing risk for ${pickName()}` : 'Assessing risk';
-    case 'get_communications':
-      return pickName()
-        ? `Pulling prior touches for ${pickName()}`
-        : 'Pulling prior outreach history';
-    case 'query_deals':
-      return 'Querying deals pipeline';
-    case 'query_icp_triggers':
-      return 'Querying ICP trigger monitor';
-    case 'query_industry_intelligence':
-      return 'Querying market intelligence briefings';
-    case 'query_podcast_signals':
-      return 'Querying podcast signal feed';
-    case 'query_hiring_signals':
-      return 'Querying hiring signals';
-    case 'query_touches':
-      return pickName() ? `Pulling touches for ${pickName()}` : 'Pulling outreach touches';
-    case 'log_outreach_touch':
-      return pickName() ? `Logging touch to Notion for ${pickName()}` : 'Logging touch to Notion';
-    case 'log_outreach_sequence':
-      return pickName() ? `Logging sequence to Notion for ${pickName()}` : 'Logging sequence to Notion';
-    case 'mark_touch_sent':
-      return 'Marking touch as sent in Notion';
-    case 'cancel_queued_touches':
-      return pickName() ? `Cancelling queued touches for ${pickName()}` : 'Cancelling queued touches';
-    case 'list_calendar_events':
-      return pickQuery() ? `Checking calendar for "${pickQuery()}"` : 'Checking your calendar';
-    case 'create_calendar_event':
-      return (input.summary as string | undefined)
-        ? `Scheduling "${input.summary}"`
-        : 'Creating calendar invite';
-    case 'create_account':
-      return pickName() ? `Creating account for ${pickName()}` : 'Creating account in Notion';
-    case 'create_contact':
-      return pickName() ? `Creating contact for ${pickName()}` : 'Creating contact in Notion';
-    case 'update_account':
-      return pickName() ? `Updating ${pickName()} in Notion` : 'Updating account in Notion';
-    case 'sync_account_content':
-      return 'Syncing account content from Notion';
-    case 'run_prospect_pipeline':
-      return pickName() ? `Running pipeline on ${pickName()}` : 'Running prospect pipeline';
-    case 'search_references':
-      return pickQuery()
-        ? `Searching references for "${pickQuery()}"`
-        : 'Searching reference library';
-    case 'search_accounts_and_contacts':
-      return pickQuery()
-        ? `Searching accounts for "${pickQuery()}"`
-        : 'Searching accounts and contacts';
-    case 'get_account_detail':
-      return pickName() ? `Looking up ${pickName()}` : 'Looking up account details';
-    case 'log_agent_run':
-      return 'Logging action to audit trail';
-    case 'process_document':
-      return 'Processing document';
-    case 'search_kb':
-      return pickQuery()
-        ? `Searching knowledge base for "${pickQuery()}"`
-        : 'Searching knowledge base';
-    case 'ingest_to_kb': {
-      const title = typeof input.title === 'string' ? input.title : null;
-      return title ? `Saving "${title}" to knowledge base` : 'Saving to knowledge base';
-    }
-    case 'store_learning':
-      return 'Storing learning';
-    case 'gmail_send':
-    case 'send_email':
-      return 'Sending email via Gmail';
-    case 'gmail_search':
-    case 'search_email':
-      return 'Searching Gmail';
-    case 'gmail_read':
-    case 'read_email':
-      return 'Reading email';
-    case 'drive_search':
-      return pickQuery() ? `Searching Drive for "${pickQuery()}"` : 'Searching Drive';
-    case 'drive_read':
-      return 'Reading Drive file';
-    case 'search_clinical_trials':
-      return pickQuery() ? `Searching ClinicalTrials for "${pickQuery()}"` : 'Searching ClinicalTrials.gov';
-    case 'search_cms_coverage':
-      return pickQuery() ? `Searching CMS Coverage for "${pickQuery()}"` : 'Searching CMS Coverage database';
-    case 'search_icd10': {
-      const terms = input.terms as string | undefined;
-      return terms ? `Looking up ICD-10 codes for "${terms}"` : 'Looking up ICD-10 codes';
-    }
-    case 'fetch_gap_content': {
-      const count = Array.isArray(input.gaps) ? input.gaps.length : 0;
-      return count > 1 ? `Fetching ${count} research gaps` : 'Fetching research gap';
-    }
-    case 'queue_research': {
-      const cos = input.companies as string[] | undefined;
-      const count = Array.isArray(cos) ? cos.length : 0;
-      return count > 1 ? `Queuing overnight research for ${count} companies` : 'Queuing overnight research';
-    }
-    case 'invoke_signal_brief':
-      return pickName()
-        ? `Building Signal Brief for ${pickName()}`
-        : 'Building Signal Brief';
-    case 'search_fda_devices':
-      return pickName()
-        ? `Searching FDA device database for ${pickName()}`
-        : 'Searching FDA device database';
-    default: {
-      const pretty = toolName.replace(/^invoke_/, '').replace(/_/g, ' ');
-      return `Running ${pretty}`;
-    }
-  }
-}
-
-const TOOL_ENDPOINT_MAP: Record<string, string> = {
-  invoke_signal_brief: 'signal-brief',
-  invoke_icp_scorer: 'icp-scorer',
-  invoke_prospect_researcher: 'prospect-researcher',
-  invoke_outreach_drafter: 'outreach-drafter',
-  invoke_risk_assessor: 'risk-assessor',
-  get_communications: 'get-communications',
-  query_deals: 'query-deals',
-  query_icp_triggers: 'query-icp-triggers',
-  query_industry_intelligence: 'query-industry-intelligence',
-  query_podcast_signals: 'query-podcast-signals',
-  query_hiring_signals: 'query-hiring-signals',
-  query_touches: 'query-touches',
-  fetch_gap_content: 'fetch-gap-content',
-  queue_research: 'queue-research',
-  log_outreach_touch: 'log-outreach-touch',
-  log_outreach_sequence: 'log-outreach-sequence',
-  mark_touch_sent: 'mark-touch-sent',
-  cancel_queued_touches: 'cancel-queued-touches',
-  create_account: 'create-account',
-  create_contact: 'create-contact',
-  update_account: 'update-account',
-  sync_account_content: 'sync-prospect-content',
-  sync_touch_content: 'sync-touch-content',
-  run_prospect_pipeline: 'run-prospect-pipeline',
-  prospect_researcher_batch: 'prospect-researcher',
-  search_references: 'search-references',
-  search_accounts_and_contacts: 'search-prospects',
-  get_account_detail: 'get-prospect-detail',
-  score_icp: 'icp-scorer',
-  log_agent_run: 'log-agent-run',
-  process_document: 'process-document',
-  ingest_to_kb: 'ingest-to-kb',
-  search_kb: 'search-kb',
-  store_learning: 'store-learning',
-};
-
-const tools: Anthropic.Tool[] = [
-  {
-    name: 'search_references',
-    description: 'Query Pathova Reference Library. Filter by type: methodology, proof_asset, legal_kb, agent_prompt, company_context, outreach_template, solution_framework, problem_framework, competitor_intel.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        type: { type: 'string', description: 'Reference type filter' },
-        query: { type: 'string', description: 'Optional search query' },
-      },
-    },
-  },
-  {
-    name: 'search_accounts_and_contacts',
-    description: 'Search accounts (companies) and contacts (people). Use this to find companies by name, industry, or keyword, AND to find people by name, title, email, or region. Returns both account and contact results. An "account" is a company; a "contact" is an individual person at a company.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        query: { type: 'string', description: 'Search query -- company name, person name, title, industry, region, or keyword' },
-      },
-    },
-  },
-  {
-    name: 'get_account_detail',
-    description: 'Get full details for a specific account (a COMPANY) by name or ID. For an individual person, use search_accounts_and_contacts instead.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        account_id: { type: 'string', description: 'Company UUID from accounts table (NOT a contact/person id)' },
-        company_name: { type: 'string', description: 'Company name to look up' },
-      },
-    },
-  },
-  {
-    name: 'score_icp',
-    description: 'Local ICP evaluation (fallback only -- prefer invoke_icp_scorer).',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        account_id: { type: 'string', description: 'Company UUID from accounts table' },
-        company_name: { type: 'string', description: 'Company name' },
-      },
-    },
-  },
-  {
-    name: 'query_deals',
-    description: 'Query the Deals & Motions pipeline. Supports filters: stage, motion_type, company.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        filter: {
-          type: 'object',
-          description: 'Optional filters',
-          properties: {
-            stage: { type: 'string' },
-            motion_type: { type: 'string' },
-            company: { type: 'string' },
-          },
-        },
-      },
-    },
-  },
-  {
-    name: 'query_icp_triggers',
-    description: 'Query the ICP Trigger Monitor — a daily-refreshed feed of MedTech companies that hit Pathova ICP signals (FDA clearances, pilot announcements, seed/Series A raises, reimbursement milestones, SBIR awards, ClinicalTrials registrations). Use when the user asks about recent triggers, new ICP-matched companies, FDA clearances, raises, or wants a prioritized list of fresh prospects. This is pre-engagement signal intake — distinct from accounts (active prospects). Rows include tier, trigger types, FDA status, summary, and outreach status.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        filter: {
-          type: 'object',
-          description: 'Optional filters',
-          properties: {
-            tier: { type: 'string', description: 'Substring match on icp_tier (e.g., "Highest Priority", "Strong Fit", "Medium")' },
-            trigger_type: { type: 'string', description: 'Exact match on one of: "FDA Clearance / 510(k)", "Pilot Announcement", "Seed / Series A Raise", "Reimbursement Milestone", "SBIR Award", "ClinicalTrials Registration"' },
-            outreach_status: { type: 'string', description: 'Substring match on outreach_status (e.g., "Not Contacted", "Sent")' },
-            fda_status: { type: 'string', description: 'Substring match on fda_status (e.g., "Cleared", "Pending", "De Novo", "PMA")' },
-            company: { type: 'string', description: 'Substring match on company name' },
-            since_days: { type: 'number', description: 'Only rows where date_found is within the last N days' },
-          },
-        },
-        limit: { type: 'number', description: 'Max rows to return (default 25, max 100)' },
-      },
-    },
-  },
-  {
-    name: 'query_industry_intelligence',
-    description: 'Query the 📡 Market Intelligence Briefings — Notion-sourced weekly scan of MedTech commercial signals (RAPID/CMS/CPT pathway updates, GPO contract wins, hospital M&A, FDA clearances in adjacent categories, funding climate, technology tailwinds/headwinds). This is news about the WORLD a prospect operates in, not facts about the prospect itself. Use as a precondition before invoke_outreach_drafter to find timely macro hooks (RAPID pathway, M&A in their category, new CPT codes), and on direct user questions like "what\'s new this week?" / "any RAPID news?" / "what\'s happening in cardiovascular?". Filter by category, signal_type, therapeutic_area, topic_tags, icp_stage, urgency_window, and recency_days. Returns rows of {title, category, signal_type, source_publication, source_url, source_date, what_happened, so_what, urgency_window}.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        category: { type: 'string', description: 'Single-select. One of: "Procurement & VAC", "Reimbursement & Payer", "Regulatory & FDA", "Funding & Investor", "Tech Trend".' },
-        signal_type: { type: 'string', description: 'Single-select. One of: "Tailwind", "Headwind", "Event", "Mixed".' },
-        therapeutic_area: { type: 'array', items: { type: 'string' }, description: 'Match ANY of these therapeutic areas (array overlap). Allowed values: cardiovascular, neurology, orthopedics, imaging, RPM, AI diagnostics, surgical robotics, digital health, ambient AI, transseptal, oncology, point-of-care.' },
-        topic_tags: { type: 'array', items: { type: 'string' }, description: 'Match ANY of these topic tags (array overlap). Allowed values: RAPID, GPO, M&A, CPT-2026, breakthrough-designation, prior-auth, ambient, EHR-integration, 510k, robotics, ASC, IDN-consolidation, Vizient, Premier, HealthTrust, FHIR.' },
-        icp_stage: { type: 'array', items: { type: 'string' }, description: 'Match ANY of these ICP stages (array overlap). Allowed values: pre-clearance, post-clearance, pilot, scaling, bridge.' },
-        buyer_persona: { type: 'array', items: { type: 'string' }, description: 'Match ANY of these buyer personas (array overlap). Allowed values: CMO, VAC, Supply Chain, CFO, CIO, Procurement.' },
-        urgency_window: { type: 'string', description: 'Single-select. One of: "This week", "30-60 days", "Quarter", "Standing".' },
-        recency_days: { type: 'number', description: 'Only rows where source_date is within the last N days. Default 60. Pass 0 for no recency filter.' },
-        query: { type: 'string', description: 'Free-text fuzzy match against title / what_happened / so_what.' },
-        limit: { type: 'number', description: 'Max rows to return (default 5, max 25).' },
-      },
-    },
-  },
-  {
-    name: 'query_podcast_signals',
-    description: 'Query the 📻 Podcast Intelligence — Signal Feed: insights distilled from MedTech podcasts (Medsider, State of MedTech, LSI / Emerging MedTech, Mike on Medtech, etc.) and tagged by what kind of signal they carry. This is voice-of-buyer / voice-of-investor / voice-of-operator data — how founders, payers, and investors actually talk about the category. Distinct from query_industry_intelligence (which is news/events about the world). Use this to (a) ground the agent in current MedTech commercial vocabulary and framing before discussing a category or persona, and (b) pull a credible quote or pattern to anchor an outreach hook with authority ("on Medsider last month, [Operator] said X — your situation looks like that"). Returns rows of {title, show, guest_name, guest_company, air_date, source_url, signal_type, icp_relevance, content_angle, key_insight}. Filter by signal_type, show, icp_relevance, and recency_days.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        signal_type: { type: 'string', description: 'Single-select. One of: "Buyer Psychology", "Commercial Pattern", "Category Signal", "Investor Framing", "Objection", "Trigger Event".' },
-        show: { type: 'string', description: 'Single-select. One of: "Medsider", "State of MedTech", "LSI / Emerging MedTech", "Mike on Medtech", "StartUp Health", "HLTH Matters", "Beckers Healthcare", "MedTech Startup Podcast", "Medical Device Marketing", "Amplifiz MedTech", "Samuel Adeyinka / Medical Sales Podcast".' },
-        icp_relevance: { type: 'string', description: 'Single-select. One of: "High", "Medium", "Low". Filter to High when grounding outreach for a Tier-1 ICP account.' },
-        recency_days: { type: 'number', description: 'Only rows where air_date is within the last N days. Default 180 (podcasts age slower than news). Pass 0 for no recency filter.' },
-        query: { type: 'string', description: 'Free-text fuzzy match against title / key_insight / content_angle / guest_company.' },
-        limit: { type: 'number', description: 'Max rows to return (default 5, max 25).' },
-      },
-    },
-  },
-  {
-    name: 'query_hiring_signals',
-    description: 'Query the MedTech Commercial Hiring Signals tracker — job postings for commercial roles (VP Sales, Director of Market Access, Regional Manager, Account Executive, etc.) at MedTech companies, rated by ICP fit. Use when the user asks about hiring activity at a company, wants to find companies expanding their commercial team, or needs a hiring-based trigger for outreach ("they just posted 3 sales roles"). Returns rows of {name, company, role, seniority, location, icp_signal, source, job_url, date_found, run_date, notes}.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        icp_signal: { type: 'string', description: 'Single-select. One of: "Strong fit", "Possible fit", "Monitor".' },
-        seniority: { type: 'string', description: 'Single-select. One of: "VP / C-Suite", "Director", "Regional Manager", "Account Executive", "Other Commercial".' },
-        company: { type: 'string', description: 'Substring match on company name.' },
-        since_days: { type: 'number', description: 'Only rows where run_date is within the last N days. Default 90. Pass 0 for no recency filter.' },
-        query: { type: 'string', description: 'Free-text fuzzy match against name / company / role / notes / location.' },
-        limit: { type: 'number', description: 'Max rows to return (default 10, max 50).' },
-      },
-    },
-  },
-  {
-    name: 'query_touches',
-    description:
-      'Query the Outreach Touches log — every email, LinkedIn DM, connection request, call, or meeting that has been drafted or sent for an account. Use this for "what have I sent to X?", "what is unsent?", "what is due this week?", or prior outreach history. Distinct from accounts (the company-level record).\n\nDate model (post-2026-05-05 schema):\n- `touch_date`: planned send date — populated only on UNSENT rows. Cleared once a touch is sent.\n- `sent_touch_date`: actual send date — populated only on SENT rows.\n- `effective_touch_date`: the row\'s anchored date — sent_touch_date if sent, else touch_date. Use this for any "show me chronologically" or "oldest/newest" reasoning.\n\nResponse shape (READ THIS — common LLM mistakes):\n- `total_matching`: TRUE total of rows matching the filters (use this for counts).\n- `total_returned`: number of rows in the `touches` array (capped by limit).\n- `truncated`: true when total_matching > total_returned. If true, do NOT claim you have shown everything.\n- `touches`: a SAMPLE of detail rows (most recent first by effective_touch_date). Use these for narrative quotes/examples, NOT for counting or rolling up.\n- `summary.by_account`: AUTHORITATIVE per-account rollup over ALL matching rows (NOT just the sample). Each entry: `{account_id, account_name, count, sent_count, oldest_date, newest_date, last_sent_date, next_due_date, channels}`. When the user asks "how many per account" or you are building a per-account table, use this — never count the `touches` array.\n- `summary.{accounts, sent, unsent, by_channel, by_outcome, oldest_touch_date, newest_touch_date, last_sent_date}`: also unbounded. The `oldest_touch_date`/`newest_touch_date` keys are anchored on effective_touch_date despite the legacy names.\n\nNever invent rows that aren\'t in the data. If by_account has 12 entries, your table has 12 rows. Do not pad with "Today (just drafted)" or any other synthetic entry — those will be flagged as fabrication.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        filter: {
-          type: 'object',
-          description: 'Optional filters',
-          properties: {
-            account_id: { type: 'string', description: 'Company UUID from accounts table — exact match on parent account' },
-            account_name: { type: 'string', description: 'Company name — fuzzy match; resolved to account_id internally' },
-            sent: { type: 'boolean', description: 'Filter to sent (true) or unsent/draft (false) only' },
-            channel: { type: 'string', description: 'Substring match on channel: Email, LinkedIn, Phone, Intro, Meeting' },
-            outcome: { type: 'string', description: 'Substring match on outcome: Meeting Booked, No Response, Disqualified, Warm Follow-up, Referred, Nurture, Connection Request Pending, Connected on LinkedIn' },
-            due_within_days: { type: 'number', description: 'Only UNSENT touches with planned touch_date within N days from today (forward-looking; "what\'s due this week").' },
-            sent_within_days: { type: 'number', description: 'Only SENT touches with sent_touch_date in the last N days (backward-looking; "what did we send recently"). Prefer this over since_days when asking about completed activity.' },
-            since_days: { type: 'number', description: 'Any touches (sent OR planned) with effective_touch_date in the last N days. Combines sent activity and upcoming drafts.' },
-            before_date: { type: 'string', description: 'ISO date — only touches with effective_touch_date on or before this date' },
-            after_date: { type: 'string', description: 'ISO date — only touches with effective_touch_date on or after this date' },
-          },
-        },
-        limit: { type: 'number', description: 'Max rows (default 50, max 200)' },
-      },
-    },
-  },
-  {
-    name: 'log_outreach_sequence',
-    description:
-      'Write one OR a sequence of touches to Notion (Outreach Touches DB) and update the parent account in Outreach Intelligence in a single atomic operation. THIS IS A WRITE TOOL: it modifies the user\'s live ops database. Only call after the user has explicitly told you to log/save/queue the sequence ("log this", "queue these drafts", "save to Notion") — never on a draft/preview turn, never as a follow-up to "looks good". This is the canonical way to log touches; prefer it over log_outreach_touch even for a single touch.\n\nBehavior:\n- Each entry in `touches[]` becomes a row in Outreach Touches with the parent account linked via Related Outreach.\n- Idempotent on (account_id, channel, touch_date) for unsent rows: re-running the same call will skip duplicates instead of creating them, so it\'s safe on retry. Already-sent rows are never treated as duplicates.\n- Parent OI Next Step Due is set to the EARLIEST unsent touch_date across the whole account (existing + just-created), and Next Step is mapped from that touch\'s channel.\n- Parent OI Status only advances from "To Do" → "Working" if AT LEAST ONE touch in this call has sent=true. Drafted ≠ sent — queueing 3 future drafts does not flip Status.\n- Last Touch is updated only if at least one touch in the call has sent=true (set to the latest sent date in the batch).\n\nUse cases:\n- Single immediate send: `touches: [{channel, message, sent: true, touch_date: today}]`\n- Future draft for the next step: `touches: [{channel, message, sent: false, touch_date: future}]`\n- Full 3-touch sequence: `touches: [{...today, sent: true OR false}, {...+4d, sent: false}, {...+11d, sent: false}]`\n\nMax 10 touches per call. For larger batches, split into multiple calls (idempotency makes this safe).',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        account_id: { type: 'string', description: 'Company UUID from accounts table. Optional if company_name is provided.' },
-        company_name: { type: 'string', description: 'Company name — used to resolve account when UUID unknown.' },
-        touches: {
-          type: 'array',
-          description: 'Array of 1-10 touches to log. Order does not matter; idempotency is on (channel, touch_date).',
-          items: {
-            type: 'object',
-            properties: {
-              channel: { type: 'string', description: 'Required. One of: Email, LinkedIn, Phone, Intro, Meeting.' },
-              message: { type: 'string', description: 'Required. Full message body.' },
-              sent: { type: 'boolean', description: 'Default false. true only if this touch went out.' },
-              touch_date: { type: 'string', description: 'ISO date YYYY-MM-DD. The send date if sent=true, the planned date if sent=false. Defaults to today. Internally routes to Notion\'s Sent Touch Date or Touch Date based on sent.' },
-              title: { type: 'string', description: 'Optional. Defaults to "{Company} - {Channel} - {Date}".' },
-              outcome: { type: 'string', description: 'Optional. Meeting Booked, No Response, Disqualified, Warm Follow-up, Referred, Nurture, Connection Request Pending, Connected on LinkedIn.' },
-              top_challenges: { type: 'array', items: { type: 'string' }, description: 'Optional discussion topics from Top Challenges multi_select.' },
-            },
-            required: ['channel', 'message'],
-          },
-        },
-        next_step_override: { type: 'string', description: 'Optional override for OI\'s Next Step value when the channel-to-Next-Step heuristic is ambiguous (LinkedIn maps to Linkedin DM by default; pass "LinkedIn Inmail" / "LinkedIn Connection Request" / etc. to override). Must be one of: LinkedIn Inmail, eMail, Linkedin DM, LinkedIn Connection Request, Schedule meeting, LinkedIn Interaction.' },
-      },
-      required: ['touches'],
-    },
-  },
-  {
-    name: 'mark_touch_sent',
-    description:
-      'Mark a previously-drafted touch as sent. THIS IS A WRITE TOOL: it modifies Notion. Only call after explicit user instruction to mark the touch sent (e.g. "I sent touch #2", "mark the LinkedIn DM sent", "log it as sent with outcome X"). The tool:\n- Re-pulls the touch from Notion to capture any body edits the user made before sending (Notion is source of truth for the body).\n- Sets Sent=true on the touch (and Outcome if provided).\n- Updates the parent OI: Last Touch = the sent date, Status: To Do → Working (if currently To Do), and rolls Next Step Due / Next Step forward to the next remaining unsent touch on the account. If no touches remain unsent, clears those pointers (sequence done).\n- If outcome is "Meeting Booked", does NOT auto-cancel the queued siblings — instead returns them in `queued_to_cancel` so you can ask the user whether to cancel and call cancel_queued_touches on confirmation. Never auto-cancel.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        touch_id: { type: 'string', description: 'Notion page ID of the touch to mark sent (with or without dashes). You can get this from query_touches → notion_page_id.' },
-        outcome: { type: 'string', description: 'Optional outcome at send-time: Meeting Booked, No Response, Disqualified, Warm Follow-up, Referred, Nurture, Connection Request Pending, Connected on LinkedIn. Sets Outcome on the touch.' },
-        sent_date: { type: 'string', description: 'ISO date YYYY-MM-DD when the touch actually went out. Defaults to the touch\'s planned Touch Date if omitted. Writes to Sent Touch Date and clears Touch Date (Touch Date is forward-looking only post-migration).' },
-      },
-      required: ['touch_id'],
-    },
-  },
-  {
-    name: 'cancel_queued_touches',
-    description:
-      'Move queued (unsent) touches to Notion trash and remove them from Supabase. THIS IS A WRITE TOOL. Only call after explicit user confirmation, typically as the second step after mark_touch_sent surfaced queued siblings (e.g. when a meeting was booked and the rest of the sequence is moot). Notion trash is restorable — this is not a hard delete on the Notion side.\n\nTwo modes:\n- `touch_ids: [...]`: cancel ONLY the specified touches (whitelist; safest). Use this whenever you have a known list, especially right after mark_touch_sent.\n- `account_id` or `company_name` (no touch_ids): cancel ALL unsent touches on that account. Use only when the user has explicitly said "cancel everything queued for X" or similar. Capped at 25 per call.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        touch_ids: { type: 'array', items: { type: 'string' }, description: 'Notion page IDs to cancel. Preferred mode.' },
-        account_id: { type: 'string', description: 'Cancel ALL unsent touches on this account. Use only with explicit user instruction.' },
-        company_name: { type: 'string', description: 'Same as account_id but resolved by name.' },
-      },
-    },
-  },
-  {
-    name: 'create_account',
-    description:
-      'Create a new account (company) row in Notion\'s Outreach Intelligence database and sync it to Supabase. THIS IS A WRITE TOOL: it modifies the user\'s live ops database. Only call after the user has explicitly told you to add/create the account ("create an account for X", "add Sibel Health to Notion", "promote this trigger to an account", "let\'s start working on X"). Never call as a follow-up to a generic "looks good".\n\nDuplicate detection runs by default (3 tiers: exact name match in accounts, fuzzy substring match in accounts, title substring match in Notion OI database). If duplicates are found, the tool returns `success: false` with `error: "duplicate_detected"` or `"possible_duplicates"` and a list of matches. When this happens, present the matches to the user — do not silently re-call with force_create. Only re-call with `force_create: true` if the user explicitly confirms it\'s a different company (e.g., "yes, those are different — that one is X subsidiary, this is the parent").\n\nIf you\'re promoting an ICP Trigger row to an account, pass `from_icp_trigger_id` (the trigger\'s notion_page_id from query_icp_triggers). The tool will pre-fill HQ Location, Website, and LinkedIn URL from the trigger row. Other constrained fields (regulatory_status, product_category, icp_tier) are not auto-mapped from the trigger\'s vocabulary — pass them explicitly if you want them set.\n\nNew accounts default to Status="To Do", Pipeline Stage="Research". The QB can immediately invoke prospect_researcher / icp_scorer / outreach_drafter / risk_assessor against the returned account_id.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        company_name: { type: 'string', description: 'REQUIRED. The company name. Becomes the Account title and is the primary duplicate-detection key.' },
-        from_icp_trigger_id: { type: 'string', description: 'Optional notion_page_id of an ICP Trigger row (from query_icp_triggers). When provided, HQ Location, Website, and LinkedIn URL are seeded from the trigger.' },
-        website: { type: 'string', description: 'Optional company website URL.' },
-        linkedin_url: { type: 'string', description: 'Optional company LinkedIn URL.' },
-        hq_location: { type: 'string', description: 'Optional HQ city/country as free text.' },
-        regulatory_status: { type: 'string', description: 'Optional. Must be one of: Pre-FDA, FDA Cleared, CE Mark Only, FDA + CE Mark, Post-Market.' },
-        product_category: { type: 'string', description: 'Optional. Must be one of: Hardware device, Hardware device / Combination, SaMD / Hardware device / DTx / Clinical AI / Combination / Other, Clinical AI / SaMD.' },
-        icp_tier: { type: 'string', description: 'Optional. Must be one of: Tier 1: Priority, Tier 2: Qualified, Tier 3: Monitor, Non-ICP.' },
-        source: { type: 'string', description: 'Optional. Must be one of: Inbound, Referral, LinkedIn, Conference, Research, Other.' },
-        notes: { type: 'string', description: 'Optional free-text notes for the Notes property.' },
-        icp_score: { type: 'number', description: 'Optional numeric ICP Score (0-10).' },
-        force_create: { type: 'boolean', description: 'Default false. Set to true ONLY after the user has confirmed that surfaced duplicates are a different company.' },
-      },
-      required: ['company_name'],
-    },
-  },
-  {
-    name: 'create_contact',
-    description:
-      'Create a new contact (person) in Notion\'s Contacts database, link it to a parent account, and sync to Supabase. THIS IS A WRITE TOOL: it modifies the user\'s live ops database. Only call after the user has explicitly told you to add/create the contact ("add Christian Gormsen as a contact for Magnus Medical", "create a contact for the CEO at Sibel", "let\'s add Keith Maison").\n\nThe outreach drafter cannot run on an account that has no contact — it needs a target person. So when the user creates a fresh account (e.g., promoting an ICP Trigger to an OI page), the next natural step is usually to add at least one contact before drafting outreach.\n\nDuplicate detection runs by default (3 tiers, all account-scoped: exact name same account, fuzzy name same account, email match across all accounts). If duplicates surface (`success: false, error: "duplicate_detected" | "possible_duplicates"`), present matches to the user and ask how to proceed. Email matches across accounts may indicate the person changed jobs — surface that to the user.\n\nAfter creation, the new contact_id is returned and you can pass it (or just keep using account_id) to invoke_outreach_drafter; the drafter will pick up the contact via the synced contacts table.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        full_name: { type: 'string', description: 'REQUIRED. The person\'s full name. Becomes the Notion Name title and is the primary duplicate-detection key.' },
-        account_id: { type: 'string', description: 'Company UUID this contact belongs to. Optional if company_name is provided.' },
-        company_name: { type: 'string', description: 'Company name to resolve the parent account when UUID unknown.' },
-        title: { type: 'string', description: 'Optional job title (free text).' },
-        email: { type: 'string', description: 'Optional email address. Used as a duplicate-detection key across all accounts (catches job changes).' },
-        phone: { type: 'string', description: 'Optional phone number.' },
-        linkedin_url: { type: 'string', description: 'Optional LinkedIn profile URL.' },
-        notes: { type: 'string', description: 'Optional free-text notes.' },
-        contact_type: { type: 'string', description: 'Optional. Must be one of: CEO, CFO, CRO, VP Sales, VP Clinical, Physician Champion, Procurement, Other.' },
-        relationship_status: { type: 'string', description: 'Optional. Must be one of: Identified, Researched, Outreach, Connected, Engaged, Active Relationship, Unresponsive, Disqualified. Defaults to "Identified" for new contacts.' },
-        communication_channels: { type: 'array', items: { type: 'string' }, description: 'Optional multi-select. Values from: Email, LinkedIn, Phone, In-Person, Referral.' },
-        is_primary: { type: 'boolean', description: 'Optional. Mark as the primary contact for the account (Supabase-side flag).' },
-        force_create: { type: 'boolean', description: 'Default false. Set true ONLY after the user has confirmed surfaced duplicates are different people / different jobs / etc.' },
-      },
-      required: ['full_name'],
-    },
-  },
-  {
-    name: 'update_account',
-    description:
-      'Update an existing account in Notion\'s Outreach Intelligence database. THIS IS A WRITE TOOL: it modifies the user\'s live ops database. Only call after the user has explicitly told you to update the page ("update Acurable with this intel", "save this to Notion", "log these corrections to the Acurable page"). Never call as a follow-up to a generic "thanks" or "looks good".\n\nTwo update channels, both optional (at least one required):\n\n1. `property_updates` — patch constrained Notion properties: status, pipeline_stage, icp_tier, regulatory_status, product_category, engage_decision, source, timing_status, validation_status, icp_score, hq_location, website, linkedin_url, email, notes (rich_text, replaced wholesale — short scalars only), therapeutic_area / primary_gap (multi_select arrays — replaced wholesale), last_touch / response_date / next_step_due (ISO dates).\n\n2. `body_update` — append rich research/intel to the page body. Mode is `append` only (v1). Optional `heading` is prepended as a heading_2 (use this for dated section headers like "Update — April 28, 2026"). The `markdown` field accepts standard markdown (# headings, - bullets, 1. numbered lists, paragraphs, --- dividers). Inline emphasis (**bold**, *italic*, `code`, [links](url)) is reduced to plain text — Notion\'s annotation model is verbose; if the user wants formatting they can edit in Notion.\n\nThe most common use case: the user gives you a long-form intel update (corrections, new funding history, commercial team changes, recent LinkedIn posts) and asks you to write it to the page. Pass it as a single `body_update.markdown` block with a dated `body_update.heading`.\n\nAfter writing, the parent OI is re-synced to Supabase so the QB sees the new state on the next read.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        account_id: { type: 'string', description: 'Company UUID from accounts table. Optional if company_name is provided.' },
-        company_name: { type: 'string', description: 'Company name — used to resolve account when UUID unknown.' },
-        property_updates: {
-          type: 'object',
-          description: 'Optional. Patch constrained Notion properties.',
-          properties: {
-            status: { type: 'string', description: 'To Do | Nurture | Working | Disqualified | Completed' },
-            pipeline_stage: { type: 'string', description: 'Research | Qualify | Outreach | Engaged | Pilot | Client | Lost | Disqualified' },
-            icp_tier: { type: 'string', description: 'Tier 1: Priority | Tier 2: Qualified | Tier 3: Monitor | Non-ICP' },
-            regulatory_status: { type: 'string', description: 'Pre-FDA | FDA Cleared | CE Mark Only | FDA + CE Mark | Post-Market' },
-            product_category: { type: 'string', description: 'Hardware device | Hardware device / Combination | SaMD / Hardware device / DTx / Clinical AI / Combination / Other | Clinical AI / SaMD' },
-            engage_decision: { type: 'string', description: 'Proceed | Monitor | Defer | Disqualify' },
-            source: { type: 'string', description: 'Inbound | Referral | LinkedIn | Conference | Research | Other' },
-            timing_status: { type: 'string', description: 'Ready Now | Build Mode | Monitor | Too Mature' },
-            validation_status: { type: 'string', description: 'Pain Validated | Pain Assumed | Wrong Timing | Disqualified' },
-            icp_score: { type: 'number' },
-            hq_location: { type: 'string' },
-            website: { type: 'string' },
-            linkedin_url: { type: 'string' },
-            email: { type: 'string' },
-            notes: { type: 'string', description: 'Replaces the Notes property wholesale. Use for short scalars; long-form intel goes in body_update.' },
-            therapeutic_area: { type: 'array', items: { type: 'string' }, description: 'Multi-select; replaces existing list.' },
-            primary_gap: { type: 'array', items: { type: 'string' }, description: 'Multi-select; replaces existing list.' },
-            last_touch: { type: 'string', description: 'ISO date YYYY-MM-DD.' },
-            response_date: { type: 'string' },
-            next_step_due: { type: 'string' },
-            exclude_from_brief: { type: 'boolean', description: 'Set true to permanently suppress this account from morning triage briefs. Use when the user says "never include X in briefs / morning brief". Persists in Supabase only (not a Notion property).' },
-          },
-        },
-        body_update: {
-          type: 'object',
-          description: 'Optional. Append rich research/intel to the page body.',
-          properties: {
-            mode: { type: 'string', description: 'Currently only "append" is supported.' },
-            heading: { type: 'string', description: 'Optional heading_2 prepended before the markdown content (e.g. "Update — April 28, 2026").' },
-            markdown: { type: 'string', description: 'Markdown content. Supported: # ## ### headings, - * bullets, 1. numbered lists, --- dividers, paragraphs. Inline emphasis stripped to plain text.' },
-          },
-          required: ['markdown'],
-        },
-      },
-    },
-  },
-  {
-    name: 'log_outreach_touch',
-    description:
-      'DEPRECATED — prefer log_outreach_sequence (which handles single touches as `touches: [{...}]`). Kept for backward compatibility. Same write semantics as the single-touch path of log_outreach_sequence, including the explicit-user-command rule.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        account_id: { type: 'string', description: 'Company UUID from accounts table. Optional if company_name is provided.' },
-        company_name: { type: 'string', description: 'Company name — used to resolve account when UUID unknown.' },
-        channel: { type: 'string', description: 'Touch channel. Must be one of: Email, LinkedIn, Phone, Intro, Meeting.' },
-        message: { type: 'string', description: 'Full message body for this touch.' },
-        sent: { type: 'boolean', description: 'true if this touch went out, false if it is a draft.' },
-        touch_date: { type: 'string', description: 'ISO date (YYYY-MM-DD). The send date if sent=true, the planned date if sent=false. Defaults to today.' },
-        title: { type: 'string', description: 'Notion page title for the touch row. Defaults to "{Company} - {Channel} - {Date}".' },
-        outcome: { type: 'string', description: 'Optional outcome.' },
-        top_challenges: { type: 'array', items: { type: 'string' }, description: 'Optional discussion topics.' },
-        next_touch_in_days: { type: 'number', description: 'If set, updates parent OI Next Step Due to today + N days.' },
-        next_touch_channel: { type: 'string', description: 'If set, updates parent OI Next Step.' },
-      },
-      required: ['channel', 'message', 'sent'],
-    },
-  },
-  {
-    name: 'log_agent_run',
-    description: 'Log an agent action for audit trail. account_id is the company UUID this action relates to.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        account_id: { type: 'string', description: 'Company UUID from accounts table' },
-        action_type: { type: 'string' },
-        decision_mode: { type: 'string' },
-        context_score: { type: 'number' },
-        summary: { type: 'string' },
-      },
-    },
-  },
-  {
-    name: 'invoke_prospect_researcher',
-    description: 'Prospect Researcher specialist agent. Uses Perplexity API for live web research on a company. Operates at the COMPANY level, not individual people.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        account_id: { type: 'string', description: 'Company UUID from accounts table' },
-        company_name: { type: 'string', description: 'Company name to research' },
-      },
-    },
-  },
-  {
-    name: 'invoke_icp_scorer',
-    description: 'ICP Scorer specialist agent. Scores a COMPANY against Pathova ICP framework. Writes to database.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        account_id: { type: 'string', description: 'Company UUID from accounts table' },
-        company_name: { type: 'string', description: 'Company name to score' },
-      },
-    },
-  },
-  {
-    name: 'invoke_outreach_drafter',
-    description: 'Outreach Drafter specialist agent. Takes an ACCOUNT (company) and produces a diagnosis-first PIC (Prospect Intelligence Card) then a 3-touch sequence (LinkedIn + 2 emails) to a single target person AT that company, grounded in evidence and QA-checked. You do NOT need a contact/person id -- the drafter picks the best target from the account\'s contacts. If the conversation has identified a specific non-primary target, pass target_contact_name (their full name) to pin that person; without it the drafter may default to the primary contact. The drafter auto-pulls prior outreach history from Notion so it avoids repeating angles. ALWAYS pass company_name alongside account_id so the drafter can verify the UUID resolves to the right company; if there is any doubt about the UUID, pass company_name only and let the drafter resolve it. Optionally pass `macro_context` (industry intelligence rows from query_industry_intelligence — paraphrasable news/events) and/or `voice_of_buyer` (podcast signal rows from query_podcast_signals — must be quoted verbatim with attribution). The drafter handles each block differently per its prompt.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        account_id: { type: 'string', description: 'Company UUID from accounts table (NOT a contact/person id). Optional if company_name is provided.' },
-        company_name: { type: 'string', description: 'Company name. Used to verify account_id resolves to the right company, or to resolve the account when UUID is unknown. Pass this whenever you have it.' },
-        target_contact_name: { type: 'string', description: 'Optional. Full name of a specific contact to target. Pass this when the conversation has identified a non-primary contact (e.g. a CCO instead of the CEO). Without this the drafter selects the best target from the account\'s contacts, which may default to the primary contact.' },
-        macro_context: {
-          type: 'array',
-          description: 'Optional. Up to 5 industry intelligence rows from query_industry_intelligence to anchor a dated macro hook in the opener. Each item should carry {title, signal_type, urgency_window, source_publication, source_date, so_what, what_happened, source_url}. The drafter paraphrases these with attribution.',
-          items: {
-            type: 'object',
-            properties: {
-              title: { type: 'string' },
-              signal_type: { type: 'string' },
-              urgency_window: { type: 'string' },
-              source_publication: { type: 'string' },
-              source_date: { type: 'string' },
-              so_what: { type: 'string' },
-              what_happened: { type: 'string' },
-              source_url: { type: 'string' },
-            },
-          },
-        },
-        voice_of_buyer: {
-          type: 'array',
-          description: 'Optional. Up to 5 podcast signal rows from query_podcast_signals for verbatim, attributed quoting. Each item should carry {title, signal_type, show, guest_name, guest_company, air_date, icp_relevance, key_insight, content_angle, source_url}. The drafter quotes key_insight verbatim and attributes to "[guest_name] @ [guest_company], on [show]". Use at most one quote across the sequence.',
-          items: {
-            type: 'object',
-            properties: {
-              title: { type: 'string' },
-              signal_type: { type: 'string' },
-              show: { type: 'string' },
-              guest_name: { type: 'string' },
-              guest_company: { type: 'string' },
-              air_date: { type: 'string' },
-              icp_relevance: { type: 'string' },
-              key_insight: { type: 'string' },
-              content_angle: { type: 'string' },
-              source_url: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-  },
-  {
-    name: 'get_communications',
-    description: 'Pull prior outreach touches (email, LinkedIn, phone, meetings) logged in Notion for a company. Use when the user asks what has been sent, what was said, or when you need history to judge whether an account is warm. The outreach drafter already auto-pulls this internally -- do NOT call this before invoke_outreach_drafter.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        account_id: { type: 'string', description: 'Company UUID from accounts table' },
-        company_name: { type: 'string', description: 'Company name to look up if UUID unknown' },
-      },
-    },
-  },
-  {
-    name: 'invoke_signal_brief',
-    description: `Cross-source signal synthesis. Queries multiple intelligence sources IN PARALLEL and returns a structured Signal Brief: convergence themes (where 2+ sources agree), the strongest outreach hook, credibility anchors, and gaps. Use INSTEAD of calling individual signal tools when you need multi-source synthesis — e.g., before drafting outreach, building a dossier, or answering "what's the best angle on this company?"
-
-YOU select which sources to include in \`sources[]\` based on context:
-- "icp_triggers"       — include when company may have a trigger row (Tier 1/2 prospect, recently spotted)
-- "industry_intelligence" — include when macro context matters (reimbursement, regulatory, market timing)
-- "podcast_signals"    — include when buyer psychology or persona framing is needed (outreach, persona Q&A)
-- "clinical_trials"    — include when company has known/suspected trial activity, or indication pipeline matters
-- "cms_coverage"       — include when reimbursement/VAC angle is relevant (CFO/procurement buyer, post-clearance company)
-- "icd10"              — include when the indication needs to be resolved to billing codes for payer analysis
-- "fda_clearances"     — include for any company where regulatory status matters (pre/post-clearance, what was cleared, when, under what product code)
-
-Do NOT use this tool when only ONE source is needed — call that tool directly instead.
-Pass \`device_keyword\` alongside \`company_name\` for fda_clearances when you want to narrow by device type.`,
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        company_name: { type: 'string', description: 'Target company name (required)' },
-        sources: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Sources to query. Select from: icp_triggers, industry_intelligence, podcast_signals, clinical_trials, cms_coverage, icd10, fda_clearances',
-        },
-        indication: { type: 'string', description: 'Clinical indication or device category (e.g. "cardiac monitoring", "atrial fibrillation") — used for clinical_trials, cms_coverage, icd10 queries' },
-        topic: { type: 'string', description: 'Topic keyword for industry_intelligence and podcast_signals (e.g. "RAPID pathway", "ambient AI") — defaults to indication if omitted' },
-        therapeutic_area: { type: 'array', items: { type: 'string' }, description: 'Optional therapeutic area filter for industry_intelligence (e.g. ["cardiovascular", "AI diagnostics"])' },
-        cms_type: { type: 'string', description: '"ncd" (national, default) or "lcd" (local/regional) for cms_coverage source' },
-      },
-      required: ['company_name', 'sources'],
-    },
-  },
-  {
-    name: 'invoke_risk_assessor',
-    description: 'Risk Assessor specialist agent. Evaluates regulatory, financial, ICP fit, market timing risks for a COMPANY.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        account_id: { type: 'string', description: 'Company UUID from accounts table' },
-        company_name: { type: 'string', description: 'Company name' },
-      },
-    },
-  },
-  {
-    name: 'sync_account_content',
-    description: 'Sync an account full Notion page content into Supabase.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        account_id: { type: 'string', description: 'Company UUID to sync' },
-      },
-    },
-  },
-  {
-    name: 'process_document',
-    description: 'Process and classify an actual uploaded file before saving. Use only when the user has provided a real file upload that needs extraction, parsing, or classification. Never use this for text pasted directly into chat.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        document_text: { type: 'string', description: 'Extracted raw text from the uploaded document' },
-        document_type: { type: 'string', description: 'Optional override for document classification' },
-        account_id: { type: 'string', description: 'Optional linked company UUID for context' },
-        intent: { type: 'string', description: 'User intent or goal for the uploaded document' },
-      },
-      required: ['document_text'],
-    },
-  },
-  {
-    name: 'ingest_to_kb',
-    description: 'Save text directly to the Pathova knowledge base. Use this for text pasted in chat, or for text that has already been extracted from a file. Do not use process_document for pasted chat text. Required fields: title, content, document_type.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        title: { type: 'string', description: 'Document or note title' },
-        content: { type: 'string', description: 'Text content to save into the knowledge base' },
-        document_type: { type: 'string', description: 'Classification such as competitive_intel, research_note, battle_card, case_study, white_paper, or general_document' },
-        tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags for categorization' },
-        account_id: { type: 'string', description: 'Optional linked company UUID from accounts table' },
-        source_url: { type: 'string', description: 'Optional original source URL' },
-      },
-      required: ['title', 'content', 'document_type'],
-    },
-  },
-  {
-    name: 'search_kb',
-    description: 'Search the Pathova knowledge base. Use this to retrieve saved research notes, triage results, intel, and documents. For morning triage: call with document_type="research_note" and tags=["morning-triage"]. For general KB search: pass a query string. Results are ordered by most recent first.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        query: { type: 'string', description: 'Optional text search across title and content.' },
-        document_type: { type: 'string', description: 'Optional filter by type: research_note, competitive_intel, battle_card, case_study, white_paper, general_document.' },
-        tags: { type: 'array', items: { type: 'string' }, description: 'Optional tag filter — returns rows whose tags overlap with this list. Use ["morning-triage"] to retrieve triage results.' },
-        created_after: { type: 'string', description: 'Optional ISO 8601 datetime — only return entries created after this point.' },
-        limit: { type: 'number', description: 'Max results to return. Default 5, max 20.' },
-      },
-    },
-  },
-  {
-    name: 'store_learning',
-    description: 'Store a learning, correction, or preference for the system to remember. Use this when the user provides feedback, corrections, or teaches you something new about how they want things done. This makes the system iteratively smarter.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        feedback: { type: 'string', description: 'Natural language description of the learning, correction, or preference' },
-        agent_source: { type: 'string', description: 'Which agent this applies to: icp-scorer, outreach-drafter, prospect-researcher, risk-assessor, or * for all' },
-      },
-      required: ['feedback'],
-    },
-  },
-  {
-    name: 'load_skill',
-    description: `Load the full procedure brief for a specialist tool. Call this before invoking a specialist when you need to understand what it does, interpret its output, enforce prerequisites, or coach the user on results. Available skills: ${Object.keys(SKILL_INDEX).join(', ')}.`,
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        skill: {
-          type: 'string',
-          description: 'Skill name: prospect-researcher | icp-scorer | risk-assessor | outreach-drafter',
-        },
-      },
-      required: ['skill'],
-    },
-  },
-  {
-    name: 'search_fda_devices',
-    description: `Search the FDA device database via openFDA. Covers 510(k) clearances (default), PMA approvals (Class III), and device recalls. Use to confirm regulatory status, find clearance dates, identify what a company has cleared, or map competitors who cleared similar devices.
-
-Common use cases:
-- "Is [company] FDA cleared?" → search by company_name, type=510k
-- "What has [company] cleared?" → search by company_name, type=510k
-- "Who else cleared an AI cardiac device?" → search by device_name keyword, type=510k
-- "Does [company] have a PMA?" → search by company_name, type=pma
-- "Any recalls for [company]?" → search by company_name, type=recall
-
-Decision field values: "SUBSTANTIALLY EQUIVALENT" = cleared; "NOT SUBSTANTIALLY EQUIVALENT" = denied.`,
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        company_name: { type: 'string', description: 'Applicant / company name to search (e.g. "Butterfly Network", "iRhythm Technologies")' },
-        device_name: { type: 'string', description: 'Device name keyword to search (e.g. "AI cardiac monitoring", "continuous glucose")' },
-        product_code: { type: 'string', description: 'FDA product code for exact category lookup (e.g. "DXN", "MYN")' },
-        type: { type: 'string', description: '"510k" (default, premarket notification), "pma" (premarket approval, Class III), or "recall"' },
-        limit: { type: 'number', description: 'Number of results (default 5, max 20)' },
-      },
-    },
-  },
-  {
-    name: 'search_icd10',
-    description: 'Search ICD-10-CM diagnosis codes by plain-language term or code prefix. Use to resolve pathology/clinical concepts into billable codes for reimbursement analysis, VAC positioning, and prospect dossiers. Examples: "atrial fibrillation" → I48.* codes; "C18" → malignant colon neoplasm codes.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        terms: { type: 'string', description: 'Plain-language clinical concept (e.g. "atrial fibrillation") or ICD-10 code prefix (e.g. "C18")' },
-        limit: { type: 'number', description: 'Number of results (default 15, max 50)' },
-      },
-      required: ['terms'],
-    },
-  },
-  {
-    name: 'search_clinical_trials',
-    description: 'Search ClinicalTrials.gov for active or completed clinical trials. Use to map competitor pipelines, identify PI/site networks, track indication expansion, and surface trial-registration ICP triggers. Returns trial status, phase, sponsor, conditions, enrollment, and completion dates.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        condition: { type: 'string', description: 'Disease or condition (e.g. "atrial fibrillation", "Type 2 diabetes")' },
-        intervention: { type: 'string', description: 'Drug, device, or procedure name' },
-        sponsor: { type: 'string', description: 'Lead sponsor / company name' },
-        term: { type: 'string', description: 'General keyword search across all fields' },
-        status: { type: 'string', description: 'Trial status filter. Common values: RECRUITING, ACTIVE_NOT_RECRUITING, COMPLETED, NOT_YET_RECRUITING. Comma-separate for multiple.' },
-        phase: { type: 'string', description: 'Phase filter: EARLY_PHASE1, PHASE1, PHASE2, PHASE3, PHASE4, NA' },
-        limit: { type: 'number', description: 'Number of results (default 10, max 25)' },
-      },
-    },
-  },
-  {
-    name: 'search_cms_coverage',
-    description: 'Search the CMS Medicare Coverage Database for National Coverage Determinations (NCDs) and Local Coverage Determinations (LCDs). Use to assess reimbursement status, VAC/payer angle, and coverage policy for a device category or indication. NCDs are national policy; LCDs are contractor-level (regional).',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        query: { type: 'string', description: 'Search term — device category, procedure, or indication (e.g. "cardiac monitoring", "continuous glucose monitoring")' },
-        type: { type: 'string', description: '"ncd" for National Coverage Determinations (default) or "lcd" for Local Coverage Determinations' },
-        limit: { type: 'number', description: 'Number of results (default 10, max 25)' },
-      },
-    },
-  },
-  {
-    name: 'queue_research',
-    description: `Queue one or more companies for overnight background research. Use when the user asks to research multiple companies at once, or wants to pre-screen a batch before the morning brief. Results land in the knowledge base with tag "auto-research" and surface in the next morning brief. The queue drains nightly — jobs queued today appear in tomorrow's brief. Deduplicates automatically (re-queuing a company already pending is a no-op).`,
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        companies: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Company names to queue for research (max 20)',
-        },
-        triggered_by: {
-          type: 'string',
-          description: 'Source context: "manual" (user requested), "icp_trigger" (from trigger monitor), "industry_news". Defaults to "manual".',
-        },
-      },
-      required: ['companies'],
-    },
-  },
-  {
-    name: 'fetch_gap_content',
-    description: `Resolve research gaps by fetching URLs automatically. Call this immediately after invoke_prospect_researcher returns <<<GAP>>> blocks — before showing any gaps to the user. Parse each GAP block into a task using the go_to_url as "url" and comet_prompt as "prompt". Returns extracted content for each gap with a source tag ("jina" = URL fetched directly, "perplexity" = fell back to search, "failed" = nothing found). Incorporate resolved content into the research summary. Only surface failed gaps to the user as manual Comet handoffs.`,
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        gaps: {
-          type: 'array',
-          description: 'Gap tasks parsed from <<<GAP>>> blocks in prospect_researcher output',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string', description: 'Unique slug for this gap, e.g. "4_1_linkedin_count"' },
-              field: { type: 'string', description: 'The field name from the GAP block, e.g. "4.1 LinkedIn employee count"' },
-              url: { type: 'string', description: 'The go_to_url from the GAP block' },
-              prompt: { type: 'string', description: 'The comet_prompt from the GAP block — used as Perplexity search if URL fetch fails' },
-            },
-            required: ['id', 'field', 'url', 'prompt'],
-          },
-        },
-      },
-      required: ['gaps'],
-    },
-  },
-  gmailTool,
-  ...driveTools,
-  ...calendarTools,
-];
-
-async function callEdgeFunction(
-  functionName: string,
-  body: Record<string, unknown>,
-  retries = 2
-): Promise<unknown> {
-  const url = `${SUPABASE_FUNCTIONS_BASE}/${functionName}`;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          apikey: SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify(body),
-      });
-      const text = await res.text();
-      if (res.status === 429 && attempt < retries) {
-        await new Promise(r => setTimeout(r, (attempt + 1) * 5000));
-        continue;
-      }
-      try {
-        return JSON.parse(text);
-      } catch {
-        return { raw_response: text, status: res.status };
-      }
-    } catch (err: any) {
-      if (attempt < retries) {
-        await new Promise(r => setTimeout(r, (attempt + 1) * 5000));
-        continue;
-      }
-      return { error: `Failed to call ${functionName}: ${err.message}` };
-    }
-  }
-}
-
-async function executeFdaDevices(input: Record<string, unknown>): Promise<string> {
-  const type = String(input.type || '510k').toLowerCase();
-  const limit = Math.min(Number(input.limit) || 5, 20);
-  const endpoint = type === 'pma'
-    ? 'https://api.fda.gov/device/pma.json'
-    : type === 'recall'
-    ? 'https://api.fda.gov/device/recall.json'
-    : 'https://api.fda.gov/device/510k.json';
-
-  const clauses: string[] = [];
-  if (input.company_name) clauses.push(`applicant:"${String(input.company_name).replace(/"/g, '')}"`);
-  if (input.device_name) clauses.push(`device_name:"${String(input.device_name).replace(/"/g, '')}"`);
-  if (input.product_code) clauses.push(`product_code:"${String(input.product_code).replace(/"/g, '')}"`);
-
-  if (clauses.length === 0) return JSON.stringify({ error: 'At least one of company_name, device_name, or product_code is required' });
-
-  const params = new URLSearchParams({ search: clauses.join('+AND+'), limit: String(limit) });
-  try {
-    const res = await fetch(`${endpoint}?${params}`);
-    if (res.status === 404) return JSON.stringify({ total: 0, results: [] });
-    if (!res.ok) return JSON.stringify({ error: `FDA API error: ${res.status}` });
-    const json = await res.json() as any;
-    const results = (json.results || []).map((r: any) => ({
-      k_number: r.k_number || r.pma_number || r.res_event_number,
-      applicant: r.applicant || r.applicant_full_name,
-      device_name: r.device_name || r.generic_name,
-      decision_date: r.decision_date || r.decision_date,
-      decision: r.decision_description || r.decision_code,
-      product_code: r.product_code,
-      specialty: r.advisory_committee_description || r.openfda?.medical_specialty_description,
-      clearance_type: r.clearance_type,
-      summary: (r.statement_or_summary || r.recall_reason_description || '').slice(0, 300),
-    }));
-    return JSON.stringify({ type, total: json.meta?.results?.total, returned: results.length, results });
-  } catch (err: any) {
-    return JSON.stringify({ error: `FDA fetch failed: ${err.message}` });
-  }
-}
-
-async function executeIcd10Search(input: Record<string, unknown>): Promise<string> {
-  const terms = String(input.terms || '').trim();
-  if (!terms) return JSON.stringify({ error: 'terms is required' });
-  const limit = Math.min(Number(input.limit) || 15, 50);
-  const params = new URLSearchParams({ terms, maxList: String(limit), sf: 'code,name', df: 'code,name', cf: 'code' });
-  try {
-    const res = await fetch(`https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?${params}`);
-    if (!res.ok) return JSON.stringify({ error: `ICD-10 API error: ${res.status}` });
-    const [total, codes, , displayPairs] = await res.json() as [number, string[], null, string[][]];
-    const results = (codes || []).map((code: string, i: number) => ({
-      code,
-      description: displayPairs?.[i]?.[1] ?? '',
-    }));
-    return JSON.stringify({ total_matching: total, returned: results.length, results });
-  } catch (err: any) {
-    return JSON.stringify({ error: `ICD-10 fetch failed: ${err.message}` });
-  }
-}
-
-async function executeClinicalTrials(input: Record<string, unknown>): Promise<string> {
-  const params = new URLSearchParams({
-    format: 'json',
-    pageSize: String(Math.min(Number(input.limit) || 10, 25)),
-    fields: 'NCTId|BriefTitle|OverallStatus|Phase|StartDate|CompletionDate|LeadSponsorName|BriefSummary|EnrollmentCount|Condition|LocationCountry',
-  });
-  if (input.condition) params.set('query.cond', String(input.condition));
-  if (input.intervention) params.set('query.intr', String(input.intervention));
-  if (input.sponsor) params.set('query.lead', String(input.sponsor));
-  if (input.term) params.set('query.term', String(input.term));
-  if (input.status) params.set('filter.overallStatus', String(input.status));
-  if (input.phase) params.set('filter.phase', String(input.phase));
-  try {
-    const res = await fetch(`https://clinicaltrials.gov/api/v2/studies?${params}`);
-    if (!res.ok) return JSON.stringify({ error: `ClinicalTrials API error: ${res.status}` });
-    const json = await res.json() as any;
-    const studies = (json.studies || []).map((s: any) => {
-      const p = s.protocolSection || {};
-      const id = p.identificationModule || {};
-      const st = p.statusModule || {};
-      const design = p.designModule || {};
-      const sponsor = p.sponsorCollaboratorsModule || {};
-      const desc = p.descriptionModule || {};
-      const cond = p.conditionsModule || {};
-      return {
-        nct_id: id.nctId,
-        title: id.briefTitle,
-        status: st.overallStatus,
-        phase: design.phases,
-        start_date: st.startDateStruct?.date,
-        completion_date: st.completionDateStruct?.date,
-        sponsor: sponsor.leadSponsor?.name,
-        conditions: cond.conditions,
-        enrollment: design.enrollmentInfo?.count,
-        summary: (desc.briefSummary || '').slice(0, 400),
-      };
-    });
-    return JSON.stringify({ total_count: json.totalCount, studies });
-  } catch (err: any) {
-    return JSON.stringify({ error: `ClinicalTrials fetch failed: ${err.message}` });
-  }
-}
-
-async function executeCmsCoverage(input: Record<string, unknown>): Promise<string> {
-  const type = String(input.type || 'ncd').toLowerCase();
-  const limit = Math.min(Number(input.limit) || 10, 25);
-  const endpoint = type === 'lcd'
-    ? 'https://api.coverage.cms.gov/v1/reports/local-coverage-final-lcds/'
-    : 'https://api.coverage.cms.gov/v1/reports/national-coverage-ncd/';
-  const params = new URLSearchParams({ page_size: String(limit) });
-  if (input.query) params.set('search', String(input.query));
-  try {
-    const res = await fetch(`${endpoint}?${params}`);
-    if (!res.ok) return JSON.stringify({ error: `CMS Coverage API error: ${res.status}` });
-    const json = await res.json() as any;
-    return JSON.stringify({
-      type,
-      count: (json.data || []).length,
-      has_more: !!json.meta?.next_token,
-      results: json.data || [],
-    });
-  } catch (err: any) {
-    return JSON.stringify({ error: `CMS Coverage fetch failed: ${err.message}` });
-  }
-}
-
-async function executeTool(
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  gmailAccessToken?: string
-): Promise<string> {
-  const gmailResult = await executeGmailTool(toolName, toolInput, gmailAccessToken);
-  if (gmailResult !== null) return gmailResult;
-
-  const driveResult = await executeDriveTool(toolName, toolInput, gmailAccessToken);
-  if (driveResult !== null) return driveResult;
-
-  const calendarResult = await executeCalendarTool(toolName, toolInput, gmailAccessToken);
-  if (calendarResult !== null) return calendarResult;
-
-  if (toolName === 'load_skill') {
-    return loadSkill(toolInput.skill as string);
-  }
-
-  if (toolName === 'search_fda_devices') {
-    return executeFdaDevices(toolInput);
-  }
-
-  if (toolName === 'search_icd10') {
-    return executeIcd10Search(toolInput);
-  }
-
-  if (toolName === 'search_clinical_trials') {
-    return executeClinicalTrials(toolInput);
-  }
-
-  if (toolName === 'search_cms_coverage') {
-    return executeCmsCoverage(toolInput);
-  }
-
-  const endpoint = TOOL_ENDPOINT_MAP[toolName];
-  if (!endpoint) {
-    return JSON.stringify({ error: `Unknown tool: ${toolName}` });
-  }
-  const result = await callEdgeFunction(endpoint, toolInput);
-  return typeof result === 'string' ? result : JSON.stringify(result);
-}
-
-// Records every tool call + result in a turn so the claim verifier can
-// match the Quarterback's specific claims against real tool output.
 interface ToolCallRecord {
   name: string;
   result: string;
 }
 
-// LLM-based claim verifier. Sends the assistant's draft + the raw tool
-// outputs to a fast Haiku model and asks it to flag specific claims that
-// can't be grounded in the data. Replaces an earlier regex/substring
-// approach that produced false positives on date format mismatches
-// ("Dec 2025" vs "2025-12-15"), spelling/casing variants, and rhetorical
-// commentary ("the elephant in the room…").
-//
-// Output format is unchanged from the regex version: each flagged claim
-// becomes an inline ⚠ line in the body plus a numbered entry in a
-// "Things worth double-checking" checklist appended at the bottom, with
-// a paste-ready verification prompt routed to Notion AI (for
-// CRM-resident claims) or Perplexity (for web claims).
-//
-// Fail-open: if the verifier API call errors, the original text is
-// returned unmodified rather than mass-flagged.
 const VERIFIER_TOOL = {
   name: 'report_verification',
   description:
@@ -1254,18 +191,16 @@ Rule of thumb before flagging: ask "is this a claim about a prospect, person, co
 
 For each flagged item, the \`line\` field MUST be a verbatim copy of the draft line (including leading bullet/number/pipe characters) so it can be located by exact substring match and replaced.`;
 
-async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<string> {
-  if (!text || toolCalls.length === 0) return text;
+async function verifyClaims(
+  text: string,
+  toolCalls: ToolCallRecord[],
+): Promise<{ verified: string; flagCount: number; stripCount: number }> {
+  if (!text || toolCalls.length === 0) return { verified: text, flagCount: 0, stripCount: 0 };
 
   const corpus = toolCalls
     .map(tc => `=== ${tc.name} ===\n${tc.result}`)
     .join('\n\n');
 
-  // Fenced code blocks in the draft are copy-pasteable research prompts
-  // (per prompt.txt's GAP rendering convention). Their contents are
-  // imperatives the user will run in Perplexity / Crunchbase / FDA, not
-  // factual claims about prospects — redact them so the verifier doesn't
-  // try to ground "Search for 'Aevice'" or "Return all funding rounds".
   const draftForVerifier = text.replace(
     /```[\s\S]*?```/g,
     '```[copy-pasteable research prompt — not a factual claim, ignore]```',
@@ -1309,94 +244,57 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
     }
   } catch (e) {
     console.error('[verifyClaims] LLM verifier failed; returning text unmodified', e);
-    return text;
+    return { verified: text, flagCount: 0, stripCount: 0 };
   }
 
-  // Drop flags whose reason is a banned meta-pattern. The verifier prompt
-  // forbids reasons like "doesn't say where this came from" / "needs a source
-  // tag" — they are not grounding failures, they're style/citation gripes.
-  // Haiku occasionally violates the rule anyway, so we enforce it here too.
   const BANNED_REASON = /\b(needs?|missing|add|lacks?|requires?|without|no)\s+(an?\s+)?(source|citation|reference|attribution)\s*(tag|link|url)?|doesn'?t\s+say\s+where|where\s+(the\s+)?(quote|claim|info(rmation)?)\s+came\s+from|missing\s+(a\s+)?source\s+tag\b/i;
 
-  // Drop flags whose reason field admits the claim IS grounded. The verifier
-  // is supposed to flag missing-from-corpus claims — if its own reason says
-  // "found X in query_Y" or "phrase ... is present" or "appears verbatim",
-  // that proves the claim is supported and the flag is a false positive.
-  // (This catches Haiku's habit of finding the data, then inventing a
-  // separate concern about word choice or corpus-internal contradictions.)
   const isGroundedReason = (r: string): boolean => {
-    // "Phrase ... is present" — verifier explicitly confirms the draft phrase
-    // exists in the corpus.
     if (/\bphrase\b[^.]{0,300}\bis\s+present\b/i.test(r)) return true;
-    // "appears verbatim" / "grounded in" — explicit confirmations.
     if (/\bappears?\s+verbatim\b/i.test(r)) return true;
     if (/\bgrounded\s+in\b/i.test(r)) return true;
-    // "found X in query_<tool>" — the verifier is admitting it located the
-    // value in a tool result, then inventing a side concern.
     if (/\bfound\b[^.]{0,200}\bin\s+query_/i.test(r)) return true;
-    // "found X in the corpus / data / row / record".
     if (/\bfound\b[^.]{0,200}\bin\s+the\s+(corpus|data|row|record|tool\s+output)\b/i.test(r)) return true;
     return false;
   };
 
-  const beforeFlagFilter = flags.length;
   flags = flags.filter(f => {
     if (!f.reason) return true;
     if (BANNED_REASON.test(f.reason)) {
-      console.warn(
-        `[verifyClaims] dropped flag with banned meta-reason: ${JSON.stringify(f.reason.slice(0, 160))}`,
-      );
+      console.warn(`[verifyClaims] dropped flag with banned meta-reason: ${JSON.stringify(f.reason.slice(0, 160))}`);
       return false;
     }
     if (isGroundedReason(f.reason)) {
-      console.warn(
-        `[verifyClaims] dropped flag whose reason admits grounding: ${JSON.stringify(f.reason.slice(0, 200))}`,
-      );
+      console.warn(`[verifyClaims] dropped flag whose reason admits grounding: ${JSON.stringify(f.reason.slice(0, 160))}`);
       return false;
     }
     return true;
   });
-  if (flags.length !== beforeFlagFilter) {
-    console.warn(
-      `[verifyClaims] filtered ${beforeFlagFilter - flags.length} flag(s) — banned or self-grounding reasons`,
-    );
-  }
 
-  if (flags.length === 0 && strips.length === 0) return text;
+  const notionTools = new Set([
+    'query_touches', 'get_account_detail', 'search_accounts_and_contacts',
+    'query_deals', 'get_communications', 'query_icp_triggers',
+    'delegate_crm',
+  ]);
+  const webTools = new Set([
+    'invoke_prospect_researcher', 'search_fda_devices', 'search_clinical_trials',
+    'search_cms_coverage', 'search_icd10', 'query_industry_intelligence',
+    'query_podcast_signals', 'query_hiring_signals', 'delegate_research',
+  ]);
 
-  // Map each data-pulling tool to the Notion database it ultimately mirrors.
-  // Used to route auto-generated verify prompts at Notion AI when the corpus
-  // is internal CRM data, instead of pointing the user at Perplexity (which
-  // has no access to the user's Notion).
-  const NOTION_DB_BY_TOOL: Record<string, string> = {
-    query_touches: 'Outreach Touches',
-    get_communications: 'Outreach Touches',
-    get_account_detail: 'Outreach Intelligence',
-    search_accounts_and_contacts: 'Outreach Intelligence (and Contacts)',
-    query_icp_triggers: 'ICP Trigger Monitor',
-    query_industry_intelligence: 'Industry Intelligence (Market Intelligence Briefings)',
-    query_podcast_signals: 'Podcast Intelligence — Signal Feed',
-    query_hiring_signals: 'MedTech Commercial Hiring Signals',
-    query_deals: 'Motions & Deals',
-    sync_account_content: 'Outreach Intelligence',
-    search_references: 'Pathova Reference Library',
-  };
-  const WEB_RESEARCH_TOOLS = new Set(['invoke_prospect_researcher']);
+  const usedNotion = toolCalls.some(tc => notionTools.has(tc.name));
+  const usedWeb = toolCalls.some(tc => webTools.has(tc.name));
 
-  const usedToolNames = new Set(toolCalls.map(tc => tc.name));
   const notionDbs = new Set<string>();
-  for (const t of usedToolNames) {
-    if (NOTION_DB_BY_TOOL[t]) notionDbs.add(NOTION_DB_BY_TOOL[t]);
+  for (const tc of toolCalls) {
+    if (tc.name === 'query_touches' || tc.name === 'delegate_crm') notionDbs.add('Outreach Touches');
+    if (tc.name === 'get_account_detail' || tc.name === 'search_accounts_and_contacts') notionDbs.add('Outreach Intelligence');
+    if (tc.name === 'query_deals') notionDbs.add('Motions & Deals');
+    if (tc.name === 'query_icp_triggers') notionDbs.add('ICP Trigger Monitor');
   }
-  const usedNotion = notionDbs.size > 0;
-  const usedWeb = Array.from(usedToolNames).some(t => WEB_RESEARCH_TOOLS.has(t));
 
-  const cleanClaimText = (raw: string): string => {
-    let c = raw
-      .replace(/^\s*[-*•]\s+/, '')
-      .replace(/^\s*\d+\.\s+/, '')
-      .replace(/[*_`]/g, '')
-      .trim();
+  const cleanClaimText = (c: string): string => {
+    c = c.replace(/^(\s*(?:[-*•]\s+|\d+\.\s+|\|\s*)?)/, '').trim();
     if (c.startsWith('|') || /\s\|\s/.test(c)) {
       c = c.replace(/^\s*\|\s*/, '').replace(/\s*\|\s*$/, '').replace(/\s*\|\s*/g, ' / ');
     }
@@ -1428,11 +326,6 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
     return webPrompt();
   };
 
-  // Apply mutations to the draft. Strips remove the matched line entirely;
-  // flags replace it with an inline ⚠ prose flag. Both rely on exact
-  // substring lookup against the verbatim line returned by the verifier —
-  // if the line can't be located, we log and skip rather than mangling
-  // surrounding output.
   let working = text;
   const stripped: string[] = [];
 
@@ -1440,9 +333,7 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
     if (!s.line) continue;
     const idx = working.indexOf(s.line);
     if (idx === -1) {
-      console.warn(
-        `[verifyClaims] strip line not found in draft: ${JSON.stringify(s.line.slice(0, 120))}`,
-      );
+      console.warn(`[verifyClaims] strip line not found in draft: ${JSON.stringify(s.line.slice(0, 120))}`);
       continue;
     }
     const lineStart = working.lastIndexOf('\n', idx - 1) + 1;
@@ -1451,32 +342,18 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
     const fullLine = working.slice(lineStart, lineEnd === -1 ? working.length : lineEnd).trim();
     stripped.push(fullLine);
     working = working.slice(0, lineStart) + working.slice(end);
-    console.warn(
-      `[verifyClaims] stripped line. reason: ${s.reason}. line: ${s.line.slice(0, 160)}`,
-    );
+    console.warn(`[verifyClaims] stripped line. reason: ${s.reason}. line: ${s.line.slice(0, 160)}`);
   }
 
-  type ChecklistItem = {
-    claim: string;
-    criticality: string;
-    reason: string;
-    prompt: string;
-  };
+  type ChecklistItem = { claim: string; criticality: string; reason: string; prompt: string };
   const items: ChecklistItem[] = [];
 
-  // Inline marker: prepend ⚠ to the original line, preserving any leading
-  // bullet/number/table-pipe prefix. Keeps the line readable; no preamble or
-  // "see list below" decoration. Long-form preamble was overwhelming the
-  // briefing's signal-to-noise ratio (user feedback: "half the output is
-  // verification language").
   const PREFIX_RE = /^(\s*(?:[-*•]\s+|\d+\.\s+|\|\s*)?)/;
   for (const f of flags) {
     if (!f.line) continue;
     const idx = working.indexOf(f.line);
     if (idx === -1) {
-      console.warn(
-        `[verifyClaims] flag line not found in draft: ${JSON.stringify(f.line.slice(0, 120))}`,
-      );
+      console.warn(`[verifyClaims] flag line not found in draft: ${JSON.stringify(f.line.slice(0, 120))}`);
       continue;
     }
     const cleaned = cleanClaimText(f.claim || f.line);
@@ -1488,14 +365,12 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
       reason: f.reason || '',
       prompt: autoVerifyPrompt(cleaned),
     });
-    console.warn(
-      `[verifyClaims] flagged line. reason: ${f.reason}. line: ${f.line.slice(0, 160)}`,
-    );
+    console.warn(`[verifyClaims] flagged line. reason: ${f.reason}. line: ${f.line.slice(0, 160)}`);
   }
 
   let verified = working.replace(/\n{3,}/g, '\n\n').trim();
 
-  if (items.length === 0 && stripped.length === 0) return verified;
+  if (items.length === 0 && stripped.length === 0) return { verified, flagCount: 0, stripCount: 0 };
 
   const sevRank = (s: string): number => {
     const u = s.toUpperCase();
@@ -1506,10 +381,6 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
   };
   items.sort((a, b) => sevRank(a.criticality) - sevRank(b.criticality));
 
-  // Compact reason: drop the "Searched corpus for X — " preamble (the verifier
-  // prompt asks for that format, but it doubles the line length without adding
-  // signal once it's a list item) and clamp length so each entry fits on one
-  // visual line in the chat.
   const compactReason = (r: string): string => {
     let s = r.replace(/^searched\s+(corpus|the\s+corpus|tool\s+data)[^.—-]*[—-]\s*/i, '').trim();
     s = s.replace(/\s+/g, ' ');
@@ -1528,12 +399,8 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
 
   if (stripped.length > 0) {
     out.push('');
-    out.push(
-      `**Removed (${stripped.length})** — quoted content not found in tool data, attributed to a named person/org:`,
-    );
-    for (const claim of stripped) {
-      out.push(`- ~~${claim}~~`);
-    }
+    out.push(`**Removed (${stripped.length})** — quoted content not found in tool data, attributed to a named person/org:`);
+    for (const claim of stripped) out.push(`- ~~${claim}~~`);
   }
 
   if (items.length > 0) {
@@ -1541,7 +408,7 @@ async function verifyClaims(text: string, toolCalls: ToolCallRecord[]): Promise<
     out.push('_Ask for the verify prompt for #N to get a paste-ready Notion AI / Perplexity query._');
   }
 
-  return verified + '\n' + out.join('\n').trimEnd();
+  return { verified: verified + '\n' + out.join('\n').trimEnd(), flagCount: items.length, stripCount: stripped.length };
 }
 
 function collectSources(
@@ -1559,10 +426,7 @@ function collectSources(
       if (!id || !title || seen.has(id)) continue;
       seen.add(id);
       const content = typeof r?.content === 'string' ? r.content : '';
-      const snippet = content
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 240);
+      const snippet = content.replace(/\s+/g, ' ').trim().slice(0, 240);
       acc.push({ id, title, snippet });
     }
   } catch {
@@ -1604,6 +468,14 @@ function extractReply(finalText: string): string {
   return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
 }
 
+const DELEGATE_TOOL_NAMES = new Set([
+  'delegate_research',
+  'delegate_crm',
+  'delegate_qualify',
+  'delegate_outreach',
+  'delegate_kb',
+]);
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -1627,8 +499,6 @@ export async function POST(req: Request) {
       ? await buildConversationContext(chatId).catch(() => '')
       : '';
 
-    // Keep only the most recent messages to stay under the 200k token limit.
-    // Estimate ~4 chars per token; reserve 50k tokens for system prompt + tool rounds.
     const MAX_HISTORY_CHARS = 150_000 * 4;
     let historyChars = 0;
     const trimmedMessages = [];
@@ -1638,7 +508,6 @@ export async function POST(req: Request) {
       historyChars += len;
       trimmedMessages.unshift(chatMessages[i]);
     }
-    // Always include at least the last message so the request isn't empty.
     if (trimmedMessages.length === 0 && chatMessages.length > 0) {
       trimmedMessages.push(chatMessages[chatMessages.length - 1]);
     }
@@ -1657,18 +526,21 @@ export async function POST(req: Request) {
           );
         };
 
-        const MAX_TOOL_ROUNDS = 25;
+        const MAX_TOOL_ROUNDS = 15;
         let round = 0;
         const sources: Array<{ id: string; title: string; snippet: string }> = [];
         const seenSourceIds = new Set<string>();
         const turnToolCalls: ToolCallRecord[] = [];
         let stepCounter = 0;
+        const stepCounterRef = { value: stepCounter };
 
         try {
+          const { text: learningsText, tokenEstimate: learningsTokens } = await fetchLearnings();
+          if (learningsTokens > 0) console.log('LEARNINGS TOKENS (est):', learningsTokens);
+          const learningsAndContext = learningsText + conversationContext;
+
           while (round < MAX_TOOL_ROUNDS) {
             round++;
-            const learningsAndContext =
-              (await fetchLearnings()) + conversationContext;
             const response = await anthropic.messages.create({
               model: 'claude-sonnet-4-6',
               max_tokens: 4096,
@@ -1682,7 +554,7 @@ export async function POST(req: Request) {
                   ? [{ type: 'text' as const, text: learningsAndContext }]
                   : []),
               ],
-              tools,
+              tools: delegateTools,
               tool_choice: { type: 'auto' },
               messages,
             });
@@ -1691,17 +563,22 @@ export async function POST(req: Request) {
 
             const toolUseBlocks = response.content.filter(
               (b): b is Anthropic.ContentBlock & { type: 'tool_use' } =>
-              b.type === 'tool_use'
+                b.type === 'tool_use'
             );
 
             if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
               const textBlocks = response.content.filter(
                 (b): b is Anthropic.ContentBlock & { type: 'text' } =>
-                b.type === 'text'
+                  b.type === 'text'
               );
               const finalText = textBlocks.map((b: any) => b.text).join('\n');
               const reply = extractReply(finalText);
-              const verifiedReply = await verifyClaims(reply, turnToolCalls);
+              const { verified: verifiedReply, flagCount, stripCount } = await verifyClaims(reply, turnToolCalls);
+              void supabase.from('pic_accuracy_events').insert({
+                session_id: chatId,
+                flag_count: flagCount,
+                strip_count: stripCount,
+              }).then(null, () => {});
               send('done', { reply: verifiedReply, sources });
               controller.close();
               return;
@@ -1714,10 +591,11 @@ export async function POST(req: Request) {
 
             const toolResults: any[] = [];
             for (const toolBlock of toolUseBlocks) {
-              const toolInput = (toolBlock as any).input as Record<string, unknown>;
-              const stepId = `s${++stepCounter}`;
+              const toolInput = toolBlock.input as Record<string, unknown>;
+              const stepId = `s${++stepCounterRef.value}`;
               const label = humanizeToolCall(toolBlock.name, toolInput);
               const startedAt = Date.now();
+
               send('trace', {
                 id: stepId,
                 phase: 'start',
@@ -1725,28 +603,47 @@ export async function POST(req: Request) {
                 label,
               });
 
-              const result = await executeTool(
-                toolBlock.name,
-                toolInput,
-                gmailAccessToken
-              );
-              if (toolBlock.name === 'search_references') {
-                collectSources(result, sources, seenSourceIds);
+              let result: string;
+
+              if (DELEGATE_TOOL_NAMES.has(toolBlock.name)) {
+                const managerType = toolBlock.name.replace('delegate_', '') as ManagerType;
+                const packet = toolInput as unknown as TaskPacket;
+                result = await runManager(
+                  managerType,
+                  packet,
+                  gmailAccessToken,
+                  send,
+                  stepCounterRef,
+                  turnToolCalls,
+                  anthropic
+                );
+              } else {
+                result = await executeTool(toolBlock.name, toolInput, gmailAccessToken);
+                if (toolBlock.name === 'search_references') {
+                  collectSources(result, sources, seenSourceIds);
+                }
+                turnToolCalls.push({ name: toolBlock.name, result });
               }
 
+              const durationMs = Date.now() - startedAt;
               send('trace', {
                 id: stepId,
                 phase: 'end',
                 tool: toolBlock.name,
-                durationMs: Date.now() - startedAt,
+                durationMs,
               });
+              void supabase.from('tool_metrics').insert({
+                session_id: chatId,
+                tool_name: toolBlock.name,
+                duration_ms: durationMs,
+                success: !result.startsWith('Error'),
+              }).then(null, () => {});
 
               toolResults.push({
                 type: 'tool_result',
                 tool_use_id: toolBlock.id,
                 content: result,
               });
-              turnToolCalls.push({ name: toolBlock.name, result });
             }
 
             messages.push({
@@ -1756,8 +653,7 @@ export async function POST(req: Request) {
           }
 
           send('done', {
-            reply:
-              '[Agent reached maximum tool-use rounds. Please try a simpler query.]',
+            reply: '[Agent reached maximum tool-use rounds. Please try a simpler query.]',
             sources,
           });
           controller.close();
