@@ -224,6 +224,7 @@ async function callExplorium(
         'api_key': EXPLORIUM_API_KEY,
         'Content-Type': 'application/json',
       },
+      signal: AbortSignal.timeout(30000),
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     if (!res.ok) {
@@ -232,7 +233,8 @@ async function callExplorium(
     }
     return res.text();
   } catch (err: any) {
-    return JSON.stringify({ error: `Explorium fetch failed: ${err.message}` });
+    const msg = err.name === 'TimeoutError' ? 'Explorium request timed out after 30s' : `Explorium fetch failed: ${err.message}`;
+    return JSON.stringify({ error: msg });
   }
 }
 
