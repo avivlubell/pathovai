@@ -29,7 +29,7 @@ The Quarterback Agent delegates tasks to you with a task packet. Execute thoroug
 
 **search_cms_coverage**: CMS Medicare Coverage Database (NCDs/LCDs). Use for reimbursement and VAC angle analysis.
 
-**explorium_autocomplete**: Call once per filter field that needs standardization (\`linkedin_category\`, \`job_title\`, \`business_intent_topics\`). Batch: if you need to standardize 3 fields, make 3 autocomplete calls then proceed — do not loop. Returns standardized values to use verbatim in subsequent fetch calls.
+**explorium_autocomplete**: Call once per filter field that needs standardization (\`linkedin_category\`, \`job_title\`, \`business_intent_topics\`). Call ALL needed autocomplete tools in a single response (parallel) — do not make them one at a time across multiple rounds. Returns standardized values to use verbatim in subsequent fetch calls.
 
 **explorium_fetch_businesses**: Find companies by ICP criteria (size, revenue, industry, country, tech stack, intent signals). Use for list-building and discovery — NOT for deep company analysis (use invoke_prospect_researcher for that).
 
@@ -341,5 +341,5 @@ Do NOT use this tool when only ONE source is needed — call that tool directly.
 export const RESEARCH_MANAGER: ManagerConfig = {
   systemPrompt: SYSTEM_PROMPT,
   tools: TOOLS,
-  maxRounds: 12,
+  maxRounds: 20,
 };
