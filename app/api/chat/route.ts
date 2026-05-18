@@ -126,7 +126,11 @@ Be tolerant of harmless format differences:
 - Aggregations: if the draft says "78 LinkedIn touches" and the data has 78 LinkedIn rows, that's correct — do not flag derived counts/sums.
 - Verb/event paraphrases: "established", "effective", "active", "launched", "introduced", "released", "took effect", "went live", "announced", "set up", "stood up" all describe the same kind of milestone. If the corpus says a code/program/policy was "effective April 1, 2026" and the draft says "established in April 2026" / "launched in April 2026" / "took effect April 2026", that is the same event paraphrased — do not flag. The grounded fact is the entity + the date + the milestone existing; the verb is the assistant's word choice. Granularity differences in the same direction are fine too: "April 2026" is a faithful summary of "April 1, 2026". Only flag if the date is wrong (different month/year), the entity is missing, or the milestone itself is absent.
 
-Sanity check before writing a flag: read the reason field you are about to submit. If it contains ANY of these affirmative phrases — "found X in query_Y", "is present", "phrase ... is present", "appears verbatim", "matches the corpus/data", "grounded in" — the claim IS grounded by your own admission. Drop the flag. There is no valid flag whose reason starts with "Searched corpus for X — found ..."; only "Searched corpus for X — not present" is a valid grounding failure.
+Sanity check before writing a flag: read the reason field you are about to submit. If it contains ANY of these affirmative phrases — "found X in query_Y", "is present", "phrase ... is present", "appears verbatim", "matches the corpus/data", "grounded in", "record shows", "data shows", "notes show", "notes mention", "the [X] record shows" — the claim IS grounded by your own admission. Drop the flag. There is no valid flag whose reason starts with "Searched corpus for X — found ..."; only "Searched corpus for X — not present" is a valid grounding failure.
+
+Grounding is corpus-wide: if the entity/number/date/quote appears in ANY tool output in the corpus — whether in query_deals notes, query_touches rows, account detail fields, or anywhere else — the claim is grounded. Do not require a specific "canonical" tool to be the source. A WhatsApp touch mentioned in deal notes IS grounded even if it does not appear as a dedicated row in query_touches. If your reason says "query_X record shows Y in the notes, but query_Z does not return Y", the claim is grounded — drop the flag.
+
+Time-sensitive claims ("past due", "overdue", "X days ago", "this week", "last month"): evaluate using today's date from the <context> block. Do not flag a "past due" claim if the corpus contains the touch date and today's date confirms it is in the past.
 
 Specifically forbidden flag patterns, even if you feel something is "off":
 - Word-choice disputes when the entity + date + milestone are all in the corpus ("the data states X became Y on D, not that it was 'Z' on D"). The verb is the assistant's choice, not a fact.
@@ -142,7 +146,7 @@ flag — a claim cannot be grounded and should be surfaced to the user:
 - A claim that contradicts the data.
 - A claim attributed to "the data" or "the records" that you cannot find in the data.
 
-strip — a direct quote attributed to a specific named person or org that is not in the data. Use sparingly; only for explicit attributed quotes (e.g. \`Kirk said: "we love this product"\`), not for paraphrases or characterizations.
+strip — a direct quote attributed to a specific named person or org that is not in the data. Use sparingly; only for explicit attributed quotes in the form \`[Person] said: "[quote]"\` or \`"[quote]" — [Person]\`. Do NOT strip: trend observations, characterizations, industry phrases ("a phrase being used inside health systems to describe X"), or paraphrases of what someone might think/do. The test is: is a named individual directly credited with saying a specific sentence? If it's a behavior pattern, market observation, or conceptual framing attributed loosely to a group or industry, leave it alone.
 
 Do NOT flag:
 - Editorial commentary, rhetorical questions, framing language, or transitions ("the elephant in the room", "before we start firing these off", "what's the play?").
@@ -229,6 +233,7 @@ async function verifyClaims(
         {
           role: 'user',
           content:
+            `<context>Today's date: ${new Date().toISOString().split('T')[0]}</context>\n\n` +
             `<draft>\n${draftForVerifier}\n</draft>\n\n` +
             `<tool_data>\n${corpus}\n</tool_data>`,
         },
@@ -256,6 +261,12 @@ async function verifyClaims(
     if (/\bgrounded\s+in\b/i.test(r)) return true;
     if (/\bfound\b[^.]{0,200}\bin\s+query_/i.test(r)) return true;
     if (/\bfound\b[^.]{0,200}\bin\s+the\s+(corpus|data|row|record|tool\s+output)\b/i.test(r)) return true;
+    // Catch "the [X] record shows Y" — verifier admits finding the data somewhere in corpus
+    if (/\b(?:the\s+)?(?:query_\w+\s+)?(?:record|data|notes?|row)\s+shows?\b/i.test(r)) return true;
+    // Catch "notes mention/contain/include"
+    if (/\bnotes?\s+(?:mention|contain|include)\b/i.test(r)) return true;
+    // Catch "shown in the [corpus|data|notes|record]"
+    if (/\bshown\s+in\s+(?:the\s+)?(?:corpus|data|notes?|record)\b/i.test(r)) return true;
     return false;
   };
 
@@ -607,7 +618,8 @@ export async function POST(req: Request) {
               let result: string;
 
               if (DELEGATE_TOOL_NAMES.has(toolBlock.name)) {
-                const managerType = toolBlock.name.replace('delegate_', '') as ManagerType;
+                const rawType = toolBlock.name.replace('delegate_', '');
+                const managerType = (rawType === 'qualify' ? 'qualification' : rawType) as ManagerType;
                 const packet = toolInput as unknown as TaskPacket;
                 result = await runManager(
                   managerType,

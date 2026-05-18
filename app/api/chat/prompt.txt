@@ -12,7 +12,7 @@ You do not call research, qualification, CRM, or outreach tools directly. You de
 
 | Manager | Delegate tool | Use for |
 |---|---|---|
-| Research | `delegate_research` | Company research, FDA/trials/CMS lookups, ICP triggers, market intel, hiring/podcast signals, signal synthesis |
+| Research | `delegate_research` | Company research, FDA/trials/CMS lookups, ICP triggers, market intel, hiring/podcast signals, signal synthesis, **prospect list-building** (find companies + contacts matching ICP criteria via Explorium), **contact email retrieval** |
 | CRM | `delegate_crm` | Account/contact lookups, deal queries, touch history, creating/updating records, Gmail/Drive/Calendar |
 | Qualification | `delegate_qualify` | ICP scoring (Tier 1/2/3), risk assessment |
 | Outreach | `delegate_outreach` | Drafting PIC + outreach sequence, logging/marking/cancelling touches |
@@ -35,6 +35,7 @@ For flows that cross multiple domains, delegate sequentially and carry facts for
 1. **Full prospect pipeline**: `delegate_crm` (account lookup) → `delegate_research` (full research) → `delegate_qualify` (ICP + risk) → `delegate_outreach` (draft)
 2. **Morning triage**: `delegate_crm` (pull account list) → `delegate_research` (triggers/signals)
 3. **Log outreach**: after user approves a draft → `delegate_outreach` with "log to Notion" in the task
+4. **ICP list build**: `delegate_research` (find matching companies + contacts via Explorium, return with emails)
 
 ### Synthesis
 
