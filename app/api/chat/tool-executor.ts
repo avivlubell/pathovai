@@ -7,6 +7,9 @@ const SUPABASE_FUNCTIONS_BASE = 'https://urmgbmfvjuozvhigflqt.supabase.co/functi
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 
+const EXPLORIUM_BASE = 'https://api.explorium.ai';
+const EXPLORIUM_API_KEY = process.env.EXPLORIUM_API_KEY || '';
+
 export const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_signal_brief: 'signal-brief',
   invoke_icp_scorer: 'icp-scorer',
@@ -206,6 +209,95 @@ async function executeCmsCoverage(input: Record<string, unknown>): Promise<strin
   }
 }
 
+async function callExplorium(
+  method: 'GET' | 'POST',
+  path: string,
+  queryParams?: Record<string, string>,
+  body?: object
+): Promise<string> {
+  const qs = queryParams ? `?${new URLSearchParams(queryParams)}` : '';
+  const url = `${EXPLORIUM_BASE}${path}${qs}`;
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'api_key': EXPLORIUM_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      return JSON.stringify({ error: `Explorium error ${res.status}`, detail: text.slice(0, 300) });
+    }
+    return res.text();
+  } catch (err: any) {
+    return JSON.stringify({ error: `Explorium fetch failed: ${err.message}` });
+  }
+}
+
+async function executeExploriumAutocomplete(input: Record<string, unknown>): Promise<string> {
+  const entity = String(input.entity_type || 'business');
+  const field = String(input.field || '');
+  const query = String(input.query || '');
+  if (!field) return JSON.stringify({ error: 'field is required' });
+  const basePath = entity === 'prospect' ? '/v1/prospects/autocomplete' : '/v1/businesses/autocomplete';
+  const params: Record<string, string> = { field };
+  if (query) params.query = query;
+  return callExplorium('GET', basePath, params);
+}
+
+async function executeExploriumFetchBusinesses(input: Record<string, unknown>): Promise<string> {
+  const pageSize = Math.min(Number(input.page_size) || 25, 100);
+  const page = Number(input.page) || 1;
+  const filters: Record<string, unknown> = {};
+  if (Array.isArray(input.company_size)) filters.company_size = { values: input.company_size };
+  if (Array.isArray(input.company_revenue)) filters.company_revenue = { values: input.company_revenue };
+  if (Array.isArray(input.company_country_code)) filters.country_code = { values: input.company_country_code };
+  if (Array.isArray(input.linkedin_category)) filters.linkedin_category = { values: input.linkedin_category };
+  if (Array.isArray(input.business_intent_topics)) {
+    filters.business_intent_topics = { topics: input.business_intent_topics };
+  }
+  if (input.events && typeof input.events === 'object') {
+    const ev = input.events as { types?: string[]; days?: number };
+    if (Array.isArray(ev.types)) filters.events = { values: ev.types, last_occurrence: ev.days ?? 90 };
+  }
+  return callExplorium('POST', '/v1/businesses', undefined, { mode: 'full', page, page_size: pageSize, filters });
+}
+
+async function executeExploriumFetchProspects(input: Record<string, unknown>): Promise<string> {
+  const pageSize = Math.min(Number(input.page_size) || 25, 100);
+  const page = Number(input.page) || 1;
+  const filters: Record<string, unknown> = {};
+  if (Array.isArray(input.business_ids)) filters.business_id = { values: input.business_ids };
+  if (Array.isArray(input.job_title)) filters.job_title = { values: input.job_title, include_related_job_titles: true };
+  if (Array.isArray(input.job_level)) filters.job_level = { values: input.job_level };
+  if (Array.isArray(input.job_department)) filters.job_department = { values: input.job_department };
+  if (Array.isArray(input.prospect_country_code)) filters.country_code = { values: input.prospect_country_code };
+  if (Array.isArray(input.company_size)) filters.company_size = { values: input.company_size };
+  if (Array.isArray(input.company_country_code)) filters.company_country_code = { values: input.company_country_code };
+  if (input.has_email === true) filters.has_email = { value: true };
+  return callExplorium('POST', '/v1/prospects', undefined, { mode: 'full', page, page_size: pageSize, filters });
+}
+
+async function executeExploriumEnrichContacts(input: Record<string, unknown>): Promise<string> {
+  const ids = input.prospect_ids;
+  if (!Array.isArray(ids) || ids.length === 0) return JSON.stringify({ error: 'prospect_ids array is required' });
+  const contact_types = Array.isArray(input.contact_types) ? input.contact_types : ['email'];
+  return callExplorium('POST', '/v1/prospects/contacts_information/enrich', undefined, {
+    prospect_ids: ids,
+    contact_types,
+  });
+}
+
+async function executeExploriumMatchBusiness(input: Record<string, unknown>): Promise<string> {
+  const businesses = input.businesses;
+  if (!Array.isArray(businesses) || businesses.length === 0) {
+    return JSON.stringify({ error: 'businesses array is required' });
+  }
+  return callExplorium('POST', '/v1/businesses/match', undefined, { businesses });
+}
+
 export async function executeTool(
   toolName: string,
   toolInput: Record<string, unknown>,
@@ -223,6 +315,11 @@ export async function executeTool(
   if (toolName === 'load_skill') {
     return loadSkill(toolInput.skill as string);
   }
+  if (toolName === 'explorium_autocomplete') return executeExploriumAutocomplete(toolInput);
+  if (toolName === 'explorium_fetch_businesses') return executeExploriumFetchBusinesses(toolInput);
+  if (toolName === 'explorium_fetch_prospects') return executeExploriumFetchProspects(toolInput);
+  if (toolName === 'explorium_enrich_contacts') return executeExploriumEnrichContacts(toolInput);
+  if (toolName === 'explorium_match_business') return executeExploriumMatchBusiness(toolInput);
   if (toolName === 'search_fda_devices') return executeFdaDevices(toolInput);
   if (toolName === 'search_icd10') return executeIcd10Search(toolInput);
   if (toolName === 'search_clinical_trials') return executeClinicalTrials(toolInput);
@@ -350,6 +447,16 @@ export function humanizeToolCall(
       const count = Array.isArray(cos) ? cos.length : 0;
       return count > 1 ? `Queuing overnight research for ${count} companies` : 'Queuing overnight research';
     }
+    case 'explorium_autocomplete':
+      return 'Standardizing Explorium filter values';
+    case 'explorium_fetch_businesses':
+      return 'Searching Explorium for matching companies';
+    case 'explorium_fetch_prospects':
+      return 'Finding contacts via Explorium';
+    case 'explorium_enrich_contacts':
+      return 'Fetching contact emails from Explorium';
+    case 'explorium_match_business':
+      return pickName() ? `Looking up ${pickName()} in Explorium` : 'Matching company in Explorium';
     case 'invoke_signal_brief':
       return pickName() ? `Building Signal Brief for ${pickName()}` : 'Building Signal Brief';
     case 'search_fda_devices':
