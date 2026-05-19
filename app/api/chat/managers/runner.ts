@@ -95,7 +95,12 @@ export async function runManager(
       const textBlocks = response.content.filter(
         (b): b is Anthropic.ContentBlock & { type: 'text' } => b.type === 'text'
       );
-      return textBlocks.map(b => b.text).join('\n');
+      const text = textBlocks.map(b => b.text).join('\n');
+      if (!text.trim()) {
+        console.warn(`[runManager:${type}] round ${round} ended with no text blocks — returning fallback`);
+        return `[${type} manager completed tool calls but produced no summary]`;
+      }
+      return text;
     }
 
     messages.push({ role: 'assistant', content: response.content as any });

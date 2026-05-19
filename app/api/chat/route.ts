@@ -549,7 +549,8 @@ export async function POST(req: Request) {
         try {
           const { text: learningsText, tokenEstimate: learningsTokens } = await fetchLearnings();
           if (learningsTokens > 0) console.log('LEARNINGS TOKENS (est):', learningsTokens);
-          const learningsAndContext = learningsText + conversationContext;
+          const todayStr = new Date().toISOString().split('T')[0];
+          const learningsAndContext = `\n\nToday's date: ${todayStr}` + learningsText + conversationContext;
 
           while (round < MAX_TOOL_ROUNDS) {
             round++;
