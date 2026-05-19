@@ -51,7 +51,23 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const payload = matchInfo ? { ...data, _match_info: matchInfo } : data;
+  // Strip large blobs — research_output and deepdive_output can be 8k+ tokens
+  // and flood the QB context window on every account lookup. The QB only needs
+  // metadata for routing decisions; the full report is loaded by the managers
+  // that actually need it (icp-scorer, outreach-drafter).
+  const { research_output, deepdive_output, icp_score_breakdown, ...metadata } = data;
+
+  // Expose freshness timestamps as a top-level block so the QB can make
+  // conditional delegation decisions without parsing the full row.
+  const _freshness = {
+    last_researched: data.last_researched ?? null,
+    last_scored_at: data.last_scored_at ?? null,
+    research_status: data.research_status ?? null,
+    icp_tier: data.icp_tier ?? null,
+    icp_score: data.icp_score ?? null,
+  };
+
+  const payload = { ...metadata, _freshness, ...(matchInfo ? { _match_info: matchInfo } : {}) };
 
   return new Response(JSON.stringify(payload), {
     headers: { 'Content-Type': 'application/json' }

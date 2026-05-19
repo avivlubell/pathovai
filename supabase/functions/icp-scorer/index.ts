@@ -251,6 +251,7 @@ Answer the 4 classification questions based ONLY on the above data.`;
       is_icp: is_icp,
       status: is_icp ? "active_target" : (tier === "Tier 3: Monitor" ? "monitor" : "disqualified"),
       confidence: scoring.confidence || null,
+      last_scored_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 

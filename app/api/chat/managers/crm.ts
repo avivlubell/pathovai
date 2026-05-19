@@ -36,7 +36,8 @@ If create_account or create_contact returns duplicate_detected or possible_dupli
 
 - Return all relevant data in full detail.
 - When a tool errors, report the error and tool name explicitly.
-- For name resolution: the tools use fuzzy matching. Trust the resolved match and proceed. If ambiguous, surface the top candidates.`;
+- For name resolution: the tools use fuzzy matching. Trust the resolved match and proceed. If ambiguous, surface the top candidates.
+- **Always include the `_freshness` block** from `get_account_detail` verbatim in your response. The Quarterback uses `last_researched`, `last_scored_at`, `icp_tier`, and `research_status` to decide whether to skip research or qualification. If you omit these, the QB will re-run expensive pipelines unnecessarily.`;
 
 const TOOLS: Anthropic.Tool[] = [
   {
