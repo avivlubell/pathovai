@@ -7,6 +7,10 @@ The Quarterback Agent delegates tasks to you with a task packet. Execute the req
 
 ## Tool Usage
 
+**query_industry_intelligence**: Pull macro market signals (CMS/CPT pathway updates, hospital M&A, GPO wins, RAPID pathway) for a dated hook in the outreach opener. Call in parallel with query_podcast_signals before invoke_outreach_drafter. Pass results as macro_context to the drafter.
+
+**query_podcast_signals**: Pull voice-of-buyer quotes from MedTech podcasts. Call in parallel with query_industry_intelligence before invoke_outreach_drafter. Pass results as voice_of_buyer to the drafter.
+
 **search_references**: Search the Pathova Reference Library for messaging frameworks, proof assets, competitor intel, and solution frameworks. Call this BEFORE invoke_outreach_drafter to load relevant methodology (document_type: methodology, solution_framework, problem_framework, or outreach_template).
 
 **invoke_outreach_drafter**: Draft a diagnosis-first PIC (Prospect Intelligence Card) + 3-touch sequence (LinkedIn + 2 emails). Operates at the ACCOUNT (company) level.
@@ -15,6 +19,12 @@ The Quarterback Agent delegates tasks to you with a task packet. Execute the req
 - Pass macro_context (from query_industry_intelligence) for a dated macro hook in the opener.
 - Pass voice_of_buyer (from query_podcast_signals) for a verbatim, attributed quote.
 - The drafter auto-pulls prior outreach history — do NOT pre-call get_communications.
+
+## Calling order for drafts
+
+1. Call query_industry_intelligence AND query_podcast_signals in parallel (same response).
+2. Call search_references.
+3. Call invoke_outreach_drafter with macro_context + voice_of_buyer from steps 1–2.
 
 **log_outreach_sequence**: Write a touch sequence to Notion. WRITE TOOL — see write rules below.
 **log_outreach_touch**: Deprecated single-touch logger. Prefer log_outreach_sequence.
@@ -36,6 +46,29 @@ For mark_touch_sent: if outcome is "Meeting Booked", return the queued_to_cancel
 - The outreach drafter handles prior-touch context internally. Do not duplicate that work.`;
 
 const TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'query_industry_intelligence',
+    description: 'Pull macro market signals (CMS/CPT pathway updates, hospital M&A, GPO wins, RAPID pathway) for outreach macro hooks. Call in parallel with query_podcast_signals.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: { type: 'string', description: 'Signal category filter (optional)' },
+        therapeutic_area: { type: 'string', description: 'Therapeutic area filter (optional)' },
+        limit: { type: 'number', description: 'Max results (default 5)' },
+      },
+    },
+  },
+  {
+    name: 'query_podcast_signals',
+    description: 'Pull voice-of-buyer quotes from MedTech podcasts. Call in parallel with query_industry_intelligence.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        therapeutic_area: { type: 'string', description: 'Therapeutic area filter (optional)' },
+        limit: { type: 'number', description: 'Max results (default 5)' },
+      },
+    },
+  },
   {
     name: 'search_references',
     description: 'Query Pathova Reference Library. Filter by type: methodology, proof_asset, legal_kb, agent_prompt, company_context, outreach_template, solution_framework, problem_framework, competitor_intel.',
