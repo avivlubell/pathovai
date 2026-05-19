@@ -10,6 +10,8 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 const EXPLORIUM_BASE = 'https://api.explorium.ai';
 const EXPLORIUM_API_KEY = process.env.EXPLORIUM_API_KEY || '';
 
+const HUNTER_API_KEY = process.env.HUNTER_API_KEY || '';
+
 export const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_signal_brief: 'signal-brief',
   invoke_icp_scorer: 'icp-scorer',
@@ -300,6 +302,39 @@ async function executeExploriumMatchBusiness(input: Record<string, unknown>): Pr
   return callExplorium('POST', '/v1/businesses/match', undefined, { businesses });
 }
 
+async function executeVerifyEmail(input: Record<string, unknown>): Promise<string> {
+  const email = String(input.email || '').trim().toLowerCase();
+  if (!email) return JSON.stringify({ error: 'email is required' });
+  if (!HUNTER_API_KEY) return JSON.stringify({ error: 'HUNTER_API_KEY not configured' });
+  try {
+    const params = new URLSearchParams({ email, api_key: HUNTER_API_KEY });
+    const res = await fetch(`https://api.hunter.io/v2/email-verifier?${params}`, {
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      return JSON.stringify({ error: `Hunter.io error ${res.status}`, detail: text.slice(0, 200) });
+    }
+    const json = await res.json() as any;
+    const d = json?.data || {};
+    return JSON.stringify({
+      email,
+      status: d.status,
+      result: d.result,
+      score: d.score,
+      mx_records: d.mx_records,
+      smtp_server: d.smtp_server,
+      smtp_check: d.smtp_check,
+      disposable: d.disposable,
+      webmail: d.webmail,
+      accept_all: d.accept_all,
+    });
+  } catch (err: any) {
+    const msg = err.name === 'TimeoutError' ? 'Hunter.io request timed out' : `Hunter.io fetch failed: ${err.message}`;
+    return JSON.stringify({ error: msg });
+  }
+}
+
 export async function executeTool(
   toolName: string,
   toolInput: Record<string, unknown>,
@@ -322,6 +357,7 @@ export async function executeTool(
   if (toolName === 'explorium_fetch_prospects') return executeExploriumFetchProspects(toolInput);
   if (toolName === 'explorium_enrich_contacts') return executeExploriumEnrichContacts(toolInput);
   if (toolName === 'explorium_match_business') return executeExploriumMatchBusiness(toolInput);
+  if (toolName === 'verify_email') return executeVerifyEmail(toolInput);
   if (toolName === 'search_fda_devices') return executeFdaDevices(toolInput);
   if (toolName === 'search_icd10') return executeIcd10Search(toolInput);
   if (toolName === 'search_clinical_trials') return executeClinicalTrials(toolInput);
@@ -457,6 +493,10 @@ export function humanizeToolCall(
       return 'Finding contacts via Explorium';
     case 'explorium_enrich_contacts':
       return 'Fetching contact emails from Explorium';
+    case 'verify_email': {
+      const em = input.email as string | undefined;
+      return em ? `Verifying ${em}` : 'Verifying email';
+    }
     case 'explorium_match_business':
       return pickName() ? `Looking up ${pickName()} in Explorium` : 'Matching company in Explorium';
     case 'invoke_signal_brief':

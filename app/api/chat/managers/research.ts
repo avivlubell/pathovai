@@ -29,6 +29,8 @@ The Quarterback Agent delegates tasks to you with a task packet. Execute thoroug
 
 **search_cms_coverage**: CMS Medicare Coverage Database (NCDs/LCDs). Use for reimbursement and VAC angle analysis.
 
+**verify_email**: Check a single email address against Hunter.io. Returns status (valid/invalid/accept_all/disposable/unknown), score (0–100), and SMTP/MX details. Call after explorium_enrich_contacts when the user wants confidence scores before outreach or before saving a contact.
+
 **explorium_autocomplete**: Call once per filter field that needs standardization (\`linkedin_category\`, \`job_title\`, \`business_intent_topics\`). Call ALL needed autocomplete tools in a single response (parallel) — do not make them one at a time across multiple rounds. Returns standardized values to use verbatim in subsequent fetch calls.
 
 **explorium_fetch_businesses**: Find companies by ICP criteria (size, revenue, industry, country, tech stack, intent signals). Use for list-building and discovery — NOT for deep company analysis (use invoke_prospect_researcher for that).
@@ -322,6 +324,17 @@ Do NOT use this tool when only ONE source is needed — call that tool directly.
         contact_types: { type: 'array', items: { type: 'string' }, description: '"email" and/or "phone". Defaults to ["email"]' },
       },
       required: ['prospect_ids'],
+    },
+  },
+  {
+    name: 'verify_email',
+    description: 'Verify a single email address via Hunter.io. Returns status, score (0–100), and SMTP/MX checks. Use after explorium_enrich_contacts to validate email quality before outreach.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: { type: 'string', description: 'Email address to verify' },
+      },
+      required: ['email'],
     },
   },
   {

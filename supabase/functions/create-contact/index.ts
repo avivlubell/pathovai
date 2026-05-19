@@ -4,6 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const NOTION_TOKEN = Deno.env.get('NOTION_INTEGRATION_TOKEN')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const HUNTER_API_KEY = Deno.env.get('HUNTER_API_KEY') || '';;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -104,6 +105,23 @@ async function findSupabaseDuplicates(accountId: string, name: string, email?: s
   return [...fuzzyMatches, ...emailMatches];
 }
 
+async function verifyEmailWithHunter(email: string): Promise<{ status: string; score: number; result: string } | null> {
+  if (!HUNTER_API_KEY) return null;
+  try {
+    const params = new URLSearchParams({ email, api_key: HUNTER_API_KEY });
+    const res = await fetch(`https://api.hunter.io/v2/email-verifier?${params}`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const d = json?.data;
+    if (!d) return null;
+    return { status: d.status, score: d.score, result: d.result };
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -185,6 +203,12 @@ serve(async (req) => {
       }
     }
 
+    // ---- Verify email with Hunter.io (best-effort, non-blocking) ----
+    let emailVerification: { status: string; score: number; result: string } | null = null;
+    if (email) {
+      emailVerification = await verifyEmailWithHunter(String(email).toLowerCase().trim());
+    }
+
     // ---- Build Notion properties ----
     const props: Record<string, any> = {
       Name: { title: [{ text: { content: name } }] },
@@ -259,6 +283,9 @@ serve(async (req) => {
       relationship_status: relationship_status || 'Identified',
       communication_channels: Array.isArray(communication_channels) ? communication_channels : null,
       is_primary: !!is_primary,
+      email_verified: emailVerification ? emailVerification.score >= 70 && emailVerification.status !== 'invalid' : null,
+      email_score: emailVerification?.score ?? null,
+      email_status: emailVerification?.status ?? null,
       updated_at: new Date().toISOString(),
     };
 
@@ -293,6 +320,9 @@ serve(async (req) => {
           notion_url: contactUrl,
           full_name: name,
           email: contactRow.email,
+          email_verified: contactRow.email_verified,
+          email_score: contactRow.email_score,
+          email_status: contactRow.email_status,
         },
         account: {
           id: account.id,
