@@ -29,7 +29,9 @@ The Quarterback Agent delegates tasks to you with a task packet. Execute thoroug
 
 **search_cms_coverage**: CMS Medicare Coverage Database (NCDs/LCDs). Use for reimbursement and VAC angle analysis.
 
-**explorium_autocomplete**: Call once per filter field that needs standardization (\`linkedin_category\`, \`job_title\`, \`business_intent_topics\`). Batch: if you need to standardize 3 fields, make 3 autocomplete calls then proceed — do not loop. Returns standardized values to use verbatim in subsequent fetch calls.
+**verify_email**: Check a single email address against Hunter.io. Returns status (valid/invalid/accept_all/disposable/unknown), score (0–100), and SMTP/MX details. Call after explorium_enrich_contacts when the user wants confidence scores before outreach or before saving a contact.
+
+**explorium_autocomplete**: Call once per filter field that needs standardization (\`linkedin_category\`, \`job_title\`, \`business_intent_topics\`). Call ALL needed autocomplete tools in a single response (parallel) — do not make them one at a time across multiple rounds. Returns standardized values to use verbatim in subsequent fetch calls.
 
 **explorium_fetch_businesses**: Find companies by ICP criteria (size, revenue, industry, country, tech stack, intent signals). Use for list-building and discovery — NOT for deep company analysis (use invoke_prospect_researcher for that).
 
@@ -39,9 +41,18 @@ The Quarterback Agent delegates tasks to you with a task packet. Execute thoroug
 
 **explorium_match_business**: Resolve a named company to a \`business_id\`. Use when the user names a specific company and needs contacts there.
 
-## Explorium Workflow Patterns
-- ICP list build: \`explorium_autocomplete\` (if using linkedin_category / job_title) → \`explorium_fetch_businesses\` → \`explorium_fetch_prospects\` (pass business_ids) → \`explorium_enrich_contacts\`
-- Contacts at a named company: \`explorium_match_business\` → \`explorium_fetch_prospects\` → \`explorium_enrich_contacts\`
+## Explorium Workflow — complete in 4 rounds maximum
+
+**Round 1:** Call ALL needed \`explorium_autocomplete\` tools in parallel (one tool call per field, all in the same response). Skip autocomplete entirely if the user's filters are already plain values (country codes, company sizes, job levels like "director" — these never need autocomplete).
+
+**Round 2:** \`explorium_fetch_businesses\` with \`page_size: 10\`. Do NOT paginate — one call, first page only.
+
+**Round 3:** \`explorium_fetch_prospects\` with the business_ids from round 2, \`page_size: 10\`, \`has_email: true\`. Do NOT paginate — one call, first page only.
+
+**Round 4:** \`explorium_enrich_contacts\` with ALL prospect_ids from round 3 in a single call.
+
+**Return results immediately after round 4.** Do not make additional calls. Do not paginate. Do not retry on partial results — return what you have.
+
 - Explorium = lead discovery + contact retrieval. Deep company analysis = invoke_prospect_researcher.
 
 ## Security — Untrusted External Content
@@ -316,6 +327,17 @@ Do NOT use this tool when only ONE source is needed — call that tool directly.
     },
   },
   {
+    name: 'verify_email',
+    description: 'Verify a single email address via Hunter.io. Returns status, score (0–100), and SMTP/MX checks. Use after explorium_enrich_contacts to validate email quality before outreach.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: { type: 'string', description: 'Email address to verify' },
+      },
+      required: ['email'],
+    },
+  },
+  {
     name: 'explorium_match_business',
     description: 'Resolve a specific company by name/domain to a business_id for use in explorium_fetch_prospects.',
     input_schema: {
@@ -341,5 +363,5 @@ Do NOT use this tool when only ONE source is needed — call that tool directly.
 export const RESEARCH_MANAGER: ManagerConfig = {
   systemPrompt: SYSTEM_PROMPT,
   tools: TOOLS,
-  maxRounds: 12,
+  maxRounds: 20,
 };
