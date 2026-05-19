@@ -44,6 +44,7 @@ async function consumeChatStream(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let terminated = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -80,16 +81,22 @@ async function consumeChatStream(
           durationMs: payload.durationMs,
         });
       } else if (eventName === 'done') {
+        terminated = true;
         handlers.onDone(
           typeof payload.reply === 'string' ? payload.reply : '',
           Array.isArray(payload.sources) ? payload.sources : []
         );
       } else if (eventName === 'error') {
+        terminated = true;
         handlers.onError(
           payload.details || payload.error || 'Server error'
         );
       }
     }
+  }
+
+  if (!terminated) {
+    handlers.onError('The request timed out before a response arrived. Please try again.');
   }
 }
 
@@ -683,6 +690,12 @@ export default function HomePage() {
         // User hit Stop; nothing to log.
       } else {
         console.error('Network error', err);
+        const errorMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `⚠️ Network error — the request was interrupted. Please try again.`,
+        };
+        setMessages([...nextMessages, errorMessage]);
       }
     } finally {
       abortControllerRef.current = null;
@@ -789,8 +802,16 @@ export default function HomePage() {
         });
       }
     } catch (err) {
-      if ((err as Error)?.name !== 'AbortError') {
+      if ((err as Error)?.name === 'AbortError') {
+        // User hit Stop; nothing to log.
+      } else {
         console.error('Regenerate error', err);
+        const errorMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `⚠️ Network error — the request was interrupted. Please try again.`,
+        };
+        setMessages([...priorMessages, errorMessage]);
       }
     } finally {
       abortControllerRef.current = null;

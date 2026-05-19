@@ -583,7 +583,10 @@ export async function POST(req: Request) {
                 (b): b is Anthropic.ContentBlock & { type: 'text' } =>
                   b.type === 'text'
               );
-              const finalText = textBlocks.map((b: any) => b.text).join('\n');
+              const rawText = textBlocks.map((b: any) => b.text).join('\n');
+              const finalText = rawText.trim()
+                ? rawText
+                : '[The agent completed all tool calls but produced no summary. Please try again or rephrase your request.]';
               const reply = extractReply(finalText);
               const { verified: verifiedReply, flagCount, stripCount } = await verifyClaims(reply, turnToolCalls);
               void supabase.from('pic_accuracy_events').insert({
