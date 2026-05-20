@@ -50,7 +50,7 @@ export const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_ai_imaging_operator: 'ai-imaging-operator',
 };
 
-const SLOW_FUNCTIONS = new Set(['prospect-researcher', 'outreach-drafter', 'icp-scorer', 'signal-brief', 'risk-assessor']);
+const SLOW_FUNCTIONS = new Set(['prospect-researcher', 'outreach-drafter', 'icp-scorer', 'signal-brief', 'risk-assessor', 'fetch-gap-content', 'run-prospect-pipeline']);
 
 export async function callEdgeFunction(
   functionName: string,
