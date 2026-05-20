@@ -11,15 +11,22 @@ The Quarterback Agent delegates tasks to you with a task packet. Execute thoroug
 
 **fetch_gap_content**: Resolves research gaps by fetching URLs. Call immediately after invoke_prospect_researcher if GAP blocks are present.
 
-**invoke_signal_brief**: Cross-source signal synthesis across 2+ sources simultaneously. Use when multi-source synthesis is needed (e.g., before outreach or building a dossier). Do NOT use when only one source is needed — call that tool directly.
+**invoke_signal_brief**: Cross-source signal synthesis. Queries all listed sources IN PARALLEL internally and returns synthesized findings plus raw data in `_raw`. Use INSTEAD of calling individual signal tools when you need 2+ sources — do NOT also call those tools separately.
 
-**query_icp_triggers**: Daily-refreshed feed of FDA clearances, raises, SBIR awards, pilot announcements. Use to find recent trigger activity for a specific company or category.
+**CRITICAL — avoid double-querying:** After calling invoke_signal_brief, do NOT call any of the following for sources you already included in sources[]:
+- `query_icp_triggers` (covered by `icp_triggers`)
+- `query_industry_intelligence` (covered by `industry_intelligence`)
+- `query_podcast_signals` (covered by `podcast_signals`)
+- `query_hiring_signals` (covered by `hiring_signals`)
+The raw rows are already in the `_raw` field of the signal brief response. Calling them again wastes a round and returns identical data.
 
-**query_industry_intelligence**: Market intelligence briefings (RAPID/CMS/CPT pathway updates, GPO wins, M&A, funding climate). Use to find macro hooks for outreach or answer "what's new in X category?"
+**query_icp_triggers**: Use ONLY when you need ICP trigger data WITHOUT a multi-source synthesis — i.e., when invoke_signal_brief is not being called.
 
-**query_podcast_signals**: Podcast insights (voice-of-buyer/investor data). Use to find credible quotes and persona framing.
+**query_industry_intelligence**: Use ONLY when you need market intelligence WITHOUT a multi-source synthesis — i.e., when invoke_signal_brief is not being called.
 
-**query_hiring_signals**: Commercial hiring signals at MedTech companies. Use to find companies expanding their commercial team.
+**query_podcast_signals**: Use ONLY when you need podcast data WITHOUT a multi-source synthesis — i.e., when invoke_signal_brief is not being called.
+
+**query_hiring_signals**: Use ONLY when you need hiring signals WITHOUT a multi-source synthesis — i.e., when invoke_signal_brief is not being called.
 
 **search_fda_devices**: FDA device database (510k, PMA, recalls). Use to confirm regulatory status, find clearance dates, or map competitors.
 

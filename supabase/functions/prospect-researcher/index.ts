@@ -164,8 +164,6 @@ OUTPUT RULES:
 
 const DEEPDIVE_PROMPT = `You are a competitive intelligence researcher. Your ONLY job is to find COMPETITORS, FDA CLEARANCE DETAILS, and CE MARKING STATUS for this company.
 COMPANY: [COMPANY_NAME]
-PRODUCTS: [PRODUCTS]
-PRODUCT CATEGORY: [PRODUCT_CATEGORY]
 WEBSITE: [WEBSITE_URL]
 
 You have ONE job: fill in these gaps with real data.
@@ -229,7 +227,7 @@ async function callPerplexity(companyName: string, website: string, linkedinUrl:
   return data?.choices?.[0]?.message?.content ?? JSON.stringify(data);
 }
 
-async function callPerplexityDeepDive(companyName: string, website: string, products: string, productCategory: string): Promise<string> {
+async function callPerplexityDeepDive(companyName: string, website: string): Promise<string> {
   const resp = await fetch("https://api.perplexity.ai/chat/completions", {
     method: "POST",
     headers: {
@@ -244,8 +242,8 @@ async function callPerplexityDeepDive(companyName: string, website: string, prod
       search_domain_filter: ["-reddit.com", "-pinterest.com", "-quora.com"],
       web_search_options: { search_context_size: "high" },
       messages: [
-        { role: "system", content: DEEPDIVE_PROMPT.replaceAll("[COMPANY_NAME]", companyName).replaceAll("[WEBSITE_URL]", website).replaceAll("[PRODUCTS]", products).replaceAll("[PRODUCT_CATEGORY]", productCategory) },
-        { role: "user", content: `Deep-dive research for ${companyName}. Products: ${products}. Category: ${productCategory}. Website: ${website}. Find competitors, FDA 510(k) details, and CE mark status.` },
+        { role: "system", content: DEEPDIVE_PROMPT.replaceAll("[COMPANY_NAME]", companyName).replaceAll("[WEBSITE_URL]", website) },
+        { role: "user", content: `Deep-dive research for ${companyName}. Website: ${website}. Find competitors, FDA 510(k) details, and CE mark status.` },
       ],
     }),
   });
@@ -502,28 +500,24 @@ Deno.serve(async (req: Request) => {
       `Researching: ${company_name} (website=${effectiveWebsite || "MISSING"}, linkedin=${effectiveLinkedin || "MISSING"}, ceo=${effectiveCeo || "MISSING"})`
     );
 
-    // Call 1: Main research
-    const research = await callPerplexity(
-      company_name,
-      effectiveWebsite,
-      effectiveLinkedin,
-      effectiveCeo
-    );
+    // Both calls run in parallel — deep-dive no longer depends on main research output
+    const [researchResult, deepDiveResult] = await Promise.allSettled([
+      callPerplexity(company_name, effectiveWebsite, effectiveLinkedin, effectiveCeo),
+      callPerplexityDeepDive(company_name, effectiveWebsite),
+    ]);
+
+    if (researchResult.status === "rejected") {
+      throw new Error(`Main research failed: ${researchResult.reason}`);
+    }
+    const research = researchResult.value;
     console.info(`Main research complete for ${company_name}`);
 
-    // Extract products and category for deep-dive
-    const productsMatch = research.match(/1\.6[^:]*:\s*([^\n]+)/i);
-    const products = productsMatch ? productsMatch[1].replace(/\[\d+\]/g, "").trim().substring(0, 500) : company_name;
-    const catMatch = research.match(/1\.7[^:]*(?:category|classification)[^:]*:\s*([^\n]+)/i);
-    const productCat = catMatch ? catMatch[1].replace(/\[\d+\]/g, "").trim().substring(0, 200) : "medical device";
-
-    // Call 2: Deep-dive for competitors, FDA, CE
     let deepDive = "";
-    try {
-      deepDive = await callPerplexityDeepDive(company_name, effectiveWebsite, products, productCat);
+    if (deepDiveResult.status === "fulfilled") {
+      deepDive = deepDiveResult.value;
       console.info(`Deep-dive complete for ${company_name}`);
-    } catch (ddErr) {
-      console.error(`Deep-dive failed for ${company_name}:`, ddErr);
+    } else {
+      console.error(`Deep-dive failed for ${company_name}:`, deepDiveResult.reason);
     }
 
     // Sanitize external content before any further processing or storage.
