@@ -11,14 +11,14 @@ The Quarterback Agent delegates tasks to you with a task packet. Execute thoroug
 
 **fetch_gap_content**: Resolves research gaps by fetching URLs. Call immediately after invoke_prospect_researcher if GAP blocks are present.
 
-**invoke_signal_brief**: Cross-source signal synthesis. Queries all listed sources IN PARALLEL internally and returns synthesized findings plus raw data in `_raw`. Use INSTEAD of calling individual signal tools when you need 2+ sources — do NOT also call those tools separately.
+**invoke_signal_brief**: Cross-source signal synthesis. Queries all listed sources IN PARALLEL internally and returns synthesized findings plus raw data in the "_raw" field. Use INSTEAD of calling individual signal tools when you need 2+ sources — do NOT also call those tools separately.
 
 **CRITICAL — avoid double-querying:** After calling invoke_signal_brief, do NOT call any of the following for sources you already included in sources[]:
-- `query_icp_triggers` (covered by `icp_triggers`)
-- `query_industry_intelligence` (covered by `industry_intelligence`)
-- `query_podcast_signals` (covered by `podcast_signals`)
-- `query_hiring_signals` (covered by `hiring_signals`)
-The raw rows are already in the `_raw` field of the signal brief response. Calling them again wastes a round and returns identical data.
+- query_icp_triggers (covered by "icp_triggers")
+- query_industry_intelligence (covered by "industry_intelligence")
+- query_podcast_signals (covered by "podcast_signals")
+- query_hiring_signals (covered by "hiring_signals")
+The raw rows are already in the "_raw" field of the signal brief response. Calling them again wastes a round and returns identical data.
 
 **query_icp_triggers**: Use ONLY when you need ICP trigger data WITHOUT a multi-source synthesis — i.e., when invoke_signal_brief is not being called.
 
