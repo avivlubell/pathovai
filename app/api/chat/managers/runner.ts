@@ -135,12 +135,23 @@ export async function runManager(
         seenCalls.set(callKey, result);
       }
 
+      const durationMs = Date.now() - startedAt;
       send('trace', {
         id: stepId,
         phase: 'end',
         tool: toolBlock.name,
-        durationMs: Date.now() - startedAt,
+        durationMs,
       });
+
+      // Hard-fail on invoke_prospect_researcher errors — no point continuing without research data
+      if (toolBlock.name === 'invoke_prospect_researcher') {
+        let parsed: any;
+        try { parsed = JSON.parse(result); } catch { /* not JSON */ }
+        if (parsed?.error) {
+          console.error(`[runManager:${type}] invoke_prospect_researcher failed: ${parsed.error}`);
+          return `RESEARCH FAILED — Perplexity research could not complete. Error: ${parsed.error}. The account was not researched.`;
+        }
+      }
 
       toolResults.push({
         type: 'tool_result',

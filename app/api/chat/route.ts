@@ -634,6 +634,9 @@ export async function POST(req: Request) {
                   turnToolCalls,
                   anthropic
                 );
+                if (result.startsWith('RESEARCH FAILED') || result.startsWith('[research manager')) {
+                  console.error(`[route] ${toolBlock.name} returned failure: ${result.slice(0, 200)}`);
+                }
               } else {
                 result = await executeTool(toolBlock.name, toolInput, gmailAccessToken);
                 if (toolBlock.name === 'search_references') {
