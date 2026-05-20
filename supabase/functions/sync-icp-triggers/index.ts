@@ -81,6 +81,7 @@ function mapPageToRecord(page: any) {
     fda_status: getProp(props, "FDA Status", "select"),
     fda_510k_number: getProp(props, "510k Number", "rich_text"),
     device_category: getProp(props, "Device Category", "rich_text"),
+    product_category: getProp(props, "Product Category", "multi_select"),
     clearance_date: getProp(props, "Clearance Date", "date"),
     clinical_evidence_quality: getProp(props, "Clinical Evidence Quality", "rich_text"),
 
