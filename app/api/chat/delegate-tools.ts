@@ -106,6 +106,20 @@ export const delegateTools: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'invoke_crack_scorer',
+    description:
+      'Commercial Fragility Scorer — detects structural GTM cracks in a MedTech company BEFORE deep research. Runs in parallel: Explorium title + dept search, FDA 510(k) lookup, EDGAR Form D check, website language classification. Returns a crack score (0–4), fragility tier (HIGH/MEDIUM/LOW/MINIMAL), named flags (no_reimbursement_hire, no_sales_headcount, clinical_only_language, capital_without_gtm), and outreach_angle (diagnostic vs light_touch). Use BEFORE invoke_outreach_drafter to determine messaging angle. Use BEFORE invoke_prospect_researcher when you want to triage research depth. Pass fda_clearance_date if already known to skip the FDA lookup.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        company_name: { type: 'string', description: 'Target company name' },
+        domain: { type: 'string', description: 'Company website domain, e.g. "acmedevice.com". Used for website language analysis.' },
+        fda_clearance_date: { type: 'string', description: 'ISO date of 510(k) clearance if already known, e.g. "2023-04-15". Skips FDA API lookup.' },
+      },
+      required: ['company_name'],
+    },
+  },
+  {
     name: 'store_learning',
     description:
       'Store a learning, correction, or preference for the system to remember. Use when the user provides feedback, corrections, or teaches the system something new.',
