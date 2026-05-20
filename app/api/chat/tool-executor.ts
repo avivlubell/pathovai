@@ -50,12 +50,15 @@ export const TOOL_ENDPOINT_MAP: Record<string, string> = {
   invoke_ai_imaging_operator: 'ai-imaging-operator',
 };
 
+const SLOW_FUNCTIONS = new Set(['prospect-researcher', 'outreach-drafter', 'icp-scorer', 'signal-brief', 'risk-assessor']);
+
 export async function callEdgeFunction(
   functionName: string,
   body: Record<string, unknown>,
   retries = 2
 ): Promise<unknown> {
   const url = `${SUPABASE_FUNCTIONS_BASE}/${functionName}`;
+  const timeoutMs = SLOW_FUNCTIONS.has(functionName) ? 240_000 : 30_000;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await fetch(url, {
@@ -66,6 +69,7 @@ export async function callEdgeFunction(
           apikey: SUPABASE_ANON_KEY,
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       const text = await res.text();
       if (res.status === 429 && attempt < retries) {
@@ -78,11 +82,15 @@ export async function callEdgeFunction(
         return { raw_response: text, status: res.status };
       }
     } catch (err: any) {
-      if (attempt < retries) {
+      const isTimeout = err.name === 'TimeoutError' || err.name === 'AbortError';
+      if (!isTimeout && attempt < retries) {
         await new Promise(r => setTimeout(r, (attempt + 1) * 5000));
         continue;
       }
-      return { error: `Failed to call ${functionName}: ${err.message}` };
+      const msg = isTimeout
+        ? `${functionName} timed out after ${timeoutMs / 1000}s — Perplexity may be slow. Try again.`
+        : `Failed to call ${functionName}: ${err.message}`;
+      return { error: msg };
     }
   }
 }
