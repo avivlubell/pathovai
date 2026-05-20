@@ -131,7 +131,12 @@ export async function runManager(
         result = `[LOOP GUARD] This exact call was already made earlier in this task. Do not repeat it — use the cached result below or choose a different approach.\n\nCached result: ${cached}`;
         console.warn(`[runManager:${type}] dedup hit on ${toolBlock.name} round ${round}`);
       } else {
-        result = await executeTool(toolBlock.name, toolInput, effectiveGmailToken);
+        const heartbeat = setInterval(() => send('heartbeat', { ts: Date.now() }), 10000);
+        try {
+          result = await executeTool(toolBlock.name, toolInput, effectiveGmailToken);
+        } finally {
+          clearInterval(heartbeat);
+        }
         seenCalls.set(callKey, result);
       }
 

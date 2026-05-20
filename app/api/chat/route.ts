@@ -621,28 +621,33 @@ export async function POST(req: Request) {
 
               let result: string;
 
-              if (DELEGATE_TOOL_NAMES.has(toolBlock.name)) {
-                const rawType = toolBlock.name.replace('delegate_', '');
-                const managerType = (rawType === 'qualify' ? 'qualification' : rawType) as ManagerType;
-                const packet = toolInput as unknown as TaskPacket;
-                result = await runManager(
-                  managerType,
-                  packet,
-                  gmailAccessToken,
-                  send,
-                  stepCounterRef,
-                  turnToolCalls,
-                  anthropic
-                );
-                if (result.startsWith('RESEARCH FAILED') || result.startsWith('[research manager')) {
-                  console.error(`[route] ${toolBlock.name} returned failure: ${result.slice(0, 200)}`);
+              const heartbeat = setInterval(() => send('heartbeat', { ts: Date.now() }), 10000);
+              try {
+                if (DELEGATE_TOOL_NAMES.has(toolBlock.name)) {
+                  const rawType = toolBlock.name.replace('delegate_', '');
+                  const managerType = (rawType === 'qualify' ? 'qualification' : rawType) as ManagerType;
+                  const packet = toolInput as unknown as TaskPacket;
+                  result = await runManager(
+                    managerType,
+                    packet,
+                    gmailAccessToken,
+                    send,
+                    stepCounterRef,
+                    turnToolCalls,
+                    anthropic
+                  );
+                  if (result.startsWith('RESEARCH FAILED') || result.startsWith('[research manager')) {
+                    console.error(`[route] ${toolBlock.name} returned failure: ${result.slice(0, 200)}`);
+                  }
+                } else {
+                  result = await executeTool(toolBlock.name, toolInput, gmailAccessToken);
+                  if (toolBlock.name === 'search_references') {
+                    collectSources(result, sources, seenSourceIds);
+                  }
+                  turnToolCalls.push({ name: toolBlock.name, result });
                 }
-              } else {
-                result = await executeTool(toolBlock.name, toolInput, gmailAccessToken);
-                if (toolBlock.name === 'search_references') {
-                  collectSources(result, sources, seenSourceIds);
-                }
-                turnToolCalls.push({ name: toolBlock.name, result });
+              } finally {
+                clearInterval(heartbeat);
               }
 
               const durationMs = Date.now() - startedAt;
