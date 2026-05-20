@@ -4,9 +4,9 @@
 -- Step 2: Run the UPDATE. If it returns 0 rows affected, run the INSERT instead.
 
 -- ── STEP 1: Preview current document ──────────────────────────────────────────
-SELECT id, title, reference_type, LEFT(content, 300) AS content_preview
+SELECT id, title, type, LEFT(content, 300) AS content_preview
 FROM reference_library
-WHERE reference_type = 'methodology'
+WHERE type = 'methodology'
   AND title ILIKE '%ICP%';
 
 -- ── STEP 2: Update existing document ──────────────────────────────────────────
@@ -124,13 +124,13 @@ If none of the above apply, answer Q4 with "NONE".
 | NO | any | any | any | Non-ICP |
 | any | any | any | not NONE | Non-ICP |
 $icp$
-WHERE reference_type = 'methodology'
+WHERE type = 'methodology'
   AND title ILIKE '%ICP%';
 
 -- ── STEP 3: If UPDATE returned 0 rows, run this INSERT instead ────────────────
 -- (Remove the leading comment markers and run only if needed)
 
--- INSERT INTO reference_library (title, reference_type, content, created_at, updated_at)
+-- INSERT INTO reference_library (title, type, content, created_at, updated_at)
 -- VALUES (
 --   'Pathova ICP Framework v4.0',
 --   'methodology',

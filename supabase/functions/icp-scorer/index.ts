@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
       supabase
         .from("reference_library")
         .select("content")
-        .eq("reference_type", "methodology")
+        .eq("type", "methodology")
         .ilike("title", "%ICP%"),
       supabase
         .from("agent_learnings")
@@ -273,7 +273,7 @@ Answer the 4 classification questions based ONLY on the above data.`;
         account_id: account.id,
         company_name: account.company_name,
         _match_info: matchInfo,
-        framework: "Pathova ICP v3.0 (4-Question Classification)",
+        framework: "Pathova ICP v4.0 (4-Question Classification)",
         classification: {
           q1_right_industry: {
             answer: q1,
