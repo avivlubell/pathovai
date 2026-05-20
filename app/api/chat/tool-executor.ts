@@ -302,6 +302,229 @@ async function executeExploriumMatchBusiness(input: Record<string, unknown>): Pr
   return callExplorium('POST', '/v1/businesses/match', undefined, { businesses });
 }
 
+async function fetchEdgarFormD(companyName: string): Promise<{ found: boolean; filingCount: number; lastFilingDate: string | null }> {
+  const query = encodeURIComponent(`"${companyName}"`);
+  const url = `https://efts.sec.gov/LATEST/search-index?q=${query}&forms=D&dateRange=custom&startdt=2015-01-01`;
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'PathovAI aviv.lubell@pathovagtm.com' },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return { found: false, filingCount: 0, lastFilingDate: null };
+    const data = await res.json() as any;
+    const hits: any[] = data?.hits?.hits || [];
+    const filingCount: number = data?.hits?.total?.value ?? hits.length;
+    const lastFilingDate: string | null = hits[0]?._source?.file_date ?? null;
+    return { found: filingCount > 0, filingCount, lastFilingDate };
+  } catch {
+    return { found: false, filingCount: 0, lastFilingDate: null };
+  }
+}
+
+async function fetchWebsiteLanguage(domain: string): Promise<{ clinicalOnly: boolean; economicBuyerLanguage: boolean; evidence: string } | null> {
+  try {
+    const url = domain.startsWith('http') ? domain : `https://${domain}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const text = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 4000);
+
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY || '',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: `Analyze this medical device company website. Does it use economic buyer language (ROI, cost per case, CFO, procurement, reimbursement, budget, supply chain, value-based) or is it purely clinical (surgeon outcomes, clinical evidence, study results, accuracy, sensitivity)?
+
+Website text: ${text}
+
+Return JSON only, no other text:
+{"clinical_only": true/false, "economic_buyer_language": true/false, "evidence": "short direct quote from the text proving your answer"}`,
+        }],
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!claudeRes.ok) return null;
+    const claudeData = await claudeRes.json() as any;
+    const responseText: string = claudeData.content?.[0]?.text || '{}';
+    const match = responseText.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]);
+    return {
+      clinicalOnly: parsed.clinical_only ?? true,
+      economicBuyerLanguage: parsed.economic_buyer_language ?? false,
+      evidence: parsed.evidence || '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function executeInvokeCrackScorer(input: Record<string, unknown>): Promise<string> {
+  const companyName = String(input.company_name || '').trim();
+  const domain = input.domain ? String(input.domain).trim() : null;
+  const fdaClearanceDateProvided = input.fda_clearance_date ? String(input.fda_clearance_date) : null;
+
+  if (!companyName) return JSON.stringify({ error: 'company_name is required' });
+
+  // Step 1: Resolve Explorium business_id
+  const matchRaw = await callExplorium('POST', '/v1/businesses/match', undefined, {
+    businesses: [{ name: companyName, ...(domain ? { domain } : {}) }],
+  });
+  let businessId: string | null = null;
+  try {
+    const matchData = JSON.parse(matchRaw);
+    const candidates: any[] = matchData?.data ?? matchData?.matched_businesses ?? [];
+    businessId = candidates[0]?.business_id ?? null;
+  } catch { /* leave null */ }
+
+  // Step 2: Parallel data collection
+  const [maProspectsResult, salesProspectsResult, fdaResult, edgarResult, websiteResult] = await Promise.allSettled([
+    businessId
+      ? callExplorium('POST', '/v1/prospects', undefined, {
+          mode: 'full', page: 1, page_size: 25,
+          filters: {
+            business_id: { values: [businessId] },
+            job_title: { values: ['market access', 'health economics', 'HEOR', 'reimbursement', 'payer relations'], include_related_job_titles: true },
+          },
+        })
+      : Promise.resolve(null),
+
+    businessId
+      ? callExplorium('POST', '/v1/prospects', undefined, {
+          mode: 'full', page: 1, page_size: 25,
+          filters: {
+            business_id: { values: [businessId] },
+            job_department: { values: ['sales'] },
+          },
+        })
+      : Promise.resolve(null),
+
+    fdaClearanceDateProvided
+      ? Promise.resolve(null)
+      : executeFdaDevices({ company_name: companyName, type: '510k', limit: 3 }),
+
+    fetchEdgarFormD(companyName),
+
+    domain ? fetchWebsiteLanguage(domain) : Promise.resolve(null),
+  ]);
+
+  // Step 3: Parse signal values
+  const parseTotal = (result: PromiseSettledResult<string | null>): number | null => {
+    if (result.status !== 'fulfilled' || !result.value) return null;
+    try {
+      const d = JSON.parse(typeof result.value === 'string' ? result.value : JSON.stringify(result.value));
+      if (typeof d?.total === 'number') return d.total;
+      if (Array.isArray(d?.data)) return d.data.length;
+      return null;
+    } catch { return null; }
+  };
+
+  const maHireCount = parseTotal(maProspectsResult);
+  const salesHeadcount = parseTotal(salesProspectsResult);
+
+  let fdaClearanceDate: string | null = fdaClearanceDateProvided;
+  if (!fdaClearanceDate && fdaResult.status === 'fulfilled' && fdaResult.value) {
+    try {
+      const fdaData = JSON.parse(typeof fdaResult.value === 'string' ? fdaResult.value : JSON.stringify(fdaResult.value));
+      fdaClearanceDate = fdaData?.results?.[0]?.decision_date ?? null;
+    } catch { /* leave null */ }
+  }
+
+  const edgar = edgarResult.status === 'fulfilled' ? edgarResult.value as { found: boolean; filingCount: number; lastFilingDate: string | null } : null;
+  const website = websiteResult.status === 'fulfilled' ? websiteResult.value as { clinicalOnly: boolean; economicBuyerLanguage: boolean; evidence: string } | null : null;
+
+  // Step 4: Score dimensions (null = insufficient data, not zero)
+  const scores: Record<string, number | null> = {};
+  const flags: string[] = [];
+
+  // D1: No reimbursement / market access hire
+  if (maHireCount === null) {
+    scores.reimbursement_hire = null;
+  } else if (maHireCount === 0) {
+    scores.reimbursement_hire = 1;
+    flags.push('no_reimbursement_hire');
+  } else {
+    scores.reimbursement_hire = 0;
+  }
+
+  // D2: No commercial sales presence
+  if (salesHeadcount === null) {
+    scores.sales_presence = null;
+  } else if (salesHeadcount === 0) {
+    scores.sales_presence = 1;
+    flags.push('no_sales_headcount');
+  } else {
+    scores.sales_presence = 0;
+  }
+
+  // D3: Clinical-only website language
+  if (website === null) {
+    scores.website_language = null;
+  } else if (website.clinicalOnly && !website.economicBuyerLanguage) {
+    scores.website_language = 1;
+    flags.push('clinical_only_language');
+  } else {
+    scores.website_language = 0;
+  }
+
+  // D4: Capital raised with no commercial build
+  if (edgar === null) {
+    scores.capital_without_gtm = null;
+  } else if (edgar.found && salesHeadcount === 0 && maHireCount === 0) {
+    scores.capital_without_gtm = 1;
+    flags.push('capital_without_gtm');
+  } else {
+    scores.capital_without_gtm = 0;
+  }
+
+  const scoredValues = Object.values(scores).filter((s): s is number => s !== null);
+  const totalScore = scoredValues.reduce((sum, s) => sum + s, 0);
+  const coverageGaps = Object.entries(scores).filter(([, v]) => v === null).map(([k]) => k);
+
+  const fragility_tier =
+    totalScore >= 3 ? 'HIGH' :
+    totalScore >= 2 ? 'MEDIUM' :
+    totalScore >= 1 ? 'LOW' : 'MINIMAL';
+
+  const outreach_angle = (fragility_tier === 'HIGH' || fragility_tier === 'MEDIUM') ? 'diagnostic' : 'light_touch';
+
+  return JSON.stringify({
+    company: companyName,
+    total_crack_score: totalScore,
+    max_scored: scoredValues.length,
+    fragility_tier,
+    flags,
+    coverage_gaps: coverageGaps,
+    outreach_angle,
+    dimension_scores: scores,
+    raw_signals: {
+      business_found: !!businessId,
+      ma_hire_count: maHireCount,
+      sales_headcount: salesHeadcount,
+      fda_clearance_date: fdaClearanceDate,
+      form_d_filings: edgar?.filingCount ?? null,
+      form_d_last_date: edgar?.lastFilingDate ?? null,
+      website_clinical_only: website?.clinicalOnly ?? null,
+      website_economic_language: website?.economicBuyerLanguage ?? null,
+      website_evidence: website?.evidence ?? null,
+    },
+  });
+}
+
 async function executeVerifyEmail(input: Record<string, unknown>): Promise<string> {
   const email = String(input.email || '').trim().toLowerCase();
   if (!email) return JSON.stringify({ error: 'email is required' });
@@ -352,6 +575,7 @@ export async function executeTool(
   if (toolName === 'load_skill') {
     return loadSkill(toolInput.skill as string);
   }
+  if (toolName === 'invoke_crack_scorer') return executeInvokeCrackScorer(toolInput);
   if (toolName === 'explorium_autocomplete') return executeExploriumAutocomplete(toolInput);
   if (toolName === 'explorium_fetch_businesses') return executeExploriumFetchBusinesses(toolInput);
   if (toolName === 'explorium_fetch_prospects') return executeExploriumFetchProspects(toolInput);
@@ -399,6 +623,8 @@ export function humanizeToolCall(
       return pickName() ? `Drafting outreach for ${pickName()}` : 'Drafting outreach';
     case 'invoke_risk_assessor':
       return pickName() ? `Assessing risk for ${pickName()}` : 'Assessing risk';
+    case 'invoke_crack_scorer':
+      return pickName() ? `Scoring commercial fragility for ${pickName()}` : 'Scoring commercial fragility';
     case 'invoke_ai_imaging_operator':
       return pickName() ? `Running AI imaging diagnosis for ${pickName()}` : 'Running AI imaging operator';
     case 'get_communications':
