@@ -9,6 +9,7 @@ import ContextDrawer from '../components/ContextDrawer';
 import KbFreshness from '../components/KbFreshness';
 import ShareChatModal from '../components/ShareChatModal';
 import Logo from '../components/Logo';
+import OutreachCard, { type OutreachDraft } from '../components/OutreachCard';
 
 import { openReconnectPopup } from '../lib/openReconnectPopup';
 
@@ -17,6 +18,7 @@ type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
   sources?: SourceRef[];
+  outreachDraft?: OutreachDraft;
 };
 
 type TraceStep = {
@@ -31,6 +33,7 @@ type StreamHandlers = {
   onTrace: (step: TraceStep) => void;
   onDone: (reply: string, sources: SourceRef[]) => void;
   onError: (message: string) => void;
+  onOutreachDraft?: (draft: OutreachDraft) => void;
 };
 
 async function consumeChatStream(
@@ -80,6 +83,10 @@ async function consumeChatStream(
           status: payload.phase === 'end' ? 'done' : 'running',
           durationMs: payload.durationMs,
         });
+      } else if (eventName === 'outreach_draft') {
+        if (handlers.onOutreachDraft && payload?.draft) {
+          handlers.onOutreachDraft(payload.draft as OutreachDraft);
+        }
       } else if (eventName === 'done') {
         terminated = true;
         handlers.onDone(
@@ -664,6 +671,7 @@ ${transcript}`;
       let replyText = '';
       let replySources: SourceRef[] = [];
       let streamError: string | null = null;
+      let pendingDraft: OutreachDraft | undefined;
       await consumeChatStream(res, {
         onTrace: (step) => {
           setLiveTrace((prev) => {
@@ -680,6 +688,9 @@ ${transcript}`;
         },
         onError: (msg) => {
           streamError = msg;
+        },
+        onOutreachDraft: (draft) => {
+          pendingDraft = draft;
         },
       });
 
@@ -698,6 +709,7 @@ ${transcript}`;
         role: 'assistant',
         content: replyText,
         sources: replySources,
+        outreachDraft: pendingDraft,
       };
       const updatedMessages = [...nextMessages, assistantMessage];
       setMessages(updatedMessages);
@@ -798,6 +810,7 @@ ${transcript}`;
       let replyText = '';
       let replySources: SourceRef[] = [];
       let streamError: string | null = null;
+      let pendingDraftRegen: OutreachDraft | undefined;
       await consumeChatStream(res, {
         onTrace: (step) => {
           setLiveTrace((prev) => {
@@ -814,6 +827,9 @@ ${transcript}`;
         },
         onError: (msg) => {
           streamError = msg;
+        },
+        onOutreachDraft: (draft) => {
+          pendingDraftRegen = draft;
         },
       });
 
@@ -832,6 +848,7 @@ ${transcript}`;
         role: 'assistant',
         content: replyText,
         sources: replySources,
+        outreachDraft: pendingDraftRegen,
       };
       const updated = [...priorMessages, newAssistant];
       setMessages(updated);
@@ -1415,6 +1432,7 @@ ${transcript}`;
                 userId={session?.user?.email ?? null}
                 isStreaming={isLoading}
                 sources={m.sources}
+                outreachDraft={m.outreachDraft}
                 onRegenerate={() => handleRegenerate(idx)}
                 onDownload={() => downloadAsMarkdown(m.content)}
               />
@@ -1562,6 +1580,7 @@ type AssistantMessageRowProps = {
   userId: string | null;
   isStreaming: boolean;
   sources: SourceRef[] | undefined;
+  outreachDraft?: OutreachDraft;
   onRegenerate: () => void;
   onDownload: () => void;
 };
@@ -1572,6 +1591,7 @@ function AssistantMessageRow({
   userId,
   isStreaming,
   sources,
+  outreachDraft,
   onRegenerate,
   onDownload,
 }: AssistantMessageRowProps) {
@@ -1592,6 +1612,9 @@ function AssistantMessageRow({
         <div ref={renderedRef}>
           <MessageContent content={message.content} />
         </div>
+        {outreachDraft && !isStreaming && (
+          <OutreachCard draft={outreachDraft} />
+        )}
         <MessageActions
           messageId={message.id}
           chatId={chatId}
