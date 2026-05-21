@@ -188,7 +188,7 @@ export default function HomePage() {
   const [liveTrace, setLiveTrace] = useState<TraceStep[]>([]);
   const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [openMenuForId, setOpenMenuForId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -906,6 +906,35 @@ ${transcript}`;
       >
         Skip to conversation
       </a>
+      {/* Desktop icon strip — always visible, replaces hamburger affordance */}
+      <div className="hidden md:flex flex-col items-center gap-1 w-10 flex-shrink-0 border-r border-border bg-surface py-3 px-1">
+        <button
+          type="button"
+          onClick={() => setSidebarOpen((o) => !o)}
+          aria-label={sidebarOpen ? 'Hide chat history' : 'Show chat history'}
+          title={sidebarOpen ? 'Hide history' : 'Chat history'}
+          className={`p-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${sidebarOpen ? 'bg-elevated text-fg' : 'text-fg-subtle hover:text-fg hover:bg-elevated'}`}
+        >
+          <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 8v4l3 3" />
+            <path d="M3.05 11a9 9 0 1 1 .5 4" />
+            <path d="M3 16v-5h5" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={handleNewChat}
+          aria-label="New chat"
+          title="New chat"
+          className="p-1.5 rounded-md text-fg-subtle hover:text-fg hover:bg-elevated transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
+          </svg>
+        </button>
+      </div>
+
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -1089,7 +1118,7 @@ ${transcript}`;
               aria-label="Toggle chat history"
               aria-expanded={sidebarOpen}
               aria-controls="chat-history-nav"
-              className="text-fg-muted hover:text-fg p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+              className="md:hidden text-fg-muted hover:text-fg p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               title={sidebarOpen ? 'Hide history' : 'Show history'}
             >
               <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1315,7 +1344,7 @@ ${transcript}`;
               onClick={handleNewChat}
               aria-label="Start new chat"
               title="New chat"
-              className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-sm rounded-md border border-border-strong hover:bg-elevated focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+              className="md:hidden inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-sm rounded-md border border-border-strong hover:bg-elevated focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
             >
               <svg
                 aria-hidden="true"
