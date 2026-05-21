@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Outreach Card · Prototype</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg: '#0f0f12', surface: '#17171c', elevated: '#1e1e25',
+            border: '#2a2a35', 'border-strong': '#3a3a48',
+            fg: '#e8e8f0', 'fg-muted': '#9898b0', 'fg-subtle': '#606078',
+            accent: '#6366f1', 'accent-hover': '#4f51d0',
+            success: '#22c55e', danger: '#ef4444', warning: '#f59e0b',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* ── Claim highlight modes (set via class on #card-root) ── */
+    .claim { cursor: pointer; border-radius: 2px; padding: 0 1px; transition: background 0.12s, border-color 0.12s; }
+
+    .mode-both .claim    { background: rgba(99,102,241,0.15); border-bottom: 2px solid rgba(99,102,241,0.4); }
+    .mode-both .claim:hover, .mode-both .claim.claim-hover { background: rgba(99,102,241,0.32); border-bottom-color: #6366f1; }
+    .mode-both .cite-sup { color: #6366f1; font-size: 0.65em; vertical-align: super; }
+
+    .mode-highlight .claim    { background: rgba(99,102,241,0.15); border-bottom: 2px solid rgba(99,102,241,0.4); }
+    .mode-highlight .claim:hover, .mode-highlight .claim.claim-hover { background: rgba(99,102,241,0.32); border-bottom-color: #6366f1; }
+    .mode-highlight .cite-sup { display: none; }
+
+    .mode-footnote .cite-sup { color: #6366f1; font-size: 0.65em; vertical-align: super; }
+    .mode-footnote .claim:hover, .mode-footnote .claim.claim-hover { text-decoration: underline dotted #6366f1; }
+
+    .mode-plain .claim { cursor: default; }
+    .mode-plain .cite-sup { display: none; }
+
+    /* Claim flash (triggered by clicking evidence card) */
+    .claim.claim-flash { animation: claim-pulse 0.55s ease-out; }
+    @keyframes claim-pulse {
+      0%   { background: rgba(99,102,241,0.55); }
+      100% { background: rgba(99,102,241,0.15); }
+    }
+    .mode-footnote .claim.claim-flash { animation: claim-underline-pulse 0.55s ease-out; }
+    @keyframes claim-underline-pulse {
+      0%   { text-decoration-color: #6366f1; color: #a5b4fc; }
+      100% { text-decoration-color: transparent; color: inherit; }
+    }
+    .mode-plain .claim.claim-flash { animation: none; }
+
+    /* Evidence card lit */
+    .ev-card { transition: border-color 0.12s, background 0.12s, box-shadow 0.12s; cursor: pointer; }
+    .ev-card.ev-lit {
+      border-color: #6366f1 !important;
+      background: rgba(99,102,241,0.1) !important;
+      box-shadow: 0 0 0 1px rgba(99,102,241,0.4);
+    }
+
+    /* Tweaks panel slide */
+    .tweaks-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s ease, opacity 0.18s; opacity: 0; }
+    .tweaks-panel > div { overflow: hidden; }
+    .tweaks-panel.open { grid-template-rows: 1fr; opacity: 1; }
+
+    /* Segmented button group */
+    .seg-btn {
+      padding: 3px 10px; border-radius: 4px; font-size: 0.72rem; cursor: pointer;
+      border: 1px solid #3a3a48; background: transparent; color: #9898b0;
+      transition: all 0.1s;
+    }
+    .seg-btn.active { background: #6366f1; border-color: #6366f1; color: #fff; }
+    .seg-btn:hover:not(.active) { background: #1e1e25; color: #e8e8f0; }
+
+    /* Subject contenteditable */
+    [contenteditable]:focus-visible { outline: 1px solid #6366f1; border-radius: 3px; }
+    [contenteditable].has-banned { border-color: #ef4444 !important; }
+
+    /* Subject inline banned highlight */
+    .banned-word { text-decoration: underline wavy #ef4444; color: #ef4444; }
+
+    /* Rubric caret */
+    #rubric-caret { transition: transform 0.18s; }
+    #rubric-caret.open { transform: rotate(180deg); }
+  </style>
+</head>
+<body class="bg-bg text-fg min-h-screen p-6 font-sans text-sm">
+
+<div class="max-w-3xl mx-auto space-y-3">
+
+  <!-- ── Top bar ── -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="font-semibold text-base tracking-tight">Outreach Card</h1>
+      <p class="text-xs text-fg-muted mt-0.5">Luminary Medical · Sarah Chen, VP Sales Ops</p>
+    </div>
+    <button id="btn-tweaks"
+      class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border-strong text-xs text-fg-muted hover:text-fg hover:bg-elevated transition-all">
+      <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"/>
+      </svg>
+      Tweaks
+    </button>
+  </div>
+
+  <!-- ── Tweaks panel ── -->
+  <div id="tweaks-panel" class="tweaks-panel">
+    <div>
+      <div class="bg-surface border border-border rounded-xl p-4 flex flex-wrap gap-5">
+
+        <div class="flex flex-col gap-1.5">
+          <p class="text-[10px] uppercase tracking-widest text-fg-subtle font-semibold">Channel</p>
+          <div class="flex gap-1" data-group="channel">
+            <button class="seg-btn active" data-value="email">Email</button>
+            <button class="seg-btn" data-value="linkedin">LinkedIn</button>
+            <button class="seg-btn" data-value="voicemail">Voicemail</button>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <p class="text-[10px] uppercase tracking-widest text-fg-subtle font-semibold">Layout</p>
+          <div class="flex gap-1" data-group="layout">
+            <button class="seg-btn" data-value="compact">Compact</button>
+            <button class="seg-btn active" data-value="side-rail">Side-rail</button>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <p class="text-[10px] uppercase tracking-widest text-fg-subtle font-semibold">Citations</p>
+          <div class="flex gap-1 flex-wrap" data-group="cite">
+            <button class="seg-btn active" data-value="both">Highlight + Footnote</button>
+            <button class="seg-btn" data-value="highlight">Highlight only</button>
+            <button class="seg-btn" data-value="footnote">Footnote only</button>
+            <button class="seg-btn" data-value="plain">Plain text</button>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <p class="text-[10px] uppercase tracking-widest text-fg-subtle font-semibold">Rubric</p>
+          <div class="flex gap-1" data-group="rubric-v">
+            <button class="seg-btn active" data-value="chip">Chip</button>
+            <button class="seg-btn" data-value="full">Always open</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Card ── -->
+  <div id="card-root" class="mode-both bg-surface border border-border rounded-xl overflow-hidden">
+
+    <!-- Header: Subject + Rubric -->
+    <div class="px-5 pt-4 pb-3 border-b border-border space-y-2.5">
+
+      <!-- Subject (hidden for linkedin / voicemail) -->
+      <div id="subject-row" class="flex items-center gap-2">
+        <span class="text-[10px] uppercase tracking-wide text-fg-subtle font-medium w-12 flex-shrink-0">Subject</span>
+        <span
+          id="subject-el"
+          contenteditable="true"
+          spellcheck="false"
+          aria-label="Email subject"
+          class="flex-1 px-2 py-0.5 rounded border border-transparent hover:border-border focus:border-border-strong bg-elevated text-fg transition-colors min-h-[1.5em]"
+        >Luminary's 7-hospital push, 2 cracks I noticed</span>
+        <span id="subject-counter" class="text-[10px] text-success flex-shrink-0 tabular-nums w-5 text-right">7w</span>
+      </div>
+
+      <!-- Rubric chip (hidden when "Always open") -->
+      <div id="rubric-chip-row">
+        <button id="btn-rubric-chip"
+          class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-elevated border border-border text-xs hover:bg-border transition-colors">
+          <span id="rubric-chip-icon" class="font-bold text-success">✓</span>
+          <span id="rubric-chip-label" class="text-fg-muted">6 / 7 checks pass</span>
+          <svg id="rubric-caret" class="w-3 h-3 text-fg-subtle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Rubric rows -->
+      <div id="rubric-rows" class="hidden space-y-2 pt-0.5"></div>
+
+    </div>
+
+    <!-- Body + Evidence -->
+    <div id="card-body" class="flex">
+
+      <!-- Body text -->
+      <div id="body-area" class="flex-1 min-w-0 px-5 py-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[10px] uppercase tracking-wide text-fg-subtle font-medium">Body</span>
+          <span id="body-counter" class="text-[10px] text-fg-muted tabular-nums">89 / 120w</span>
+        </div>
+        <p id="body-text" class="text-sm text-fg leading-relaxed">
+          Sarah — saw Luminary's Q1 call where <span class="claim" data-cid="1">revenue missed by 12%</span><sup class="cite-sup" data-cid="1">¹</sup>, management called out pipeline quality as the culprit. Meanwhile you've <span class="claim" data-cid="2">added 3 VP-level sales ops hires</span><sup class="cite-sup" data-cid="2">²</sup> since October, which usually means the tooling conversation is already happening internally. We help hospital commercial teams like yours <span class="claim" data-cid="3">close the gap between FDA clearance and first contract</span><sup class="cite-sup" data-cid="3">³</sup> — Luminary's <span class="claim" data-cid="4">new indication cleared in December</span><sup class="cite-sup" data-cid="4">⁴</sup> could be the ideal timing window. Worth a 20-min call to see if there's a fit?
+        </p>
+      </div>
+
+      <!-- Evidence section (right rail in side-rail mode, below body in compact) -->
+      <div id="evidence-section" class="w-56 flex-shrink-0 border-l border-border p-3 space-y-2 bg-bg/30">
+        <p class="text-[10px] uppercase tracking-wide text-fg-subtle font-medium mb-1">Evidence</p>
+
+        <div class="ev-card rounded-lg border border-border bg-surface p-2.5" data-eid="1">
+          <p class="text-[10px] font-semibold text-fg-muted uppercase tracking-wide"><span class="text-accent mr-0.5">¹</span>Q1 2025 Earnings</p>
+          <p class="text-[11px] text-fg mt-1 leading-relaxed">Revenue missed consensus by 12%; CEO cited "pipeline predictability challenges."</p>
+        </div>
+
+        <div class="ev-card rounded-lg border border-border bg-surface p-2.5" data-eid="2">
+          <p class="text-[10px] font-semibold text-fg-muted uppercase tracking-wide"><span class="text-accent mr-0.5">²</span>LinkedIn Signal</p>
+          <p class="text-[11px] text-fg mt-1 leading-relaxed">3 VP/Director Sales Ops hires, Oct 2024 – Jan 2025.</p>
+        </div>
+
+        <div class="ev-card rounded-lg border border-border bg-surface p-2.5" data-eid="3">
+          <p class="text-[10px] font-semibold text-fg-muted uppercase tracking-wide"><span class="text-accent mr-0.5">³</span>PathAI Data</p>
+          <p class="text-[11px] text-fg mt-1 leading-relaxed">34% faster time-to-first-contract across 8 hospital commercial teams (2024).</p>
+        </div>
+
+        <div class="ev-card rounded-lg border border-border bg-surface p-2.5" data-eid="4">
+          <p class="text-[10px] font-semibold text-fg-muted uppercase tracking-wide"><span class="text-accent mr-0.5">⁴</span>FDA Clearance</p>
+          <p class="text-[11px] text-fg mt-1 leading-relaxed">510(k) K243211 cleared Dec 4, 2024 — surgical oncology expansion.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Usage hints -->
+  <p class="text-[11px] text-fg-subtle text-center">
+    Hover a <span class="text-accent underline decoration-dotted cursor-default">cited claim</span> → evidence lights up · Click evidence → claim flashes · Edit subject (try pasting "just checking in")
+  </p>
+
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const S = {
+  channel: 'email',
+  layout: 'side-rail',
+  cite: 'both',
+  rubricV: 'chip',     // chip | full
+  rubricOpen: false,
+  tweaksOpen: false,
+};
+
+const CHANNEL = {
+  email:     { unit: 'w', limit: 120, subjectLimit: 8,   hasSubject: true  },
+  linkedin:  { unit: 'c', limit: 300, subjectLimit: null, hasSubject: false },
+  voicemail: { unit: 'w', limit: 60,  subjectLimit: null, hasSubject: false },
+};
+
+const BANNED = [
+  'just checking in', 'hope this finds you', 'touching base',
+  'circling back', 'quick question', "hope you're doing well", 'i wanted to reach out',
+];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+function subjectText()  { return $('subject-el').innerText.trim(); }
+function bodyText()     { return $('body-text').innerText.trim(); }
+function words(t)       { return t.trim().split(/\s+/).filter(Boolean).length; }
+function chars(t)       { return t.trim().length; }
+function hasBanned(t)   { const l = t.toLowerCase(); return BANNED.some(p => l.includes(p)); }
+function bannedIn(t)    { const l = t.toLowerCase(); return BANNED.find(p => l.includes(p)) || null; }
+
+// ── Rubric ───────────────────────────────────────────────────────────────────
+function computeRubric() {
+  const subj = subjectText();
+  const body = bodyText();
+  const ch   = CHANNEL[S.channel];
+  const sw   = words(subj);
+  const bval = ch.unit === 'w' ? words(body) : chars(body);
+
+  return [
+    {
+      label: `Subject ≤ ${ch.subjectLimit ?? '—'} words`,
+      type: 'code',
+      pass: ch.hasSubject ? sw <= (ch.subjectLimit || Infinity) : true,
+      detail: ch.hasSubject ? `${sw} words` : 'No subject for this channel',
+      skip: !ch.hasSubject,
+    },
+    {
+      label: 'No banned phrases in subject',
+      type: 'code',
+      pass: !hasBanned(subj),
+      detail: hasBanned(subj) ? `Found: "${bannedIn(subj)}"` : 'Clean',
+      skip: !ch.hasSubject,
+    },
+    {
+      label: `Body ≤ ${ch.limit} ${ch.unit === 'w' ? 'words' : 'chars'}`,
+      type: 'code',
+      pass: bval <= ch.limit,
+      detail: `${bval} / ${ch.limit}`,
+      skip: false,
+    },
+    {
+      label: 'Personalized opener (account-specific signal)',
+      type: 'llm',
+      pass: true,
+      detail: 'References Q1 earnings + LinkedIn hiring signal',
+      skip: false,
+    },
+    {
+      label: 'Single clear CTA',
+      type: 'llm',
+      pass: false,
+      detail: 'Implicit "20-min call" competes with open-ended "fit?" — pick one',
+      skip: false,
+    },
+    {
+      label: 'No generic opener in body',
+      type: 'code',
+      pass: !hasBanned(body),
+      detail: hasBanned(body) ? `Found: "${bannedIn(body)}"` : 'Clean',
+      skip: false,
+    },
+    {
+      label: 'Evidence-backed claim present',
+      type: 'code',
+      pass: true,
+      detail: '4 cited claims linked to evidence',
+      skip: false,
+    },
+  ];
+}
+
+// ── Render functions ─────────────────────────────────────────────────────────
+function renderSubjectRow() {
+  $('subject-row').style.display = CHANNEL[S.channel].hasSubject ? '' : 'none';
+}
+
+function renderSubjectCounter() {
+  const ch = CHANNEL[S.channel];
+  if (!ch.hasSubject) return;
+  const t  = subjectText();
+  const wc = words(t);
+  const el = $('subject-counter');
+  const bad = hasBanned(t) || wc > ch.subjectLimit;
+  el.textContent = `${wc}w`;
+  el.className   = `text-[10px] flex-shrink-0 tabular-nums w-5 text-right ${bad ? 'text-danger' : 'text-success'}`;
+}
+
+function renderBodyCounter() {
+  const ch   = CHANNEL[S.channel];
+  const t    = bodyText();
+  const val  = ch.unit === 'w' ? words(t) : chars(t);
+  const el   = $('body-counter');
+  el.textContent = `${val} / ${ch.limit}${ch.unit}`;
+  el.className   = `text-[10px] tabular-nums ${val > ch.limit ? 'text-danger' : 'text-fg-muted'}`;
+}
+
+function renderRubric() {
+  const checks   = computeRubric();
+  const active   = checks.filter(c => !c.skip);
+  const passing  = active.filter(c => c.pass).length;
+  const total    = active.length;
+  const codeFail = active.filter(c => c.type === 'code' && !c.pass).length;
+  const chipGreen = codeFail === 0;
+
+  // Chip
+  const icon  = $('rubric-chip-icon');
+  const label = $('rubric-chip-label');
+  icon.textContent = passing === total ? '✓' : `${passing}/${total}`;
+  icon.className   = `font-bold ${chipGreen ? 'text-success' : 'text-danger'}`;
+  label.textContent = passing === total ? 'All checks pass' : `${passing} / ${total} checks pass`;
+
+  // Caret
+  const caret = $('rubric-caret');
+  caret.classList.toggle('open', S.rubricOpen);
+
+  // Chip row visibility
+  $('rubric-chip-row').style.display = S.rubricV === 'full' ? 'none' : '';
+
+  // Expanded rows
+  const rowsEl  = $('rubric-rows');
+  const showing = S.rubricOpen || S.rubricV === 'full';
+  rowsEl.classList.toggle('hidden', !showing);
+
+  if (showing) {
+    rowsEl.innerHTML = checks.map(c => `
+      <div class="flex items-start gap-2 ${c.skip ? 'opacity-35' : ''}">
+        <span class="w-4 text-center font-bold text-xs mt-0.5 flex-shrink-0 ${c.pass ? 'text-success' : 'text-danger'}">${c.pass ? '✓' : '✗'}</span>
+        <div class="flex-1 min-w-0">
+          <span class="text-xs text-fg">${c.label}</span>
+          ${c.type === 'llm'
+            ? '<span class="ml-1.5 text-[9px] uppercase tracking-wide text-fg-subtle border border-border rounded px-1">LLM</span>'
+            : ''}
+          <p class="text-[11px] text-fg-muted mt-0.5">${c.detail}</p>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+function renderCiteMode() {
+  const root = $('card-root');
+  ['mode-both','mode-highlight','mode-footnote','mode-plain'].forEach(c => root.classList.remove(c));
+  root.classList.add(`mode-${S.cite}`);
+}
+
+function renderLayout() {
+  const cardBody = $('card-body');
+  const evSection = $('evidence-section');
+  if (S.layout === 'side-rail') {
+    cardBody.className  = 'flex';
+    evSection.className = 'w-56 flex-shrink-0 border-l border-border p-3 space-y-2 bg-bg/30';
+  } else {
+    cardBody.className  = 'block';
+    evSection.className = 'border-t border-border p-4 grid grid-cols-2 gap-2';
+  }
+}
+
+function renderAll() {
+  renderSubjectRow();
+  renderSubjectCounter();
+  renderBodyCounter();
+  renderRubric();
+  renderCiteMode();
+  renderLayout();
+}
+
+// ── Tweaks toggle ────────────────────────────────────────────────────────────
+$('btn-tweaks').addEventListener('click', () => {
+  S.tweaksOpen = !S.tweaksOpen;
+  $('tweaks-panel').classList.toggle('open', S.tweaksOpen);
+});
+
+// ── Segmented groups ─────────────────────────────────────────────────────────
+document.querySelectorAll('[data-group]').forEach(group => {
+  const key = group.dataset.group;
+  group.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      group.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const val = btn.dataset.value;
+      if (key === 'channel')  { S.channel = val; renderAll(); }
+      if (key === 'layout')   { S.layout  = val; renderLayout(); }
+      if (key === 'cite')     { S.cite    = val; renderCiteMode(); }
+      if (key === 'rubric-v') {
+        S.rubricV = val;
+        if (val === 'full') S.rubricOpen = false;
+        renderRubric();
+      }
+    });
+  });
+});
+
+// ── Rubric chip toggle ────────────────────────────────────────────────────────
+$('btn-rubric-chip').addEventListener('click', () => {
+  S.rubricOpen = !S.rubricOpen;
+  renderRubric();
+});
+
+// ── Subject live grading ──────────────────────────────────────────────────────
+$('subject-el').addEventListener('input', () => {
+  renderSubjectCounter();
+  renderRubric();
+});
+
+// ── Claim ↔ Evidence two-way linking ─────────────────────────────────────────
+document.querySelectorAll('.claim').forEach(claim => {
+  const cid   = claim.dataset.cid;
+  const evCard = document.querySelector(`.ev-card[data-eid="${cid}"]`);
+
+  claim.addEventListener('mouseenter', () => {
+    if (evCard) evCard.classList.add('ev-lit');
+    claim.classList.add('claim-hover');
+  });
+  claim.addEventListener('mouseleave', () => {
+    if (evCard) evCard.classList.remove('ev-lit');
+    claim.classList.remove('claim-hover');
+  });
+  claim.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!evCard) return;
+    evCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    evCard.classList.add('ev-lit');
+    setTimeout(() => evCard.classList.remove('ev-lit'), 900);
+  });
+});
+
+document.querySelectorAll('.ev-card').forEach(evCard => {
+  const eid    = evCard.dataset.eid;
+  const claims = document.querySelectorAll(`.claim[data-cid="${eid}"]`);
+
+  evCard.addEventListener('mouseenter', () => {
+    claims.forEach(c => c.classList.add('claim-hover'));
+    evCard.classList.add('ev-lit');
+  });
+  evCard.addEventListener('mouseleave', () => {
+    claims.forEach(c => c.classList.remove('claim-hover'));
+    evCard.classList.remove('ev-lit');
+  });
+  evCard.addEventListener('click', () => {
+    claims.forEach(c => {
+      c.classList.remove('claim-flash');
+      void c.offsetWidth; // force reflow to restart animation
+      c.classList.add('claim-flash');
+      setTimeout(() => c.classList.remove('claim-flash'), 600);
+    });
+  });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+renderAll();
+</script>
+</body>
+</html>
