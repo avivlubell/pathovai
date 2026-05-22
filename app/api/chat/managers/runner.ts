@@ -148,6 +148,18 @@ export async function runManager(
         durationMs,
       });
 
+      // Emit outreach draft card data to the frontend
+      if (toolBlock.name === 'invoke_outreach_drafter') {
+        try {
+          const parsed = JSON.parse(result);
+          if (parsed?.success && parsed?.data) {
+            send('outreach_draft', { draft: parsed.data });
+          }
+        } catch {
+          // not valid JSON — skip
+        }
+      }
+
       // Hard-fail on invoke_prospect_researcher errors — no point continuing without research data
       if (toolBlock.name === 'invoke_prospect_researcher') {
         let parsed: any;

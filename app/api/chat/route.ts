@@ -644,6 +644,16 @@ export async function POST(req: Request) {
                   if (toolBlock.name === 'search_references') {
                     collectSources(result, sources, seenSourceIds);
                   }
+                  if (toolBlock.name === 'invoke_outreach_drafter') {
+                    try {
+                      const parsed = JSON.parse(result);
+                      if (parsed?.success && parsed?.data) {
+                        send('outreach_draft', { draft: parsed.data });
+                      }
+                    } catch {
+                      // result not valid JSON or missing data — silently skip
+                    }
+                  }
                   turnToolCalls.push({ name: toolBlock.name, result });
                 }
               } finally {
