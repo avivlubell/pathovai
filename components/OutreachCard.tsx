@@ -71,6 +71,7 @@ export default function OutreachCard({ draft }: { draft: OutreachDraft }) {
   const [subjectEdits, setSubjectEdits] = useState<Record<string, string>>({});
   const [rubricOpen, setRubricOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [gmailOpened, setGmailOpened] = useState(false);
 
   const tabInfo = TABS.find(t => t.key === activeTab)!;
   const touch = draft.sequence[activeTab];
@@ -157,6 +158,16 @@ export default function OutreachCard({ draft }: { draft: OutreachDraft }) {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  function openInGmail() {
+    const url =
+      'https://mail.google.com/mail/?view=cm&fs=1' +
+      (subject ? `&su=${encodeURIComponent(subject)}` : '') +
+      `&body=${encodeURIComponent(body)}`;
+    window.open(url, 'gmail-compose', 'width=900,height=700,resizable=yes,scrollbars=yes');
+    setGmailOpened(true);
+    setTimeout(() => setGmailOpened(false), 2000);
+  }
+
   const confidenceColor =
     draft.pic.confidence === 'high' ? 'text-success border-success/30 bg-success/5' :
     draft.pic.confidence === 'low'  ? 'text-warning border-warning/30 bg-warning/5' :
@@ -191,6 +202,15 @@ export default function OutreachCard({ draft }: { draft: OutreachDraft }) {
           <span className={`text-[10px] px-1.5 py-0.5 rounded border ${confidenceColor}`}>
             {draft.pic.confidence} confidence
           </span>
+          {channel === 'email' && (
+            <button
+              type="button"
+              onClick={openInGmail}
+              className="text-[10px] px-2 py-0.5 rounded border border-border-strong text-fg-muted hover:text-fg hover:bg-elevated transition-colors"
+            >
+              {gmailOpened ? 'Opened!' : 'Gmail'}
+            </button>
+          )}
           <button
             type="button"
             onClick={copyTouch}
