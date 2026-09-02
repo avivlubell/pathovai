@@ -47,7 +47,7 @@ export const TOOL_ENDPOINT_MAP: Record<string, string> = {
   ingest_to_kb: 'ingest-to-kb',
   search_kb: 'search-kb',
   store_learning: 'store-learning',
-  invoke_ai_imaging_operator: 'ai-imaging-operator',
+  invoke_vertical_operator: 'vertical-operator',
 };
 
 const SLOW_FUNCTIONS = new Set(['prospect-researcher', 'outreach-drafter', 'icp-scorer', 'signal-brief', 'risk-assessor', 'fetch-gap-content', 'run-prospect-pipeline']);
@@ -633,8 +633,8 @@ export function humanizeToolCall(
       return pickName() ? `Assessing risk for ${pickName()}` : 'Assessing risk';
     case 'invoke_crack_scorer':
       return pickName() ? `Scoring commercial fragility for ${pickName()}` : 'Scoring commercial fragility';
-    case 'invoke_ai_imaging_operator':
-      return pickName() ? `Running AI imaging diagnosis for ${pickName()}` : 'Running AI imaging operator';
+    case 'invoke_vertical_operator':
+      return pickName() ? `Running vertical diagnosis for ${pickName()}` : 'Running vertical operator';
     case 'get_communications':
       return pickName() ? `Pulling prior touches for ${pickName()}` : 'Pulling prior outreach history';
     case 'query_deals':

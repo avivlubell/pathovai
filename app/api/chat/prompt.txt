@@ -690,10 +690,10 @@ Use these tools. Do not guess or hallucinate data that can be retrieved.
     Input: `account_id` (company UUID) or `company_name`. Evaluates regulatory, financial, ICP fit, market timing, and competition risks for the company.
     Returns structured risk assessment and saves to DB.
 
-10a. **invoke_ai_imaging_operator** â€” AI Imaging Operator (AI imaging TA only)
-    Input: `company_name` (required) + `context` object (funding_stage, headcount, fda_status, public_signals, pilot_announcements, hiring_signals, research_summary, indication, institution_type).
-    Invoke ONLY when the prospect is an AI diagnostic imaging company. Returns a structured commercial brief: failure mode, timing urgency, outreach hook, signal basis, gaps. Use BEFORE signal brief or outreach draft for any AI imaging company. The brief is internal context â€” do not surface it raw to the user.
-    See: AI IMAGING OPERATOR section above for full routing rules.
+10a. **invoke_vertical_operator** â€” Vertical Operator (companies in a configured vertical only)
+    Input: `vertical_slug` (required, e.g. "ai-imaging") + `company_name` (required) + `context` object (funding_stage, headcount, fda_status, public_signals, pilot_announcements, hiring_signals, research_summary, use_case, institution_type).
+    Invoke ONLY when the prospect belongs to a configured vertical (currently: AI Imaging). Returns a structured commercial brief: failure mode, timing urgency, outreach hook, signal basis, gaps. Use BEFORE signal brief or outreach draft for any company in a configured vertical. The brief is internal context â€” do not surface it raw to the user.
+    See: VERTICAL OPERATOR section above for full routing rules.
 
 10b. **invoke_crack_scorer** — Commercial Fragility Scorer
     Input: `company_name` (required) + optional `domain` (for website language analysis) + optional `fda_clearance_date` (skips FDA lookup if already known).
@@ -858,9 +858,11 @@ Before invoking `invoke_outreach_drafter`, you MUST call `query_industry_intelli
 
 ---
 
-## AI IMAGING OPERATOR (AI IMAGING TA PRECONDITION)
+## VERTICAL OPERATOR (AI IMAGING VERTICAL PRECONDITION)
 
-When the prospect's `therapeutic_area` field (a text array on the account record) contains any of: “Imaging AI”, “Radiology”, “AI Imaging”, “AI Diagnostic Imaging”, “Radiology AI”, “AI Radiology”, “Medical Imaging AI” — or research confirms the company builds AI diagnostic imaging software — invoke `invoke_ai_imaging_operator` BEFORE generating any signal brief or outreach draft.
+Vertical routing is data-driven: `invoke_vertical_operator` takes a `vertical_slug`. Today exactly one vertical has a configured operator — `ai-imaging`. This section is that vertical's precondition; a future vertical gets its own precondition block here with its own `vertical_slug`.
+
+When the prospect's `therapeutic_area` field (a text array on the account record) contains any of: “Imaging AI”, “Radiology”, “AI Imaging”, “AI Diagnostic Imaging”, “Radiology AI”, “AI Radiology”, “Medical Imaging AI” — or research confirms the company builds AI diagnostic imaging software — invoke `invoke_vertical_operator` with `vertical_slug: "ai-imaging"` BEFORE generating any signal brief or outreach draft.
 
 **When to invoke:**
 - `account.therapeutic_area` contains any imaging/radiology AI value (check after CRM lookup)
@@ -869,7 +871,7 @@ When the prospect's `therapeutic_area` field (a text array on the account record
 
 **How to invoke â€” pass everything you know:**
 
-Build the context object from what you already have this session:
+Set `vertical_slug: "ai-imaging"`. Build the context object from what you already have this session:
 - `funding_stage` â€” from ICP score output or research Section 3
 - `headcount` â€” from research Section 4 (LinkedIn employee count)
 - `fda_status` â€” from research Section 2 or ICP score
@@ -877,10 +879,10 @@ Build the context object from what you already have this session:
 - `pilot_announcements` â€” one entry per pilot, including WHO was named in the announcement. This is the most important field: stakeholder composition at pilot announcement predicts deal outcome.
 - `hiring_signals` â€” from query_hiring_signals output or research Section 4
 - `research_summary` â€” the account's research_summary field if returned by get_account_detail
-- `indication` â€” the primary AI imaging use case, e.g. “stroke”, “mammography”, “chest CT”, “PE detection”, “cardiac CT”, “lung nodule”. Derive from fda_status or research. This unlocks targeted reimbursement, competitive landscape, and indication-specific ROI models from the knowledge layer.
+- `use_case` â€” the primary AI imaging use case, e.g. “stroke”, “mammography”, “chest CT”, “PE detection”, “cardiac CT”, “lung nodule”. Derive from fda_status or research. This unlocks targeted economics, competitive landscape, and use-case-specific ROI models from the knowledge layer.
 - `institution_type` â€” if target hospital is known: “amc”, “large_idn”, or “community_hospital”. Used to filter procurement intelligence.
 
-The richer the context, the sharper the failure mode diagnosis. If research has not been run yet, run it first, then invoke the operator. `indication` is particularly high-value — always include it when you can derive it.
+The richer the context, the sharper the failure mode diagnosis. If research has not been run yet, run it first, then invoke the operator. `use_case` is particularly high-value — always include it when you can derive it.
 
 **What to do with the output:**
 
@@ -993,7 +995,7 @@ Never use `score_icp` when `invoke_icp_scorer` is available.
 - "Research prospect" â†’ `invoke_prospect_researcher({ account_id })`
 - "Draft outreach" â†’ `invoke_outreach_drafter({ account_id, company_name })` â€” add `target_contact_name: "<full name>"` when conversation named a non-primary target
 - "Assess risk" â†’ `invoke_risk_assessor({ account_id })`
-- AI imaging company (TA = AI Imaging / Radiology AI) before outreach or signal brief â†’ `invoke_ai_imaging_operator({ company_name, context: { ... } })` then proceed with outreach/signal brief using the brief’s hook
+- AI imaging company (TA = AI Imaging / Radiology AI) before outreach or signal brief â†’ `invoke_vertical_operator({ vertical_slug: "ai-imaging", company_name, context: { ... } })` then proceed with outreach/signal brief using the brief’s hook
 - "What’s in our pipeline?" / "Show me our deals" / "What motions are we running?" â†’ `query_deals()`
 - "What deals are in [stage]?" â†’ `query_deals(filter: {stage: "[stage]"})`
 - "What deals do we have with [company]?" â†’ `query_deals(filter: {company: "[company]"})`

@@ -61,12 +61,16 @@ export const delegateTools: Anthropic.Tool[] = [
     input_schema: TASK_PACKET_SCHEMA,
   },
   {
-    name: 'invoke_ai_imaging_operator',
+    name: 'invoke_vertical_operator',
     description:
-      'AI Imaging Operator — invoke when the prospect company is in the AI diagnostic imaging space (TA tag = "AI Imaging" or similar). Returns a structured commercial brief: failure mode diagnosis, timing urgency, outreach hook, signal basis, and gaps. Invoke BEFORE generating any signal brief or outreach draft for AI imaging companies. Pass everything the QB already knows about the company in the context object.',
+      'Vertical Operator — invoke when the prospect company belongs to a vertical with a configured operator (currently: AI Imaging, TA tag = "AI Imaging" or similar). Returns a structured commercial brief: failure mode diagnosis, timing urgency, outreach hook, signal basis, and gaps. Invoke BEFORE generating any signal brief or outreach draft for a company in a configured vertical. Pass everything the QB already knows about the company in the context object.',
     input_schema: {
       type: 'object' as const,
       properties: {
+        vertical_slug: {
+          type: 'string',
+          description: 'The vertical to diagnose against, e.g. "ai-imaging". See the vertical\'s routing-precondition section for which TA values map to it.',
+        },
         company_name: {
           type: 'string',
           description: 'Company name',
@@ -90,9 +94,9 @@ export const delegateTools: Anthropic.Tool[] = [
               description: 'Commercial hiring signals, e.g. "VP Sales posted on LinkedIn 3 days ago"',
             },
             research_summary: { type: 'string', description: 'The research_summary field from the account record if available' },
-            indication: {
+            use_case: {
               type: 'string',
-              description: 'Primary AI imaging indication, e.g. "stroke", "mammography", "chest CT", "PE", "cardiac CT", "lung nodule". Derive from fda_status or research. Used to pull targeted reimbursement and competitive intelligence from the knowledge layer.',
+              description: 'Primary use case within the vertical, e.g. "stroke", "mammography", "chest CT", "PE", "cardiac CT", "lung nodule" for AI Imaging. Derive from fda_status or research. Used to pull targeted economics and competitive intelligence from the knowledge layer.',
             },
             institution_type: {
               type: 'string',
@@ -102,7 +106,7 @@ export const delegateTools: Anthropic.Tool[] = [
           },
         },
       },
-      required: ['company_name'],
+      required: ['vertical_slug', 'company_name'],
     },
   },
   {
